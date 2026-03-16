@@ -618,19 +618,19 @@ function renderKb() {{
         '</div>' +
         '<div class="kb-entry-detail">' +
           '<div class="kb-section">' +
-            '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(\'collapsed\')">Key Takeaways</div>' +
+            '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Key Takeaways</div>' +
             '<div class="kb-section-body">' + takeawaysHtml + '</div>' +
           '</div>' +
           '<div class="kb-section">' +
-            '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(\'collapsed\')">Links &amp; Resources</div>' +
+            '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Links &amp; Resources</div>' +
             '<div class="kb-section-body">' + linksHtml + '</div>' +
           '</div>' +
           '<div class="kb-section">' +
-            '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(\'collapsed\')">Transcript</div>' +
+            '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Transcript</div>' +
             '<div class="kb-section-body collapsed"><pre>' + (query ? highlightText(v.transcript || "No transcript", query) : escHtml(v.transcript || "No transcript")) + '</pre></div>' +
           '</div>' +
           '<div class="kb-section">' +
-            '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(\'collapsed\')">Visual Description</div>' +
+            '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Visual Description</div>' +
             '<div class="kb-section-body collapsed"><pre>' + (query ? highlightText(v.visual_description || "No description", query) : escHtml(v.visual_description || "No description")) + '</pre></div>' +
           '</div>' +
         '</div>' +

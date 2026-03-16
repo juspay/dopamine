@@ -15,9 +15,21 @@ mp4_files = sorted([f for f in os.listdir(VIDEO_DIR) if f.lower().endswith(".mp4
 total = len(mp4_files)
 print(f"Found {total} .mp4 files")
 
+# Load existing properties for resume support
 properties = {}
+if os.path.exists(OUTPUT_FILE):
+    with open(OUTPUT_FILE) as f:
+        properties = json.load(f)
+    print(f"Loaded {len(properties)} existing entries (resume mode)")
 
+skipped = 0
 for i, filename in enumerate(mp4_files, 1):
+    # Skip if already processed
+    if filename in properties:
+        skipped += 1
+        print(f"[{i}/{total}] SKIP (already processed): {filename}")
+        continue
+
     filepath = os.path.join(VIDEO_DIR, filename)
     print(f"[{i}/{total}] Processing {filename}...", end=" ")
 
@@ -93,4 +105,5 @@ with open(OUTPUT_FILE, "w") as f:
     json.dump(properties, f, indent=2)
 
 print(f"\nDone. Wrote {len(properties)} entries to {OUTPUT_FILE}")
+print(f"New: {len(properties) - skipped if len(properties) > skipped else 0}, Skipped: {skipped}")
 print(f"Thumbnails saved to {THUMB_DIR}/")
