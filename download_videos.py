@@ -51,8 +51,21 @@ def download_saved_videos():
     medias = cl.collection_medias("saved", amount=0)
     print(f"Found {len(medias)} total saved posts.\n", flush=True)
 
-    # Check already downloaded files to support resume
+    # Check already downloaded files
     existing_files = {f.stem for f in OUTPUT_DIR.iterdir() if f.suffix == ".mp4"}
+
+    # Track all known pks (downloaded + previously seen) to avoid retrying old failures
+    known_pks_file = Path("./videos/known_pks.json")
+    if known_pks_file.exists():
+        import json
+        known_pks = set(json.load(open(known_pks_file)))
+    else:
+        # Initialize from existing downloaded files + metadata
+        known_pks = set()
+        for f in existing_files:
+            parts = f.rsplit("_", 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                known_pks.add(parts[1])
 
     video_count = 0
     skipped = 0
@@ -65,11 +78,14 @@ def download_saved_videos():
             continue
         seen_codes.add(media.code)
 
+        pk_str = str(media.pk)
+
         if media.media_type == 2:
-            # Check if already downloaded (filename contains the pk)
-            if any(str(media.pk) in f for f in existing_files):
+            # Skip if we already know about this pk (downloaded or previously attempted)
+            if pk_str in known_pks:
                 already_have += 1
                 continue
+            known_pks.add(pk_str)
             try:
                 cl.video_download(media.pk, folder=OUTPUT_DIR)
                 video_count += 1
@@ -77,6 +93,10 @@ def download_saved_videos():
             except Exception as e:
                 print(f"  [!] Failed {media.code}: {e}", flush=True)
         elif media.media_type == 8:
+            if pk_str in known_pks:
+                already_have += 1
+                continue
+            known_pks.add(pk_str)
             for i, resource in enumerate(media.resources or []):
                 if resource.media_type == 2:
                     try:
@@ -87,6 +107,11 @@ def download_saved_videos():
                         print(f"  [!] Failed {media.code} slide {i+1}: {e}", flush=True)
         else:
             skipped += 1
+
+    # Save known pks for next run
+    import json
+    with open(known_pks_file, "w") as f:
+        json.dump(sorted(known_pks), f)
 
     print(f"\nDone! Downloaded {video_count} new videos ({already_have} already had, {skipped} non-video skipped)", flush=True)
     print(f"Saved to: {OUTPUT_DIR}", flush=True)
