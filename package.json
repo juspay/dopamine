@@ -1,0 +1,26 @@
+{
+  "name": "dopamine",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "pipeline": "node dist/pipeline/runner.js",
+    "start": "node dist/server/webhook.js",
+    "serve": "node dist/server/dashboard-server.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@juspay/neurolink": "^9.30.0",
+    "dotenv": "^16.4.0",
+    "execa": "^9.0.0",
+    "express": "^4.19.0",
+    "node-cron": "^3.0.3",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.5.0"
+  }
+}
