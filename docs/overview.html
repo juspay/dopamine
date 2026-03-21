@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dopamine - Instagram Saved Videos Knowledge Engine</title>
+<style>
+/* ============================================================
+   Reset & Base
+   ============================================================ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background: #0a0a10;
+  color: #c8c8d4;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   Typography
+   ============================================================ */
+h1, h2, h3, h4 { color: #eaeaf2; font-weight: 700; }
+h1 { font-size: 3.2em; letter-spacing: -1.5px; line-height: 1.1; }
+h2 { font-size: 1.8em; margin-bottom: 16px; }
+h3 { font-size: 1.2em; margin-bottom: 8px; color: #b0b0c0; }
+a { color: #7c6aef; text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.container { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+section { padding: 80px 0; }
+section + section { border-top: 1px solid #1a1a28; }
+
+/* ============================================================
+   Hero
+   ============================================================ */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -60%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140%;
+  height: 140%;
+  background: radial-gradient(ellipse at center, rgba(124,106,239,0.08) 0%, transparent 60%);
+  pointer-events: none;
+}
+.hero-content { position: relative; z-index: 1; }
+.hero .subtitle {
+  font-size: 1.15em;
+  color: #888;
+  margin-top: 20px;
+  max-width: 680px;
+}
+.hero .byline {
+  margin-top: 24px;
+  font-size: 0.95em;
+  color: #666;
+}
+.hero .byline strong { color: #9a8cf0; }
+
+.badge-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 32px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 100px;
+  font-size: 0.8em;
+  font-weight: 600;
+  border: 1px solid #2a2a3a;
+  background: #12121e;
+  color: #a8a8c0;
+  white-space: nowrap;
+}
+.badge .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.badge .dot.ts  { background: #3178c6; }
+.badge .dot.py  { background: #3776ab; }
+.badge .dot.ai  { background: #f5a623; }
+.badge .dot.vid { background: #e74c3c; }
+.badge .dot.web { background: #2ecc71; }
+
+/* ============================================================
+   Stats Grid
+   ============================================================ */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-top: 40px;
+}
+.stat-card {
+  background: linear-gradient(135deg, #14142a 0%, #1a1a2e 100%);
+  border: 1px solid #252540;
+  border-radius: 16px;
+  padding: 28px 24px;
+  text-align: center;
+  transition: transform 0.2s, border-color 0.3s;
+}
+.stat-card:hover {
+  transform: translateY(-4px);
+  border-color: #7c6aef44;
+}
+.stat-number {
+  font-size: 2.8em;
+  font-weight: 800;
+  background: linear-gradient(135deg, #7c6aef, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.1;
+}
+.stat-label {
+  font-size: 0.85em;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-top: 8px;
+}
+
+/* ============================================================
+   Pipeline Diagram
+   ============================================================ */
+.pipeline-diagram {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  justify-content: center;
+  margin: 40px 0;
+}
+.pipeline-step {
+  display: flex;
+  align-items: center;
+}
+.step-box {
+  width: 140px;
+  background: #14142a;
+  border: 1px solid #252540;
+  border-radius: 12px;
+  padding: 16px 12px;
+  text-align: center;
+  transition: all 0.25s;
+  position: relative;
+}
+.step-box:hover {
+  border-color: #7c6aef;
+  background: #1a1a36;
+  transform: translateY(-2px);
+}
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  font-size: 0.75em;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.step-num.no-ai {
+  background: #1a3a2a;
+  color: #4ade80;
+  border: 1px solid #2a5a3a;
+}
+.step-num.ai {
+  background: #2a1a3a;
+  color: #c084fc;
+  border: 1px solid #4a2a5a;
+}
+.step-name {
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #d0d0e0;
+  line-height: 1.3;
+}
+.step-tech {
+  font-size: 0.65em;
+  color: #666;
+  margin-top: 4px;
+}
+.step-arrow {
+  color: #333;
+  font-size: 1.4em;
+  padding: 0 6px;
+  user-select: none;
+}
+@media (max-width: 900px) {
+  .pipeline-diagram { flex-direction: column; align-items: center; }
+  .step-arrow { transform: rotate(90deg); padding: 4px 0; }
+}
+
+/* ============================================================
+   Category Chart
+   ============================================================ */
+.chart-section { margin-top: 40px; }
+.bar-chart { display: flex; flex-direction: column; gap: 8px; }
+.bar-row {
+  display: grid;
+  grid-template-columns: 180px 1fr 50px;
+  align-items: center;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .bar-row { grid-template-columns: 120px 1fr 40px; }
+}
+.bar-label {
+  font-size: 0.85em;
+  color: #aaa;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bar-track {
+  height: 24px;
+  background: #1a1a28;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.8s ease-out;
+  min-width: 4px;
+}
+.bar-value {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: #888;
+  text-align: right;
+}
+
+/* Category Colors */
+.cat-1  { background: linear-gradient(90deg, #6366f1, #818cf8); }
+.cat-2  { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.cat-3  { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+.cat-4  { background: linear-gradient(90deg, #10b981, #34d399); }
+.cat-5  { background: linear-gradient(90deg, #ef4444, #f87171); }
+.cat-6  { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+.cat-7  { background: linear-gradient(90deg, #f97316, #fb923c); }
+.cat-8  { background: linear-gradient(90deg, #ec4899, #f472b6); }
+.cat-9  { background: linear-gradient(90deg, #84cc16, #a3e635); }
+.cat-10 { background: linear-gradient(90deg, #14b8a6, #2dd4bf); }
+
+/* ============================================================
+   Collapsible Sections
+   ============================================================ */
+.collapsible {
+  background: #12121e;
+  border: 1px solid #1e1e32;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.collapsible-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+.collapsible-header:hover { background: #1a1a2e; }
+.collapsible-header h3 { color: #ddd; margin: 0; }
+.collapsible-chevron {
+  font-size: 1.2em;
+  color: #555;
+  transition: transform 0.3s;
+}
+.collapsible.open .collapsible-chevron { transform: rotate(180deg); }
+.collapsible-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease-out, padding 0.3s ease-out;
+  padding: 0 24px;
+}
+.collapsible.open .collapsible-body {
+  max-height: 3000px;
+  padding: 0 24px 24px;
+}
+
+/* ============================================================
+   Timeline
+   ============================================================ */
+.timeline { position: relative; padding-left: 40px; margin-top: 32px; }
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, #7c6aef, #7c6aef33);
+}
+.timeline-item {
+  position: relative;
+  padding-bottom: 40px;
+}
+.timeline-item:last-child { padding-bottom: 0; }
+.timeline-dot {
+  position: absolute;
+  left: -33px;
+  top: 4px;
+  width: 16px; height: 16px;
+  background: #7c6aef;
+  border-radius: 50%;
+  border: 3px solid #0a0a10;
+  box-shadow: 0 0 0 3px #7c6aef44;
+}
+.timeline-hash {
+  font-size: 0.8em;
+  color: #7c6aef;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.timeline-title {
+  font-size: 1.1em;
+  color: #eaeaf2;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.timeline-desc {
+  font-size: 0.9em;
+  color: #888;
+  margin-top: 4px;
+  max-width: 600px;
+}
+
+/* ============================================================
+   Tech Stack Table
+   ============================================================ */
+.tech-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-top: 32px;
+}
+.tech-card {
+  background: #12121e;
+  border: 1px solid #1e1e32;
+  border-radius: 14px;
+  padding: 24px;
+}
+.tech-card h4 {
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #7c6aef;
+  margin-bottom: 16px;
+}
+.tech-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid #1a1a28;
+}
+.tech-item:last-child { border-bottom: none; }
+.tech-name { font-weight: 600; color: #d0d0e0; }
+.tech-version {
+  font-size: 0.8em;
+  color: #555;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ============================================================
+   Commands
+   ============================================================ */
+.command-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 32px;
+}
+.command-card {
+  background: #12121e;
+  border: 1px solid #1e1e32;
+  border-radius: 12px;
+  padding: 20px;
+  transition: border-color 0.3s;
+}
+.command-card:hover { border-color: #7c6aef44; }
+.command-code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.95em;
+  color: #a78bfa;
+  margin-bottom: 8px;
+}
+.command-desc {
+  font-size: 0.85em;
+  color: #777;
+}
+
+/* ============================================================
+   File Tree
+   ============================================================ */
+.file-tree {
+  background: #0e0e18;
+  border: 1px solid #1e1e32;
+  border-radius: 14px;
+  padding: 28px 32px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82em;
+  line-height: 1.8;
+  color: #888;
+  overflow-x: auto;
+  margin-top: 20px;
+}
+.file-tree .dir { color: #7c9aef; font-weight: 600; }
+.file-tree .file { color: #999; }
+.file-tree .comment { color: #555; }
+.file-tree .ai-file { color: #c084fc; }
+
+/* ============================================================
+   Footer
+   ============================================================ */
+.footer {
+  text-align: center;
+  padding: 48px 32px;
+  border-top: 1px solid #1a1a28;
+  color: #444;
+  font-size: 0.85em;
+}
+.footer strong { color: #666; }
+
+/* ============================================================
+   Nav
+   ============================================================ */
+nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: rgba(10,10,16,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid #1a1a2833;
+  padding: 0 32px;
+  transition: box-shadow 0.3s;
+}
+nav.scrolled { box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
+.nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+}
+.nav-logo {
+  font-weight: 800;
+  font-size: 1.1em;
+  color: #eaeaf2;
+  letter-spacing: -0.5px;
+}
+.nav-logo span { color: #7c6aef; }
+.nav-links { display: flex; gap: 24px; }
+.nav-links a {
+  font-size: 0.85em;
+  color: #777;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: #c8c8d4; text-decoration: none; }
+@media (max-width: 700px) {
+  .nav-links { display: none; }
+  h1 { font-size: 2.2em; }
+}
+
+/* ============================================================
+   Agent Table
+   ============================================================ */
+.agent-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  font-size: 0.9em;
+}
+.agent-table th {
+  text-align: left;
+  padding: 12px 16px;
+  color: #7c6aef;
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  border-bottom: 2px solid #252540;
+}
+.agent-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #1a1a28;
+  color: #aaa;
+}
+.agent-table tr:hover td { background: #12121e; }
+.agent-table .name { color: #d0d0e0; font-weight: 600; }
+.agent-table .ai-yes { color: #c084fc; font-weight: 600; }
+.agent-table .ai-no { color: #555; }
+
+/* ============================================================
+   Scroll fade-in animation
+   ============================================================ */
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+</style>
+</head>
+<body>
+
+<!-- ================================================================
+     NAV
+     ================================================================ -->
+<nav id="nav">
+  <div class="nav-inner">
+    <div class="nav-logo"><span>dopamine</span></div>
+    <div class="nav-links">
+      <a href="#stats">Stats</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#categories">Categories</a>
+      <a href="#tech">Stack</a>
+      <a href="#usage">Usage</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#milestones">Milestones</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ================================================================
+     HERO
+     ================================================================ -->
+<section class="hero" id="top">
+  <div class="container hero-content">
+    <h1>Dopamine</h1>
+    <p class="subtitle">
+      A personal knowledge engine that turns your Instagram saved videos into a searchable, organized knowledge base -- powered by Gemini 2.0 Flash on Vertex AI.
+    </p>
+    <p class="byline">
+      Built by <strong>Sachin Sharma</strong> (<strong>@user</strong>) at <strong>Juspay</strong>
+    </p>
+    <div class="badge-row">
+      <span class="badge"><span class="dot ts"></span>TypeScript</span>
+      <span class="badge"><span class="dot py"></span>Python</span>
+      <span class="badge"><span class="dot ai"></span>Gemini 2.0 Flash</span>
+      <span class="badge"><span class="dot vid"></span>Video Analysis</span>
+      <span class="badge"><span class="dot web"></span>Google Search Grounding</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     STATS
+     ================================================================ -->
+<section id="stats">
+  <div class="container fade-in">
+    <h2>By the Numbers</h2>
+    <p style="color:#777">Everything extracted, classified, and indexed automatically.</p>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">235</div>
+        <div class="stat-label">Videos Processed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">21</div>
+        <div class="stat-label">Categories</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">115</div>
+        <div class="stat-label">Knowledge Entries</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">479</div>
+        <div class="stat-label">Links Resolved</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">116</div>
+        <div class="stat-label">Markdown Files</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">11</div>
+        <div class="stat-label">Pipeline Agents</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     PIPELINE
+     ================================================================ -->
+<section id="pipeline">
+  <div class="container fade-in">
+    <h2>The Pipeline</h2>
+    <p style="color:#777; margin-bottom: 8px;">11 TypeScript agents orchestrated sequentially. <span style="color:#4ade80;">Green</span> = local processing. <span style="color:#c084fc;">Purple</span> = Gemini AI.</p>
+
+    <div class="pipeline-diagram">
+      <div class="pipeline-step">
+        <div class="step-box">
+          <div class="step-num no-ai">1</div>
+          <div class="step-name">Metadata</div>
+          <div class="step-tech">instagrapi</div>
+        </div>
+      </div>
+      <div class="pipeline-step"><span class="step-arrow">&#x276F;</span>
+        <div class="step-box">
+          <div class="step-num no-ai">2</div>
+          <div class="step-name">Download</div>
+          <div class="step-tech">instagrapi</div>
+        </div>
+      </div>
+      <div class="pipeline-step"><span class="step-arrow">&#x276F;</span>
+        <div class="step-box">
+          <div class="step-num no-ai">3</div>
+          <div class="step-name">Properties</div>
+          <div class="step-tech">ffprobe/ffmpeg</div>
+        </div>
+      </div>
+      <div class="pipeline-step"><span class="step-arrow">&#x276F;</span>
+        <div class="step-box">
+          <div class="step-num ai">4</div>
+          <div class="step-name">Classify</div>
+          <div class="step-tech">Gemini + Zod</div>
+        </div>
+      </div>
+      <div class="pipeline-step"><span class="step-arrow">&#x276F;</span>
+        <div class="step-box">
+          <div class="step-num ai">5</div>
+          <div class="step-name">Knowledge</div>
+          <div class="step-tech">Gemini + Zod</div>
+        </div>
+      </div>
+      <div class="pipeline-step"><span class="step-arrow">&#x276F;</span>
+        <div class="step-box">
+          <div class="step-num ai">6</div>
+          <div class="step-name">Link Extract</div>
+          <div class="step-tech">Gemini + Zod</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipeline-diagram" style="margin-top: 0;">
+      <div class="pipeline-step">
+        <div class="step-box">
+          <div class="step-num ai">7</div>
+          <div class="step-name">Link Resolve</div>
+          <div class="step-tech">Gemini + Search</div>
+        </div>
+      </div>
+      <div class="pipeline-step"><span class="step-arrow">&#x276F;</span>
+        <div class="step-box">
+          <div class="step-num no-ai">8</div>
+          <div class="step-name">Catalog</div>
+          <div class="step-tech">JSON + CSV</div>
+        </div>
+      </div>
+      <div class="pipeline-step"><span class="step-arrow">&#x276F;</span>
+        <div class="step-box">
+          <div class="step-num no-ai">9</div>
+          <div class="step-name">Organize</div>
+          <div class="step-tech">symlinks</div>
+        </div>
+      </div>
+      <div class="pipeline-step"><span class="step-arrow">&#x276F;</span>
+        <div class="step-box">
+          <div class="step-num no-ai">10</div>
+          <div class="step-name">Markdown</div>
+          <div class="step-tech">templates</div>
+        </div>
+      </div>
+      <div class="pipeline-step"><span class="step-arrow">&#x276F;</span>
+        <div class="step-box">
+          <div class="step-num no-ai">11</div>
+          <div class="step-name">Dashboard</div>
+          <div class="step-tech">HTML gen</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agent Details Table -->
+    <div style="margin-top: 48px;">
+      <h3 style="color:#eaeaf2;">Agent Roster</h3>
+      <div style="overflow-x: auto;">
+      <table class="agent-table">
+        <thead>
+          <tr>
+            <th>Step</th>
+            <th>Agent</th>
+            <th>Function</th>
+            <th>AI</th>
+            <th>Technology</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td class="name">MetadataAgent</td><td>Fetch saved posts from Instagram</td><td class="ai-no">--</td><td>instagrapi (Python)</td></tr>
+          <tr><td>2</td><td class="name">DownloadAgent</td><td>Download new MP4 video files</td><td class="ai-no">--</td><td>instagrapi (Python)</td></tr>
+          <tr><td>3</td><td class="name">PropertiesAgent</td><td>Extract duration, resolution, FPS, codec + thumbnails</td><td class="ai-no">--</td><td>ffprobe / ffmpeg</td></tr>
+          <tr><td>4</td><td class="name">ClassifierAgent</td><td>Classify into category, subcategory, tags, mood</td><td class="ai-yes">Gemini</td><td>NeuroLink + Zod schema</td></tr>
+          <tr><td>5</td><td class="name">KnowledgeAgent</td><td>Full transcript, visual descriptions, takeaways</td><td class="ai-yes">Gemini</td><td>NeuroLink + Zod schema</td></tr>
+          <tr><td>6</td><td class="name">LinkExtractAgent</td><td>Extract every URL from video frames + audio</td><td class="ai-yes">Gemini</td><td>NeuroLink + Zod schema</td></tr>
+          <tr><td>7</td><td class="name">LinkResolverAgent</td><td>Resolve product names to real URLs</td><td class="ai-yes">Gemini</td><td>Google Search grounding</td></tr>
+          <tr><td>8</td><td class="name">CatalogAgent</td><td>Merge all data into unified catalog</td><td class="ai-no">--</td><td>JSON + CSV join</td></tr>
+          <tr><td>9</td><td class="name">OrganizerAgent</td><td>Create category folder structure</td><td class="ai-no">--</td><td>fs.symlink</td></tr>
+          <tr><td>10</td><td class="name">MarkdownAgent</td><td>Generate per-video markdown + INDEX</td><td class="ai-no">--</td><td>Template rendering</td></tr>
+          <tr><td>11</td><td class="name">DashboardAgent</td><td>Build interactive HTML dashboard</td><td class="ai-no">--</td><td>HTML generation</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     CATEGORIES
+     ================================================================ -->
+<section id="categories">
+  <div class="container fade-in">
+    <h2>Category Breakdown</h2>
+    <p style="color:#777; margin-bottom: 8px;">235 videos auto-classified by Gemini into 21 discovered categories.</p>
+
+    <div class="chart-section">
+      <div class="bar-chart">
+        <div class="bar-row"><span class="bar-label">Tech & Coding</span><div class="bar-track"><div class="bar-fill cat-1" style="width:100%"></div></div><span class="bar-value">48</span></div>
+        <div class="bar-row"><span class="bar-label">Interior Design</span><div class="bar-track"><div class="bar-fill cat-2" style="width:81.25%"></div></div><span class="bar-value">39</span></div>
+        <div class="bar-row"><span class="bar-label">AI & Machine Learning</span><div class="bar-track"><div class="bar-fill cat-3" style="width:72.9%"></div></div><span class="bar-value">35</span></div>
+        <div class="bar-row"><span class="bar-label">Business & Marketing</span><div class="bar-track"><div class="bar-fill cat-4" style="width:58.3%"></div></div><span class="bar-value">28</span></div>
+        <div class="bar-row"><span class="bar-label">Anime & Entertainment</span><div class="bar-track"><div class="bar-fill cat-5" style="width:54.2%"></div></div><span class="bar-value">26</span></div>
+        <div class="bar-row"><span class="bar-label">Travel & Lifestyle</span><div class="bar-track"><div class="bar-fill cat-6" style="width:33.3%"></div></div><span class="bar-value">16</span></div>
+        <div class="bar-row"><span class="bar-label">Food & Cooking</span><div class="bar-track"><div class="bar-fill cat-7" style="width:25%"></div></div><span class="bar-value">12</span></div>
+        <div class="bar-row"><span class="bar-label">Education</span><div class="bar-track"><div class="bar-fill cat-8" style="width:18.75%"></div></div><span class="bar-value">9</span></div>
+        <div class="bar-row"><span class="bar-label">Home & Garden</span><div class="bar-track"><div class="bar-fill cat-9" style="width:10.4%"></div></div><span class="bar-value">5</span></div>
+        <div class="bar-row"><span class="bar-label">UI/UX Design</span><div class="bar-track"><div class="bar-fill cat-10" style="width:8.3%"></div></div><span class="bar-value">4</span></div>
+        <div class="bar-row"><span class="bar-label">Parenting</span><div class="bar-track"><div class="bar-fill cat-1" style="width:4.2%"></div></div><span class="bar-value">2</span></div>
+        <div class="bar-row"><span class="bar-label">Fitness & Health</span><div class="bar-track"><div class="bar-fill cat-3" style="width:4.2%"></div></div><span class="bar-value">2</span></div>
+        <div class="bar-row"><span class="bar-label">Others (9 categories)</span><div class="bar-track"><div class="bar-fill cat-6" style="width:18.75%"></div></div><span class="bar-value">9</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     TECH STACK
+     ================================================================ -->
+<section id="tech">
+  <div class="container fade-in">
+    <h2>Technology Stack</h2>
+    <p style="color:#777;">A TypeScript-first architecture with Python preserved for Instagram API access.</p>
+
+    <div class="tech-grid">
+      <div class="tech-card">
+        <h4>Core Runtime</h4>
+        <div class="tech-item"><span class="tech-name">@juspay/neurolink</span><span class="tech-version">^9.30.0</span></div>
+        <div class="tech-item"><span class="tech-name">TypeScript</span><span class="tech-version">^5.5.0</span></div>
+        <div class="tech-item"><span class="tech-name">Zod</span><span class="tech-version">^3.23.0</span></div>
+        <div class="tech-item"><span class="tech-name">execa</span><span class="tech-version">^9.0.0</span></div>
+        <div class="tech-item"><span class="tech-name">dotenv</span><span class="tech-version">^16.4.0</span></div>
+      </div>
+      <div class="tech-card">
+        <h4>AI & ML</h4>
+        <div class="tech-item"><span class="tech-name">Gemini 2.0 Flash</span><span class="tech-version">vertex</span></div>
+        <div class="tech-item"><span class="tech-name">Vertex AI</span><span class="tech-version">your-gcp-project-id</span></div>
+        <div class="tech-item"><span class="tech-name">Google Search</span><span class="tech-version">grounding</span></div>
+        <div class="tech-item"><span class="tech-name">Structured Output</span><span class="tech-version">Zod schemas</span></div>
+      </div>
+      <div class="tech-card">
+        <h4>Infrastructure</h4>
+        <div class="tech-item"><span class="tech-name">Express</span><span class="tech-version">^4.19.0</span></div>
+        <div class="tech-item"><span class="tech-name">node-cron</span><span class="tech-version">^3.0.3</span></div>
+        <div class="tech-item"><span class="tech-name">ffprobe / ffmpeg</span><span class="tech-version">system</span></div>
+        <div class="tech-item"><span class="tech-name">instagrapi</span><span class="tech-version">Python</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     USAGE
+     ================================================================ -->
+<section id="usage">
+  <div class="container fade-in">
+    <h2>How To Use</h2>
+    <p style="color:#777;">Simple commands to run the full pipeline, serve the dashboard, or trigger on-demand.</p>
+
+    <div class="command-grid">
+      <div class="command-card">
+        <div class="command-code">$ npm run pipeline</div>
+        <div class="command-desc">Run the full 11-step pipeline: download, classify, extract knowledge, generate dashboard</div>
+      </div>
+      <div class="command-card">
+        <div class="command-code">$ npm run serve</div>
+        <div class="command-desc">Serve the interactive dashboard at http://localhost:3001 with search, filter, and sort</div>
+      </div>
+      <div class="command-card">
+        <div class="command-code">$ npm run start</div>
+        <div class="command-desc">Start the webhook server on port 3000 + daily 3am cron scheduler</div>
+      </div>
+      <div class="command-card">
+        <div class="command-code">$ python3 download_videos.py</div>
+        <div class="command-desc">Quick video sync -- download new saved videos from Instagram without full pipeline</div>
+      </div>
+      <div class="command-card">
+        <div class="command-code">$ curl -X POST :3000/trigger</div>
+        <div class="command-desc">Trigger a pipeline run via webhook (returns immediately, runs in background)</div>
+      </div>
+      <div class="command-card">
+        <div class="command-code">$ curl :3000/status</div>
+        <div class="command-desc">Check if the pipeline is currently running</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     ARCHITECTURE
+     ================================================================ -->
+<section id="architecture">
+  <div class="container fade-in">
+    <h2>Architecture</h2>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Design Principles</h3>
+        <span class="collapsible-chevron">&#x25BC;</span>
+      </div>
+      <div class="collapsible-body">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 12px;">
+          <div style="background:#0e0e18; border-radius:10px; padding:16px; border: 1px solid #1a1a28;">
+            <div style="color:#7c6aef; font-weight:700; margin-bottom:6px;">Sequential Pipeline</div>
+            <div style="font-size:0.88em; color:#888;">Steps have hard data dependencies. No queue-based multi-agent complexity for a single-user batch workload.</div>
+          </div>
+          <div style="background:#0e0e18; border-radius:10px; padding:16px; border: 1px solid #1a1a28;">
+            <div style="color:#7c6aef; font-weight:700; margin-bottom:6px;">Resume Mode</div>
+            <div style="font-size:0.88em; color:#888;">Every AI step checks existing state before processing. Crash-safe: state saved after each successful item.</div>
+          </div>
+          <div style="background:#0e0e18; border-radius:10px; padding:16px; border: 1px solid #1a1a28;">
+            <div style="color:#7c6aef; font-weight:700; margin-bottom:6px;">Exponential Backoff</div>
+            <div style="font-size:0.88em; color:#888;">2s delay between requests. Up to 5 retries with exponential backoff on 429/RESOURCE_EXHAUSTED errors.</div>
+          </div>
+          <div style="background:#0e0e18; border-radius:10px; padding:16px; border: 1px solid #1a1a28;">
+            <div style="color:#7c6aef; font-weight:700; margin-bottom:6px;">Large File Fallback</div>
+            <div style="font-size:0.88em; color:#888;">Videos over 50MB automatically use thumbnail JPEG for AI analysis instead of full video binary.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Zod Schemas</h3>
+        <span class="collapsible-chevron">&#x25BC;</span>
+      </div>
+      <div class="collapsible-body">
+        <div style="margin-top: 12px;">
+          <div style="margin-bottom: 20px;">
+            <div style="color:#c084fc; font-weight:700; margin-bottom:4px;">ClassificationSchema</div>
+            <div style="font-size:0.88em; color:#888;">category, subcategory, tags[], description, language, mood</div>
+          </div>
+          <div style="margin-bottom: 20px;">
+            <div style="color:#c084fc; font-weight:700; margin-bottom:4px;">KnowledgeSchema</div>
+            <div style="font-size:0.88em; color:#888;">transcript, visual_description, links_and_resources[{url, description, timestamp}], key_takeaways[], topics[]</div>
+          </div>
+          <div>
+            <div style="color:#c084fc; font-weight:700; margin-bottom:4px;">LinksSchema</div>
+            <div style="font-size:0.88em; color:#888;">links[{name, url, type (shown_on_screen | mentioned_verbally | inferred_from_context), description, timestamp}]</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Gemini Constraints</h3>
+        <span class="collapsible-chevron">&#x25BC;</span>
+      </div>
+      <div class="collapsible-body">
+        <div style="margin-top: 12px; font-size:0.9em; color:#888; line-height: 2;">
+          <div><code style="color:#a78bfa;">disableTools: true</code> is required when using schema + output.format:"json" with Gemini</div>
+          <div>Cannot use tools (websearchGrounding) AND JSON schema in the same call</div>
+          <div>Avoid <code style="color:#a78bfa;">z.union()</code> in schemas -- triggers "Too many states" on Gemini</div>
+          <div>Video files must be absolute paths in <code style="color:#a78bfa;">input.files</code></div>
+          <div>LinkResolver uses no schema -- Google Search grounding cannot combine with JSON output</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>File Structure</h3>
+        <span class="collapsible-chevron">&#x25BC;</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="file-tree">
+<span class="dir">dopamine/</span>
+<span class="dir">  src/</span>
+<span class="dir">    pipeline/</span>
+<span class="file">      runner.ts</span>          <span class="comment">  # 11-step orchestrator</span>
+<span class="file">      config.ts</span>          <span class="comment">  # Paths, constants, AI config</span>
+<span class="file">      state.ts</span>           <span class="comment">  # JSON state load/save helpers</span>
+<span class="dir">    agents/</span>
+<span class="file">      metadata.ts</span>        <span class="comment">  # Instagram metadata (Python)</span>
+<span class="file">      download.ts</span>        <span class="comment">  # Video download (Python)</span>
+<span class="file">      properties.ts</span>      <span class="comment">  # ffprobe/ffmpeg extraction</span>
+<span class="ai-file">      classifier.ts</span>      <span class="comment">  # AI classification</span>
+<span class="ai-file">      knowledge.ts</span>       <span class="comment">  # AI knowledge extraction</span>
+<span class="ai-file">      link-extractor.ts</span>  <span class="comment">  # AI link extraction</span>
+<span class="ai-file">      link-resolver.ts</span>   <span class="comment">  # AI link resolution</span>
+<span class="file">      catalog.ts</span>         <span class="comment">  # JSON/CSV generation</span>
+<span class="file">      organizer.ts</span>       <span class="comment">  # Symlink organization</span>
+<span class="file">      markdown.ts</span>        <span class="comment">  # Markdown generation</span>
+<span class="file">      dashboard.ts</span>       <span class="comment">  # HTML dashboard builder</span>
+<span class="dir">    schemas/</span>
+<span class="ai-file">      classification.ts</span>  <span class="comment">  # Zod: category, tags, mood</span>
+<span class="ai-file">      knowledge.ts</span>       <span class="comment">  # Zod: transcript, takeaways</span>
+<span class="ai-file">      links.ts</span>           <span class="comment">  # Zod: name, url, type</span>
+<span class="dir">    types/</span>
+<span class="file">      index.ts</span>           <span class="comment">  # Shared TypeScript types</span>
+<span class="dir">    utils/</span>
+<span class="file">      rate-limit.ts</span>      <span class="comment">  # sleep, exponentialBackoff</span>
+<span class="file">      video.ts</span>           <span class="comment">  # Video file helpers</span>
+<span class="dir">    server/</span>
+<span class="file">      webhook.ts</span>         <span class="comment">  # POST /trigger + cron</span>
+<span class="file">      dashboard-server.ts</span><span class="comment">  # Dashboard static server</span>
+<span class="dir">  scripts/</span>
+<span class="file">    collect_metadata.py</span>  <span class="comment">  # Python: instagrapi</span>
+<span class="file">    download_videos.py</span>   <span class="comment">  # Python: instagrapi</span>
+<span class="dir">  videos/</span>
+<span class="file">    catalog.json</span>         <span class="comment">  # Unified catalog (235 entries)</span>
+<span class="file">    catalog.csv</span>          <span class="comment">  # CSV export</span>
+<span class="file">    classifications.json</span> <span class="comment">  # AI classification state</span>
+<span class="file">    knowledge_base.json</span>  <span class="comment">  # AI knowledge state</span>
+<span class="file">    links_v2.json</span>        <span class="comment">  # Extracted links (479)</span>
+<span class="file">    known_pks.json</span>       <span class="comment">  # Downloaded video PKs</span>
+<span class="dir">  knowledge_base/</span>
+<span class="file">    INDEX.md</span>             <span class="comment">  # Master index (115 entries)</span>
+<span class="dir">    AI_&_Machine_Learning/</span>   <span class="comment">  # 35 files</span>
+<span class="dir">    Tech_&_Coding/</span>           <span class="comment">  # 48 files</span>
+<span class="dir">    Business_&_Marketing/</span>    <span class="comment">  # 28 files</span>
+<span class="dir">    UIUX_Design/</span>             <span class="comment">  # 4 files</span>
+<span class="dir">  dashboard/</span>
+<span class="file">    index.html</span>           <span class="comment">  # Interactive video dashboard</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     MILESTONES
+     ================================================================ -->
+<section id="milestones">
+  <div class="container fade-in">
+    <h2>Milestones</h2>
+    <p style="color:#777;">Four milestones from manual Python scripts to a fully automated TypeScript pipeline.</p>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-hash mono">f90b407</div>
+        <div class="timeline-title">Milestone 1: Instagram Saved Videos Pipeline</div>
+        <div class="timeline-desc">Initial pipeline with 15 Python scripts. Download saved videos, classify with Gemini, extract knowledge with full transcripts and visual descriptions.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-hash mono">c657752</div>
+        <div class="timeline-title">Milestone 2: Sync + Recovery</div>
+        <div class="timeline-desc">Added incremental sync for new videos and recovery for previously-failed downloads. Introduced known_pks.json for instant sync detection.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-hash mono">9107717</div>
+        <div class="timeline-title">Milestone 3: NeuroLink Architecture Design</div>
+        <div class="timeline-desc">Architecture blueprint for migration from Python to TypeScript. Designed the 11-agent system with NeuroLink as the AI orchestration library.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-hash mono">8260392</div>
+        <div class="timeline-title">Milestone 4: NeuroLink TypeScript Implementation</div>
+        <div class="timeline-desc">Full TypeScript rewrite. 11 agents with Zod schemas, Express webhook server, daily cron scheduling, interactive dashboard, and complete knowledge base generation.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     KNOWLEDGE BASE PREVIEW
+     ================================================================ -->
+<section id="knowledge">
+  <div class="container fade-in">
+    <h2>Knowledge Base</h2>
+    <p style="color:#777;">Each entry contains a full transcript, visual descriptions, key takeaways, and resolved links.</p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 32px;">
+      <div style="background: linear-gradient(135deg, #1a1040, #1a1a2e); border: 1px solid #2a2a4a; border-radius: 14px; padding: 24px; text-align: center;">
+        <div style="font-size: 2em; font-weight: 800; color: #a78bfa;">35</div>
+        <div style="font-size: 0.85em; color: #888; margin-top: 4px;">AI & Machine Learning</div>
+      </div>
+      <div style="background: linear-gradient(135deg, #101a40, #1a1a2e); border: 1px solid #2a2a4a; border-radius: 14px; padding: 24px; text-align: center;">
+        <div style="font-size: 2em; font-weight: 800; color: #818cf8;">48</div>
+        <div style="font-size: 0.85em; color: #888; margin-top: 4px;">Tech & Coding</div>
+      </div>
+      <div style="background: linear-gradient(135deg, #10402a, #1a1a2e); border: 1px solid #2a2a4a; border-radius: 14px; padding: 24px; text-align: center;">
+        <div style="font-size: 2em; font-weight: 800; color: #34d399;">28</div>
+        <div style="font-size: 0.85em; color: #888; margin-top: 4px;">Business & Marketing</div>
+      </div>
+      <div style="background: linear-gradient(135deg, #401030, #1a1a2e); border: 1px solid #2a2a4a; border-radius: 14px; padding: 24px; text-align: center;">
+        <div style="font-size: 2em; font-weight: 800; color: #f472b6;">4</div>
+        <div style="font-size: 0.85em; color: #888; margin-top: 4px;">UI/UX Design</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 32px; background: #0e0e18; border: 1px solid #1e1e32; border-radius: 12px; padding: 24px;">
+      <h3 style="color: #eaeaf2; margin-bottom: 16px;">What Each Entry Contains</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+        <div style="font-size: 0.9em;">
+          <div style="color: #7c6aef; font-weight: 600; margin-bottom: 4px;">Transcript</div>
+          <div style="color: #777;">Full word-for-word transcript with speaker labels</div>
+        </div>
+        <div style="font-size: 0.9em;">
+          <div style="color: #7c6aef; font-weight: 600; margin-bottom: 4px;">Visual Description</div>
+          <div style="color: #777;">What appears on screen with timestamps</div>
+        </div>
+        <div style="font-size: 0.9em;">
+          <div style="color: #7c6aef; font-weight: 600; margin-bottom: 4px;">Key Takeaways</div>
+          <div style="color: #777;">3-7 bullet point summaries</div>
+        </div>
+        <div style="font-size: 0.9em;">
+          <div style="color: #7c6aef; font-weight: 600; margin-bottom: 4px;">Links & Resources</div>
+          <div style="color: #777;">Resolved URLs for every tool and resource mentioned</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     FOOTER
+     ================================================================ -->
+<div class="footer">
+  <strong>Dopamine</strong> -- Instagram Saved Videos Knowledge Engine<br>
+  Built by Sachin Sharma at Juspay | March 2026<br>
+  <span style="color:#555;">Powered by Gemini 2.0 Flash on Vertex AI | Orchestrated by @juspay/neurolink</span>
+</div>
+
+<!-- ================================================================
+     SCRIPTS
+     ================================================================ -->
+<script>
+// Collapsible toggle
+function toggleCollapsible(header) {
+  header.parentElement.classList.toggle('open');
+}
+
+// Nav scroll shadow
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 20);
+});
+
+// Fade-in on scroll
+const observer = new IntersectionObserver(
+  (entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  },
+  { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+);
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
