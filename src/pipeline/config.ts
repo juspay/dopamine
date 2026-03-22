@@ -28,9 +28,9 @@ export const CONFIG = {
   },
 
   // AI — model can be overridden via MODEL env var
-  // Default: gemini-2.0-flash (proven working on your-gcp-project-id)
-  // To upgrade: MODEL=gemini-3.1-pro-preview (requires model access on your GCP project)
-  MODEL: process.env.MODEL ?? "gemini-2.0-flash",
+  // gemini-2.5-flash: latest stable model with vision on Vertex AI
+  // gemini-3.1-pro-preview: available on Vertex but not yet in @ai-sdk/google-vertex
+  MODEL: process.env.MODEL ?? "gemini-2.5-flash",
   VERTEX_PROJECT:  process.env.VERTEX_PROJECT  ?? "your-gcp-project-id",
   VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "us-central1",
 
