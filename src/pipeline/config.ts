@@ -27,13 +27,17 @@ export const CONFIG = {
     DASHBOARD:      path.resolve("dashboard", "index.html"),
   },
 
-  // AI
-  MODEL: "gemini-2.0-flash",
+  // AI — model can be overridden via MODEL env var
+  MODEL: process.env.MODEL ?? "gemini-3.1-flash",
   VERTEX_PROJECT:  process.env.VERTEX_PROJECT  ?? "your-gcp-project-id",
   VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "us-central1",
 
-  // Categories that get full knowledge extraction (same as Python)
-  KNOWLEDGE_TARGET_CATEGORIES: new Set(["AI & Machine Learning", "Tech & Coding"]),
+  // Categories that get full knowledge extraction — override via KB_CATEGORIES env var (comma-separated)
+  KNOWLEDGE_TARGET_CATEGORIES: new Set(
+    process.env.KB_CATEGORIES
+      ? process.env.KB_CATEGORIES.split(",").map(s => s.trim())
+      : ["AI & Machine Learning", "Tech & Coding", "Business & Marketing", "UI/UX Design"]
+  ),
 
   // Rate limiting (mirrors Python constants)
   DELAY_BETWEEN_REQUESTS_MS: 2_000,
