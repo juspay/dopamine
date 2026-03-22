@@ -28,7 +28,9 @@ export const CONFIG = {
   },
 
   // AI — model can be overridden via MODEL env var
-  MODEL: process.env.MODEL ?? "gemini-3.1-flash",
+  // Default: gemini-2.0-flash (proven working on your-gcp-project-id)
+  // To upgrade: MODEL=gemini-3.1-pro-preview (requires model access on your GCP project)
+  MODEL: process.env.MODEL ?? "gemini-2.0-flash",
   VERTEX_PROJECT:  process.env.VERTEX_PROJECT  ?? "your-gcp-project-id",
   VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "us-central1",
 
@@ -45,5 +47,6 @@ export const CONFIG = {
   RETRY_BASE_DELAY_MS: 10_000,
 
   // Threshold above which thumbnail is used instead of full video
-  VIDEO_SIZE_THRESHOLD_BYTES: 50 * 1024 * 1024,
+  // Set to 0 to always use thumbnails (avoids NeuroLink's frame extraction hitting image limits)
+  VIDEO_SIZE_THRESHOLD_BYTES: parseInt(process.env.VIDEO_SIZE_THRESHOLD ?? "0", 10),
 } as const;
