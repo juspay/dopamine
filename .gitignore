@@ -4,3 +4,5 @@ __pycache__/
 videos/user_saved/
 videos/thumbnails/
 videos/classified/
+node_modules/
+dist/
