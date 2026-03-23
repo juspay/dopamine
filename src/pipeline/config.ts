@@ -28,11 +28,10 @@ export const CONFIG = {
   },
 
   // AI — model can be overridden via MODEL env var
-  // gemini-2.5-flash: latest stable model with vision on Vertex AI
-  // gemini-3.1-pro-preview: available on Vertex but not yet in @ai-sdk/google-vertex
-  MODEL: process.env.MODEL ?? "gemini-2.5-flash",
+  MODEL: process.env.MODEL ?? "gemini-3.1-pro-preview",
   VERTEX_PROJECT:  process.env.VERTEX_PROJECT  ?? "your-gcp-project-id",
-  VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "us-central1",
+  // 3.1 models require "global" location; 2.x models use "us-central1"
+  VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "global",
 
   // Categories that get full knowledge extraction — override via KB_CATEGORIES env var (comma-separated)
   KNOWLEDGE_TARGET_CATEGORIES: new Set(
