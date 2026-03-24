@@ -28,7 +28,7 @@ export const CONFIG = {
   },
 
   // AI — model can be overridden via MODEL env var
-  MODEL: process.env.MODEL ?? "gemini-3.1-pro-preview",
+  MODEL: process.env.MODEL ?? "gemini-3.1-flash-image-preview",
   VERTEX_PROJECT:  process.env.VERTEX_PROJECT  ?? "your-gcp-project-id",
   // 3.1 models require "global" location; 2.x models use "us-central1"
   VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "global",
