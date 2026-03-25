@@ -20,6 +20,7 @@ OUTPUT_DIR = Path("./videos") / f"{USERNAME}_saved"
 def get_client() -> Client:
     cl = Client()
     cl.delay_range = [2, 5]
+    cl.request_timeout = 30  # Increase from default 1s to 30s for CDN downloads
     os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
 
     if os.path.exists(SESSION_FILE):
@@ -81,13 +82,12 @@ def download_saved_videos():
         pk_str = str(media.pk)
 
         if media.media_type == 2:
-            # Skip if we already know about this pk (downloaded or previously attempted)
             if pk_str in known_pks:
                 already_have += 1
                 continue
-            known_pks.add(pk_str)
             try:
                 cl.video_download(media.pk, folder=OUTPUT_DIR)
+                known_pks.add(pk_str)  # Only mark as known AFTER successful download
                 video_count += 1
                 print(f"  [{video_count}] {media.taken_at:%Y-%m-%d} by @{media.user.username} - {media.code}", flush=True)
             except Exception as e:
@@ -96,15 +96,18 @@ def download_saved_videos():
             if pk_str in known_pks:
                 already_have += 1
                 continue
-            known_pks.add(pk_str)
+            downloaded_any = False
             for i, resource in enumerate(media.resources or []):
                 if resource.media_type == 2:
                     try:
                         cl.video_download_by_url(resource.video_url, folder=OUTPUT_DIR)
+                        downloaded_any = True
                         video_count += 1
                         print(f"  [{video_count}] {media.taken_at:%Y-%m-%d} by @{media.user.username} - {media.code} (slide {i+1})", flush=True)
                     except Exception as e:
                         print(f"  [!] Failed {media.code} slide {i+1}: {e}", flush=True)
+            if downloaded_any:
+                known_pks.add(pk_str)  # Only mark as known if at least one slide downloaded
         else:
             skipped += 1
 
