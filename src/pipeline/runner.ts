@@ -13,22 +13,34 @@ import { runCatalogAgent }      from "../agents/catalog.js";
 import { runOrganizerAgent }    from "../agents/organizer.js";
 import { runMarkdownAgent }     from "../agents/markdown.js";
 import { runDashboardAgent }    from "../agents/dashboard.js";
+// Steps 12-16: Verification pipeline
+import { runAnalyzerAgent }     from "../agents/analyzer.js";
+import { runResearchAgent }     from "../agents/researcher.js";
+import { runImplementerAgent }  from "../agents/implementer.js";
+import { runVerifierAgent }     from "../agents/verifier.js";
+import { runEnrichmentAgent }   from "../agents/enrichment.js";
 
 export async function runFullPipeline(options: { startStep?: number; endStep?: number } = {}): Promise<void> {
   const neurolink = new NeuroLink();
 
   const steps = [
-    { name: "Metadata collection",   run: () => runMetadataAgent() },
-    { name: "Video download",        run: () => runDownloadAgent() },
-    { name: "Properties extraction", run: () => runPropertiesAgent() },
-    { name: "Classification",        run: () => runClassifierAgent(neurolink) },
-    { name: "Knowledge extraction",  run: () => runKnowledgeAgent(neurolink) },
-    { name: "Link extraction",       run: () => runLinkExtractAgent(neurolink) },
-    { name: "Link resolution",       run: () => runLinkResolverAgent(neurolink) },
-    { name: "Catalog generation",    run: () => runCatalogAgent() },
-    { name: "Folder organization",   run: () => runOrganizerAgent() },
-    { name: "Markdown generation",   run: () => runMarkdownAgent() },
-    { name: "Dashboard build",       run: () => runDashboardAgent() },
+    { name: "Metadata collection",       run: () => runMetadataAgent() },             // 1
+    { name: "Video download",            run: () => runDownloadAgent() },              // 2
+    { name: "Properties extraction",     run: () => runPropertiesAgent() },            // 3
+    { name: "Classification",            run: () => runClassifierAgent(neurolink) },   // 4
+    { name: "Knowledge extraction",      run: () => runKnowledgeAgent(neurolink) },    // 5
+    { name: "Link extraction",           run: () => runLinkExtractAgent(neurolink) },  // 6
+    { name: "Link resolution",           run: () => runLinkResolverAgent(neurolink) }, // 7
+    { name: "Catalog generation",        run: () => runCatalogAgent() },               // 8
+    { name: "Folder organization",       run: () => runOrganizerAgent() },             // 9
+    { name: "Markdown generation",       run: () => runMarkdownAgent() },              // 10
+    { name: "Dashboard build",           run: () => runDashboardAgent() },             // 11
+    // Verification pipeline (Steps 12-16)
+    { name: "Content analysis",          run: () => runAnalyzerAgent(neurolink) },     // 12
+    { name: "Research & verification",   run: () => runResearchAgent(neurolink) },     // 13
+    { name: "Implementation testing",    run: () => runImplementerAgent() },           // 14
+    { name: "Verification synthesis",    run: () => runVerifierAgent(neurolink) },     // 15
+    { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() },            // 16
   ];
 
   const startStep = options.startStep ?? parseInt(process.env.START_STEP ?? "0", 10);

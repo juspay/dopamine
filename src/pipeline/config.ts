@@ -19,6 +19,11 @@ export const CONFIG = {
     LINKS_V2:        path.resolve("videos", "links_v2.json"),
     CATALOG:         path.resolve("videos", "catalog.json"),
     CATALOG_CSV:     path.resolve("videos", "catalog.csv"),
+    // Steps 12-16: Verification pipeline
+    ANALYSIS:        path.resolve("videos", "analysis.json"),
+    RESEARCH:        path.resolve("videos", "research.json"),
+    IMPLEMENTATIONS: path.resolve("videos", "implementations.json"),
+    VERIFICATIONS:   path.resolve("videos", "verifications.json"),
   },
 
   OUTPUT: {
