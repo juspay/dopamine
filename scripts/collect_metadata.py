@@ -47,8 +47,22 @@ def get_client() -> Client:
             except Exception as e:
                 print(f"Session validation failed: {e}", flush=True)
 
-    # Fresh login only if no session exists at all
-    print("No session found, performing fresh login...", flush=True)
+    # Try browser cookie import before password login
+    try:
+        import browser_cookie3
+        print("Trying Chrome cookie import...", flush=True)
+        cj = browser_cookie3.chrome(domain_name='.instagram.com')
+        cookies = {c.name: c.value for c in cj}
+        if 'sessionid' in cookies and cookies['sessionid']:
+            cl.login_by_sessionid(cookies['sessionid'])
+            cl.dump_settings(SESSION_FILE)
+            print("Logged in via Chrome cookies.", flush=True)
+            return cl
+    except Exception as e:
+        print(f"Chrome cookie import failed: {e}", flush=True)
+
+    # Last resort: fresh password login
+    print("Performing fresh login...", flush=True)
     cl.login(USERNAME, PASSWORD)
     print("Logged in and session saved.", flush=True)
     return cl
