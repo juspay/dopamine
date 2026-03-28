@@ -19,24 +19,37 @@ OUTPUT_FILE = Path("./videos/metadata.json")
 
 
 def get_client() -> Client:
+    from instagrapi.exceptions import LoginRequired
+
     cl = Client()
-    cl.delay_range = [2, 5]
+    cl.delay_range = [3, 7]
+    cl.request_timeout = 30
     os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
 
+    # Try loading saved session WITHOUT calling login()
     if os.path.exists(SESSION_FILE):
-        try:
-            print("Loading saved session...", flush=True)
-            cl.load_settings(SESSION_FILE)
-            cl.login(USERNAME, PASSWORD)
-            cl.get_timeline_feed()
-            print(f"Logged in as {USERNAME}", flush=True)
-            return cl
-        except Exception as e:
-            print(f"Saved session failed: {e}", flush=True)
+        session = cl.load_settings(SESSION_FILE)
+        if session:
+            try:
+                cl.set_settings(session)
+                cl.get_timeline_feed()  # Validate session
+                print(f"Session valid for {USERNAME}", flush=True)
+                return cl
+            except LoginRequired:
+                print("Session expired, re-authenticating with preserved device...", flush=True)
+                old_session = cl.get_settings()
+                cl.set_settings({})
+                cl.set_uuids(old_session["uuids"])  # Keep same device identity
+                cl.login(USERNAME, PASSWORD)
+                cl.dump_settings(SESSION_FILE)
+                print("Re-authenticated and session saved.", flush=True)
+                return cl
+            except Exception as e:
+                print(f"Session validation failed: {e}", flush=True)
 
-    print("Performing fresh login...", flush=True)
+    # Fresh login only if no session exists at all
+    print("No session found, performing fresh login...", flush=True)
     cl.login(USERNAME, PASSWORD)
-    cl.dump_settings(SESSION_FILE)
     print("Logged in and session saved.", flush=True)
     return cl
 
