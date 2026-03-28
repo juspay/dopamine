@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 __pycache__/
 *.pyc
 videos/user_saved/
@@ -6,3 +8,13 @@ videos/thumbnails/
 videos/classified/
 node_modules/
 dist/
+sandbox/
+logs/
+
+# Secrets & credentials
+*.pem
+*.key
+*.p12
+service-account*.json
+credentials*.json
+node_modules_old

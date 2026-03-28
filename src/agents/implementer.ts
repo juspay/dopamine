@@ -22,7 +22,12 @@ import type { AnalysisEntry } from "./analyzer.js";
 import type { ResearchEntry } from "./researcher.js";
 
 const SANDBOX_ROOT = path.resolve("sandbox");
-const COMMAND_TIMEOUT_MS = 30_000; // 30s max per command
+
+/** Configurable command timeout — override via COMMAND_TIMEOUT_MS env var (default 30s). */
+const COMMAND_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS ?? "30000", 10);
+
+/** Auto-cleanup sandbox dirs older than this many days (default 7). Override via SANDBOX_MAX_AGE_DAYS. */
+const SANDBOX_MAX_AGE_DAYS = parseInt(process.env.SANDBOX_MAX_AGE_DAYS ?? "7", 10);
 
 /** Result for a single implementation attempt. */
 export interface ImplementationItemResult {
@@ -68,11 +73,33 @@ function sanitizeName(name: string): string {
 }
 
 /**
+ * Kill a process tree (the process and all its children) to avoid zombies.
+ */
+async function killProcessTree(pid: number): Promise<void> {
+  try {
+    // Kill the entire process group
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    // Process group kill may fail; try killing just the process
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already dead — ignore
+    }
+  }
+}
+
+/**
  * Run a command in a sandbox directory with timeout.
+ * On timeout, kills the process tree to prevent zombie processes.
  */
 async function runCommand(command: string, cwd: string): Promise<CommandResult> {
   // Security: skip dangerous commands
-  const dangerous = ["rm -rf /", "sudo", "mkfs", "dd if=", "> /dev/"];
+  const dangerous = [
+    "rm -rf /", "rm -rf /*", "sudo", "mkfs", "dd if=", "> /dev/",
+    "chmod -R 777", "curl|sh", "curl|bash", "wget|sh", "wget|bash",
+    "eval(", "exec(", "/__", "../", "~/"
+  ];
   if (dangerous.some(d => command.includes(d))) {
     return {
       command,
@@ -84,16 +111,19 @@ async function runCommand(command: string, cwd: string): Promise<CommandResult> 
   }
 
   try {
-    const result = await execa("sh", ["-c", command], {
+    const proc = execa("sh", ["-c", command], {
       cwd,
       timeout: COMMAND_TIMEOUT_MS,
       reject: false,
+      detached: true, // Create a process group so we can kill the tree
       env: {
         ...process.env,
         HOME: cwd, // Isolate npm/pip to sandbox
         NODE_ENV: "development",
       },
     });
+
+    const result = await proc;
 
     return {
       command,
@@ -104,7 +134,17 @@ async function runCommand(command: string, cwd: string): Promise<CommandResult> 
     };
   } catch (err) {
     const msg = String(err);
-    const timedOut = msg.includes("timed out") || msg.includes("ETIMEDOUT");
+    const timedOut = msg.includes("timed out") || msg.includes("ETIMEDOUT") || msg.includes("SIGTERM");
+
+    // Kill zombie processes after timeout
+    if (timedOut) {
+      // execa attaches the pid to the error object in some cases
+      const errObj = err as { pid?: number };
+      if (errObj.pid) {
+        await killProcessTree(errObj.pid);
+      }
+    }
+
     return {
       command,
       exit_code: 1,
@@ -112,6 +152,43 @@ async function runCommand(command: string, cwd: string): Promise<CommandResult> 
       stderr: timedOut ? `Command timed out after ${COMMAND_TIMEOUT_MS}ms` : msg.slice(0, 2000),
       timed_out: timedOut,
     };
+  }
+}
+
+/**
+ * Clean up a partially-installed sandbox directory.
+ * Removes node_modules, __pycache__, and other install artifacts.
+ */
+async function cleanupPartialInstall(itemDir: string): Promise<void> {
+  const dirsToRemove = ["node_modules", "__pycache__", ".pip", "venv", ".venv"];
+  for (const dir of dirsToRemove) {
+    const target = path.join(itemDir, dir);
+    try {
+      await fs.rm(target, { recursive: true, force: true });
+    } catch {
+      // Ignore — directory may not exist
+    }
+  }
+  // Also remove package-lock.json if it was a failed npm install
+  try {
+    await fs.rm(path.join(itemDir, "package-lock.json"), { force: true });
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Attempt to clear package manager caches when an install fails.
+ * This can resolve corrupted-cache issues on retry.
+ */
+async function clearPackageCache(command: string, cwd: string): Promise<void> {
+  if (command.includes("npm") || command.includes("npx")) {
+    console.log("    Clearing npm cache after install failure...");
+    await runCommand("npm cache clean --force 2>/dev/null", cwd);
+  }
+  if (command.includes("pip")) {
+    console.log("    Clearing pip cache after install failure...");
+    await runCommand("pip cache purge 2>/dev/null", cwd);
   }
 }
 
@@ -179,6 +256,9 @@ async function implementItem(
 
     if (!installSuccess) {
       console.log(`    Install failed (exit ${installResult.exit_code})`);
+      // Clear package manager cache and clean up partial artifacts
+      await clearPackageCache(cmd, itemDir);
+      await cleanupPartialInstall(itemDir);
     }
   }
 
@@ -240,8 +320,70 @@ function isLikelyCommand(step: string): boolean {
   return cmdPatterns.some(p => p.test(trimmed)) && trimmed.length < 200;
 }
 
+/**
+ * Auto-cleanup old sandbox directories to save disk space.
+ * Removes sandbox sub-dirs whose mtime is older than SANDBOX_MAX_AGE_DAYS.
+ */
+async function cleanupOldSandboxDirs(): Promise<void> {
+  try {
+    const entries = await fs.readdir(SANDBOX_ROOT, { withFileTypes: true });
+    const cutoff = Date.now() - SANDBOX_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+    let removed = 0;
+    let freedBytes = 0;
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dirPath = path.join(SANDBOX_ROOT, entry.name);
+      try {
+        const stat = await fs.stat(dirPath);
+        if (stat.mtimeMs < cutoff) {
+          // Estimate size before removal
+          freedBytes += await estimateDirSize(dirPath);
+          await fs.rm(dirPath, { recursive: true, force: true });
+          removed++;
+        }
+      } catch {
+        // Skip dirs we can't stat
+      }
+    }
+
+    if (removed > 0) {
+      console.log(`  Sandbox cleanup: removed ${removed} dirs older than ${SANDBOX_MAX_AGE_DAYS} days (~${(freedBytes / 1024 / 1024).toFixed(1)}MB freed)`);
+    } else {
+      console.log(`  Sandbox cleanup: no dirs older than ${SANDBOX_MAX_AGE_DAYS} days`);
+    }
+  } catch {
+    // Sandbox root doesn't exist yet — nothing to clean
+  }
+}
+
+/**
+ * Estimate total size of a directory tree (best-effort, not recursive on errors).
+ */
+async function estimateDirSize(dirPath: string): Promise<number> {
+  let total = 0;
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const p = path.join(dirPath, entry.name);
+      try {
+        if (entry.isFile()) {
+          const s = await fs.stat(p);
+          total += s.size;
+        } else if (entry.isDirectory()) {
+          total += await estimateDirSize(p);
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* skip */ }
+  return total;
+}
+
 export async function runImplementerAgent(): Promise<void> {
   console.log("\n=== ImplementerAgent (Step 14) ===");
+
+  // Auto-cleanup old sandbox directories before creating new ones
+  await cleanupOldSandboxDirs();
 
   // Load analysis and research states
   const analysisState = await loadState<Record<string, AnalysisEntry>>(

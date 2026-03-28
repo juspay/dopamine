@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Features
+
+* **auth:** add Chrome cookie auto-import as auth fallback ([89b40db](https://github.com/user/dopamine/commit/89b40db))
+* **pipeline:** complete verification pipeline -- 106 videos analyzed, researched, and verified ([9d4f62d](https://github.com/user/dopamine/commit/9d4f62d))
+* **agents:** add auto-implementation and verification pipeline Steps 12-16 ([26b45cd](https://github.com/user/dopamine/commit/26b45cd))
+* **model:** switch to gemini-3.1-flash-image-preview ([5fe8579](https://github.com/user/dopamine/commit/5fe8579))
+* **model:** upgrade to Gemini 3.1 Pro on global Vertex endpoint ([62a86b4](https://github.com/user/dopamine/commit/62a86b4))
+* **model:** upgrade default model to gemini-2.5-flash ([b61af6c](https://github.com/user/dopamine/commit/b61af6c))
+* **config:** upgrade to Gemini 3.1 Flash and make model configurable via MODEL env var ([987d7fd](https://github.com/user/dopamine/commit/987d7fd))
+
+### Bug Fixes
+
+* **auth:** stop calling login() on every run to prevent Instagram rate limits ([17150b6](https://github.com/user/dopamine/commit/17150b6))
+* **pipeline:** pipeline continues on step failure instead of crashing ([88b51c0](https://github.com/user/dopamine/commit/88b51c0))
+* **scripts:** launchd pipeline now builds before running ([3ee383d](https://github.com/user/dopamine/commit/3ee383d))
+* **download:** recover 64 missing videos and fix download bugs ([b9648af](https://github.com/user/dopamine/commit/b9648af))
+* **config:** revert to gemini-2.0-flash and add Vertex AI env config ([439b838](https://github.com/user/dopamine/commit/439b838))
+
 ## [2.1.0](https://github.com/user/dopamine/compare/v2.0.1...v2.1.0) (2026-03-22)
 
 ### Refactoring
@@ -17,7 +37,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [2.0.0](https://github.com/user/dopamine/compare/v1.2.0...v2.0.0) (2026-03-21)
 
-### ⚠ BREAKING CHANGES
+### BREAKING CHANGES
 
 * Pipeline is now TypeScript-first on NeuroLink. Python scripts moved to `scripts/`.
 

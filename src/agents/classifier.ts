@@ -5,6 +5,7 @@ import { ClassificationSchema, type Classification } from "../schemas/classifica
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
+import { safeJsonParse } from "../utils/json-repair.js";
 import { getVideoFiles, extractPkFromFilename, getThumbnailPath } from "../utils/video.js";
 import type { MetadataEntry } from "../types/index.js";
 
@@ -82,7 +83,7 @@ export async function runClassifierAgent(neurolink: NeuroLink): Promise<void> {
         maxTokens: 1024,
         timeout: "120s",
       });
-      return ClassificationSchema.parse(JSON.parse(response.content));
+      return ClassificationSchema.parse(safeJsonParse(response.content));
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
     if (result.success) {

@@ -5,6 +5,7 @@ import { LinksSchema, type Links } from "../schemas/links.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
+import { safeJsonParse } from "../utils/json-repair.js";
 import { getThumbnailPath } from "../utils/video.js";
 
 /** Knowledge base entry shape -- only fields we need. */
@@ -104,7 +105,7 @@ export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
         maxTokens: 4096,
         timeout: "120s",
       });
-      return LinksSchema.parse(JSON.parse(response.content));
+      return LinksSchema.parse(safeJsonParse(response.content));
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
     if (result.success) {

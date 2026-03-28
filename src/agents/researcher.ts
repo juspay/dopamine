@@ -40,48 +40,102 @@ export interface ResearchEntry {
 }
 
 const BATCH_SIZE = 5;
-const URL_TIMEOUT_MS = 10_000;
+
+/** Configurable URL check timeout — override via URL_TIMEOUT_MS env var. */
+const URL_TIMEOUT_MS = parseInt(process.env.URL_TIMEOUT_MS ?? "10000", 10);
+
+/** Maximum number of redirects to follow before treating as an error. */
+const MAX_REDIRECTS = parseInt(process.env.MAX_REDIRECTS ?? "10", 10);
 
 /**
- * Check if a URL is live by doing a HEAD/GET request with timeout.
+ * Follow redirects manually so we can enforce a redirect limit and track each hop.
+ * `fetch` with `redirect: "follow"` does not expose intermediate URLs on all runtimes,
+ * so we follow manually with `redirect: "manual"`.
+ */
+async function fetchWithRedirects(
+  url: string,
+  method: "HEAD" | "GET",
+  timeoutMs: number,
+): Promise<{ ok: boolean; status: number; finalUrl: string; redirected: boolean }> {
+  let currentUrl = url;
+  let redirected = false;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(currentUrl, {
+        method,
+        signal: controller.signal,
+        redirect: "manual",             // handle redirects ourselves
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; DopamineBot/1.0)" },
+      });
+      clearTimeout(timer);
+
+      // 3xx → follow the Location header
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) {
+          return { ok: false, status: response.status, finalUrl: currentUrl, redirected };
+        }
+        // Resolve relative redirects
+        currentUrl = new URL(location, currentUrl).href;
+        redirected = true;
+        continue;
+      }
+
+      return {
+        ok: response.ok,
+        status: response.status,
+        finalUrl: currentUrl,
+        redirected,
+      };
+    } catch (err) {
+      clearTimeout(timer);
+      throw err; // let caller handle abort / network errors
+    }
+  }
+
+  // Exceeded max redirects
+  return { ok: false, status: 0, finalUrl: currentUrl, redirected: true };
+}
+
+/**
+ * Check if a URL is live by doing a HEAD/GET request with configurable timeout
+ * and explicit redirect following.
  */
 async function checkUrl(url: string): Promise<{ status: string; finalUrl: string }> {
   if (!url || url === "" || !url.startsWith("http")) {
     return { status: "no_url", finalUrl: "" };
   }
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), URL_TIMEOUT_MS);
-    const response = await fetch(url, {
-      method: "HEAD",
-      signal: controller.signal,
-      redirect: "follow",
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; DopamineBot/1.0)" },
-    });
-    clearTimeout(timer);
-    const finalUrl = response.url || url;
-    if (response.ok) {
-      return { status: finalUrl !== url ? "redirect" : "live", finalUrl };
+    const result = await fetchWithRedirects(url, "HEAD", URL_TIMEOUT_MS);
+    if (result.ok) {
+      const status = result.redirected ? "redirect" : "live";
+      if (result.redirected) {
+        console.log(`    URL redirected: ${url} -> ${result.finalUrl}`);
+      }
+      return { status, finalUrl: result.finalUrl };
     }
-    return { status: "dead", finalUrl };
+    return { status: "dead", finalUrl: result.finalUrl };
   } catch (err) {
     const msg = String(err);
-    if (msg.includes("abort") || msg.includes("timeout")) {
+    if (msg.includes("abort") || msg.includes("timeout") || msg.includes("AbortError")) {
+      console.warn(`    URL timeout (${URL_TIMEOUT_MS}ms): ${url}`);
       return { status: "timeout", finalUrl: url };
     }
     // Try GET as fallback (some servers reject HEAD)
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), URL_TIMEOUT_MS);
-      const response = await fetch(url, {
-        method: "GET",
-        signal: controller.signal,
-        redirect: "follow",
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; DopamineBot/1.0)" },
-      });
-      clearTimeout(timer);
-      if (response.ok) return { status: "live", finalUrl: response.url || url };
-      return { status: "dead", finalUrl: url };
+      const result = await fetchWithRedirects(url, "GET", URL_TIMEOUT_MS);
+      if (result.ok) {
+        const status = result.redirected ? "redirect" : "live";
+        if (result.redirected) {
+          console.log(`    URL redirected: ${url} -> ${result.finalUrl}`);
+        }
+        return { status, finalUrl: result.finalUrl };
+      }
+      return { status: "dead", finalUrl: result.finalUrl };
     } catch {
       return { status: "error", finalUrl: url };
     }

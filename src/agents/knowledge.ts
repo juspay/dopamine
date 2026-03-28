@@ -5,6 +5,7 @@ import { KnowledgeSchema, type Knowledge } from "../schemas/knowledge.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
+import { safeJsonParse } from "../utils/json-repair.js";
 import { getThumbnailPath } from "../utils/video.js";
 
 /** Classification entry shape -- only fields we need for filtering. */
@@ -107,7 +108,7 @@ export async function runKnowledgeAgent(neurolink: NeuroLink): Promise<void> {
         maxTokens: 8192,
         timeout: "180s",
       });
-      return KnowledgeSchema.parse(JSON.parse(response.content));
+      return KnowledgeSchema.parse(safeJsonParse(response.content));
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
     if (result.success) {

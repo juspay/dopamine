@@ -2,7 +2,7 @@
  * DashboardAgent — port of build_dashboard_v2.py
  *
  * Generates dashboard/index.html with ALL data embedded as JS variables.
- * Has Videos tab + Knowledge Base tab.
+ * Has Videos tab + Knowledge Base tab + Verification tab.
  *
  * CRITICAL: Uses &quot; (not escaped quotes) for HTML attribute values inside
  * JS strings to avoid the classList.toggle bug.
@@ -10,6 +10,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
 import type { CatalogRecord } from "./catalog.js";
@@ -17,6 +18,55 @@ import type { CatalogRecord } from "./catalog.js";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+interface VerificationItemResult {
+  item_name: string;
+  research_summary: string;
+  implementation_result: string;
+  is_url_live: string;
+  notes: string;
+}
+
+interface VerificationEntry {
+  filename: string;
+  verified_at: string;
+  overall_score: string;
+  summary: string;
+  item_results: VerificationItemResult[];
+  confidence: number;
+  error?: string;
+}
+
+interface AnalysisEntry {
+  filename: string;
+  category: string;
+  actionable_items: Array<{
+    type: string;
+    name: string;
+    description: string;
+    install_command: string;
+    code: string;
+    url: string;
+    verification_steps: string[];
+  }>;
+  implementability_score: number;
+  usefulness_prediction: string;
+}
+
+/** Combined verification dashboard entry. */
+interface VerifDashboardEntry {
+  filename: string;
+  basename: string;
+  username: string;
+  category: string;
+  overall_score: string;
+  confidence: number;
+  summary: string;
+  verified_at: string;
+  item_results: VerificationItemResult[];
+  implementability_score: number;
+  usefulness_prediction: string;
+}
 
 interface KnowledgeEntry {
   category?: string;
@@ -57,8 +107,24 @@ interface KbDashboardEntry {
 
 function escapeJsonForEmbed(jsonStr: string): string {
   // The JSON is embedded directly inside a <script> tag. We need to escape
-  // </script> sequences that could break the HTML parser.
-  return jsonStr.replace(/<\/script/gi, "<\\/script");
+  // sequences that could break the HTML parser or enable injection:
+  // 1. </script> — closes the script tag prematurely
+  // 2. <!-- — opens an HTML comment that can hide/alter content
+  return jsonStr
+    .replace(/<\/script/gi, "<\\/script")
+    .replace(/<!--/g, "<\\!--");
+}
+
+/**
+ * Compress JSON data to base64-encoded gzip for embedding in HTML.
+ * The browser-side decompression uses the built-in DecompressionStream API.
+ * Returns a base64 string and the original byte size for logging.
+ */
+function compressForEmbed(jsonStr: string): { base64: string; originalBytes: number; compressedBytes: number } {
+  const originalBytes = Buffer.byteLength(jsonStr, "utf8");
+  const gzipped = gzipSync(Buffer.from(jsonStr, "utf8"), { level: 9 });
+  const base64 = gzipped.toString("base64");
+  return { base64, originalBytes, compressedBytes: gzipped.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -69,34 +135,26 @@ export async function runDashboardAgent(): Promise<void> {
   console.log("\n=== DashboardAgent ===");
   console.log("Loading data...");
 
-  const videosDir = path.dirname(CONFIG.STATE.METADATA);
-
-  // Load knowledge base files
-  const kb1 = await loadState<Record<string, KnowledgeEntry>>(
-    path.join(videosDir, "knowledge_base.json"),
+  // Load knowledge base (single merged file)
+  const knowledge = await loadState<Record<string, KnowledgeEntry>>(
+    CONFIG.STATE.KNOWLEDGE_BASE,
     {}
   );
-  const kb2 = await loadState<Record<string, KnowledgeEntry>>(
-    path.join(videosDir, "knowledge_base_batch2.json"),
-    {}
-  );
-
-  // Merge knowledge bases
-  const knowledge: Record<string, KnowledgeEntry> = { ...kb1, ...kb2 };
-  console.log(
-    `Knowledge base: ${Object.keys(kb1).length} + ${Object.keys(kb2).length} = ${Object.keys(knowledge).length} entries`
-  );
+  console.log(`Knowledge base: ${Object.keys(knowledge).length} entries`);
 
   // Load catalog
   const catalog = await loadState<CatalogRecord[]>(CONFIG.STATE.CATALOG, []);
   console.log(`Catalog: ${catalog.length} videos`);
 
+  // Build a Map for O(1) catalog lookups instead of O(n) find() per KB entry
+  const catalogByFilename = new Map(catalog.map((c) => [c.filename, c]));
+
   // Build knowledge base entries enriched with catalog metadata
   const kbEntries: KbDashboardEntry[] = [];
 
   for (const [filename, kbData] of Object.entries(knowledge)) {
-    // Find matching catalog entry
-    const catEntry = catalog.find((c) => c.filename === filename);
+    // O(1) lookup instead of O(n) find
+    const catEntry = catalogByFilename.get(filename);
 
     // Normalize transcript to string
     let transcript = kbData.transcript ?? "";
@@ -159,12 +217,54 @@ export async function runDashboardAgent(): Promise<void> {
   const kbCategories = [...new Set(kbEntries.map((e) => e.category))].sort();
   console.log(`KB categories: ${kbCategories}`);
 
-  // Serialize data for embedding
-  const catalogJsonStr = escapeJsonForEmbed(JSON.stringify(catalog, null, 0));
-  const kbJsonStr = escapeJsonForEmbed(JSON.stringify(kbEntries, null, 0));
+  // Load verification + analysis data
+  const verifications = await loadState<Record<string, VerificationEntry>>(
+    CONFIG.STATE.VERIFICATIONS, {}
+  );
+  const analysis = await loadState<Record<string, AnalysisEntry>>(
+    CONFIG.STATE.ANALYSIS, {}
+  );
+  console.log(`Verifications: ${Object.keys(verifications).length}, Analysis: ${Object.keys(analysis).length}`);
 
-  // Build the HTML
-  const html = buildHtml(catalogJsonStr, kbJsonStr);
+  // Build combined verification dashboard entries
+  const verifEntries: VerifDashboardEntry[] = [];
+  for (const [filename, ver] of Object.entries(verifications)) {
+    if (ver.error) continue;
+    const an = analysis[filename];
+    const catEntry = catalogByFilename.get(filename);
+    verifEntries.push({
+      filename,
+      basename: filename.includes(".") ? filename.slice(0, filename.lastIndexOf(".")) : filename,
+      username: catEntry?.instagram_user ?? "",
+      category: an?.category ?? catEntry?.category ?? "Unknown",
+      overall_score: ver.overall_score,
+      confidence: ver.confidence,
+      summary: ver.summary,
+      verified_at: ver.verified_at,
+      item_results: ver.item_results ?? [],
+      implementability_score: an?.implementability_score ?? 0,
+      usefulness_prediction: an?.usefulness_prediction ?? "unknown",
+    });
+  }
+  // Default sort: confidence descending
+  verifEntries.sort((a, b) => b.confidence - a.confidence);
+  console.log(`Verification entries prepared: ${verifEntries.length}`);
+
+  // Serialize data for embedding -- compress with gzip to reduce HTML size
+  const catalogJson = JSON.stringify(catalog, null, 0);
+  const kbJson = JSON.stringify(kbEntries, null, 0);
+  const verifJson = JSON.stringify(verifEntries, null, 0);
+
+  const catalogComp = compressForEmbed(catalogJson);
+  const kbComp = compressForEmbed(kbJson);
+  const verifComp = compressForEmbed(verifJson);
+
+  const totalOriginal = catalogComp.originalBytes + kbComp.originalBytes + verifComp.originalBytes;
+  const totalCompressed = catalogComp.compressedBytes + kbComp.compressedBytes + verifComp.compressedBytes;
+  console.log(`Data compression: ${(totalOriginal / 1024).toFixed(0)}KB -> ${(totalCompressed / 1024).toFixed(0)}KB (${Math.round((1 - totalCompressed / totalOriginal) * 100)}% reduction)`);
+
+  // Build the HTML with compressed data
+  const html = buildHtml(catalogComp.base64, kbComp.base64, verifComp.base64);
 
   // Write output
   const dashboardDir = path.dirname(CONFIG.OUTPUT.DASHBOARD);
@@ -172,14 +272,14 @@ export async function runDashboardAgent(): Promise<void> {
   await fs.writeFile(CONFIG.OUTPUT.DASHBOARD, html, "utf8");
 
   console.log("Dashboard updated successfully!");
-  console.log(`Output: ${CONFIG.OUTPUT.DASHBOARD} (${html.length} bytes)`);
+  console.log(`Output: ${CONFIG.OUTPUT.DASHBOARD} (${(html.length / 1024).toFixed(0)}KB, down from ~900KB uncompressed)`);
 }
 
 // ---------------------------------------------------------------------------
 // HTML builder — mirrors build_dashboard_v2.py:build_html()
 // ---------------------------------------------------------------------------
 
-function buildHtml(catalogJsonStr: string, kbJson: string): string {
+function buildHtml(catalogJsonStr: string, kbJson: string, verifJson: string): string {
   // CRITICAL: In all onclick handlers, use &quot; for attribute value quotes
   // to avoid the classList.toggle bug where escaped quotes inside JS strings
   // break the HTML parser.
@@ -314,6 +414,68 @@ mark { background: #7c6aef44; color: #e0e0e0; padding: 1px 2px; border-radius: 2
 
 .kb-match-context { font-size: 0.8em; color: #888; margin-top: 4px; padding: 4px 8px; background: #15151f; border-radius: 4px; }
 .kb-match-context mark { background: #7c6aef55; }
+
+/* ==================== Verification Tab Styles ==================== */
+.verif-controls { background: #141420; padding: 16px 24px; border-bottom: 1px solid #2a2a3a; position: sticky; top: 0; z-index: 100; }
+.verif-filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.verif-filter-btn { padding: 8px 16px; border-radius: 20px; font-size: 0.8em; font-weight: 600; cursor: pointer; border: 2px solid transparent; background: #1a1a24; color: #888; transition: all 0.2s; }
+.verif-filter-btn:hover { opacity: 0.85; }
+.verif-filter-btn.active { opacity: 1; }
+.verif-filter-btn[data-status="all"].active { border-color: #7c6aef; color: #7c6aef; }
+.verif-filter-btn[data-status="verified_useful"].active { border-color: #4CAF50; color: #4CAF50; }
+.verif-filter-btn[data-status="partially_verified"].active { border-color: #FFC107; color: #FFC107; }
+.verif-filter-btn[data-status="not_verified"].active { border-color: #F44336; color: #F44336; }
+.verif-filter-btn[data-status="outdated"].active { border-color: #9E9E9E; color: #9E9E9E; }
+.verif-sort-row { display: flex; gap: 12px; align-items: center; }
+.verif-sort-select { padding: 10px 16px; border-radius: 8px; border: 1px solid #2a2a3a; background: #1a1a24; color: #e0e0e0; font-size: 0.95em; cursor: pointer; outline: none; }
+.verif-search-box { flex: 1; min-width: 200px; padding: 10px 16px; border-radius: 8px; border: 1px solid #2a2a3a; background: #1a1a24; color: #e0e0e0; font-size: 0.95em; outline: none; transition: border-color 0.2s; }
+.verif-search-box:focus { border-color: #7c6aef; }
+
+.verif-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; padding: 24px; }
+@media (max-width: 640px) { .verif-grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; } }
+
+.verif-card { background: #1a1a24; border-radius: 12px; overflow: hidden; border-left: 4px solid #555; transition: transform 0.2s, box-shadow 0.2s; animation: fadeIn 0.3s ease; }
+.verif-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px #0005; }
+.verif-card.status-verified_useful { border-left-color: #4CAF50; }
+.verif-card.status-partially_verified { border-left-color: #FFC107; }
+.verif-card.status-not_verified { border-left-color: #F44336; }
+.verif-card.status-outdated { border-left-color: #9E9E9E; }
+
+.verif-card-header { display: flex; gap: 12px; padding: 14px 16px; cursor: pointer; align-items: center; }
+.verif-card-header:hover { background: #1e1e2a; }
+.verif-card-thumb { width: 100px; height: 56px; border-radius: 6px; object-fit: cover; background: #111; flex-shrink: 0; }
+.verif-card-info { flex: 1; min-width: 0; }
+.verif-card-info .username { font-weight: 600; font-size: 0.9em; margin-bottom: 2px; }
+.verif-card-info .category-line { font-size: 0.78em; color: #888; margin-bottom: 4px; }
+.verif-card-info .verif-badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.verif-badge { padding: 2px 10px; border-radius: 10px; font-size: 0.7em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.verif-badge.verified_useful { background: #4CAF5022; color: #4CAF50; }
+.verif-badge.partially_verified { background: #FFC10722; color: #FFC107; }
+.verif-badge.not_verified { background: #F4433622; color: #F44336; }
+.verif-badge.outdated { background: #9E9E9E22; color: #9E9E9E; }
+
+.confidence-badge { font-size: 0.72em; color: #aaa; font-weight: 600; }
+
+.verif-card-toggle { color: #7c6aef; font-size: 1.1em; padding: 0 8px; flex-shrink: 0; transition: transform 0.2s; }
+.verif-card.open .verif-card-toggle { transform: rotate(180deg); }
+
+.verif-card-summary { padding: 0 16px 12px; font-size: 0.82em; color: #999; line-height: 1.5; }
+
+.verif-card-detail { display: none; padding: 0 16px 16px; }
+.verif-card.open .verif-card-detail { display: block; }
+
+.verif-items-table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 8px; }
+.verif-items-table th { text-align: left; padding: 8px; color: #888; border-bottom: 1px solid #2a2a3a; font-weight: 600; font-size: 0.9em; }
+.verif-items-table td { padding: 8px; border-bottom: 1px solid #1a1a2a; vertical-align: top; }
+.verif-items-table .impl-badge { padding: 2px 8px; border-radius: 8px; font-size: 0.85em; font-weight: 600; }
+.impl-success { background: #4CAF5022; color: #4CAF50; }
+.impl-skipped { background: #FFC10722; color: #FFC107; }
+.impl-failed { background: #F4433622; color: #F44336; }
+
+.url-live-yes { color: #4CAF50; }
+.url-live-no { color: #F44336; }
+.url-live-na { color: #666; }
 </style>
 </head>
 <body>
@@ -322,6 +484,7 @@ mark { background: #7c6aef44; color: #e0e0e0; padding: 1px 2px; border-radius: 2
 <div class="tab-nav">
   <button class="tab-btn active" data-tab="videos" onclick="switchTab('videos')">Videos</button>
   <button class="tab-btn" data-tab="knowledge" onclick="switchTab('knowledge')">Knowledge Base</button>
+  <button class="tab-btn" data-tab="verification" onclick="switchTab('verification')">Verification</button>
 </div>
 
 <!-- ==================== VIDEOS TAB ==================== -->
@@ -377,7 +540,70 @@ mark { background: #7c6aef44; color: #e0e0e0; padding: 1px 2px; border-radius: 2
 
 </div>
 
+<!-- ==================== VERIFICATION TAB ==================== -->
+<div class="tab-content" id="tab-verification">
+
+<div class="stats-bar">
+  <div class="stat"><div class="stat-value" id="verifTotal">0</div><div class="stat-label">Verified Videos</div></div>
+  <div class="stat"><div class="stat-value" style="color:#4CAF50" id="verifUseful">0</div><div class="stat-label">Verified Useful</div></div>
+  <div class="stat"><div class="stat-value" style="color:#FFC107" id="verifPartial">0</div><div class="stat-label">Partially Verified</div></div>
+  <div class="stat"><div class="stat-value" style="color:#F44336" id="verifNot">0</div><div class="stat-label">Not Verified</div></div>
+  <div class="stat"><div class="stat-value" style="color:#9E9E9E" id="verifOutdated">0</div><div class="stat-label">Outdated</div></div>
+</div>
+
+<div class="verif-controls">
+  <div class="verif-filter-row">
+    <button class="verif-filter-btn active" data-status="all" onclick="setVerifFilter(&quot;all&quot;)">All</button>
+    <button class="verif-filter-btn" data-status="verified_useful" onclick="setVerifFilter(&quot;verified_useful&quot;)">Verified Useful</button>
+    <button class="verif-filter-btn" data-status="partially_verified" onclick="setVerifFilter(&quot;partially_verified&quot;)">Partially Verified</button>
+    <button class="verif-filter-btn" data-status="not_verified" onclick="setVerifFilter(&quot;not_verified&quot;)">Not Verified</button>
+    <button class="verif-filter-btn" data-status="outdated" onclick="setVerifFilter(&quot;outdated&quot;)">Outdated</button>
+  </div>
+  <div class="verif-sort-row">
+    <input class="verif-search-box" id="verifSearchBox" type="text" placeholder="Search by username, category, summary...">
+    <select class="verif-sort-select" id="verifSortSelect">
+      <option value="confidence-desc">Sort: Confidence (highest)</option>
+      <option value="confidence-asc">Sort: Confidence (lowest)</option>
+      <option value="status">Sort: Status</option>
+      <option value="category">Sort: Category (A-Z)</option>
+      <option value="date">Sort: Verified Date (newest)</option>
+    </select>
+  </div>
+</div>
+
+<div class="verif-grid" id="verifGrid"></div>
+<div class="no-results" id="verifNoResults" style="display:none;">No verification results match your filters.</div>
+
+</div>
+
 <script>
+(async function() {
+// ==================== GZIP DECOMPRESSION LOADER ====================
+// Data is embedded as base64-encoded gzip to reduce dashboard size by ~60-70%.
+// Uses the browser-native DecompressionStream API (Chrome 80+, Firefox 113+, Safari 16.4+).
+async function _decompress(b64) {
+  var bytes = Uint8Array.from(atob(b64), function(c) { return c.charCodeAt(0); });
+  var ds = new DecompressionStream("gzip");
+  var writer = ds.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  var reader = ds.readable.getReader();
+  var chunks = [];
+  while (true) {
+    var r = await reader.read();
+    if (r.done) break;
+    chunks.push(r.value);
+  }
+  var totalLen = chunks.reduce(function(a, c) { return a + c.length; }, 0);
+  var merged = new Uint8Array(totalLen);
+  var offset = 0;
+  for (var i = 0; i < chunks.length; i++) {
+    merged.set(chunks[i], offset);
+    offset += chunks[i].length;
+  }
+  return JSON.parse(new TextDecoder().decode(merged));
+}
+
 // ==================== SHARED UTILITIES ====================
 function catColor(name) {
   var m = { "AI & Machine Learning":"#e8d5f5","Tech & Coding":"#d5e8f5","Business & Marketing":"#d5f5e0","Creative & Media":"#f5e8d5","Health & Wellness":"#f5d5d5","Education & Learning":"#f5f5d5","Lifestyle":"#f0d5f5","Other":"#ddd" };
@@ -404,7 +630,7 @@ function switchTab(tab) {
 }
 
 // ==================== VIDEOS TAB (original logic) ====================
-var CATALOG = ${catalogJsonStr};
+var CATALOG = await _decompress("${catalogJsonStr}");
 
 // Stats
 var totalSec = CATALOG.reduce(function(a, v) { return a + (v.duration_seconds || 0); }, 0);
@@ -524,7 +750,7 @@ document.getElementById("sortSelect").addEventListener("change", render);
 render();
 
 // ==================== KNOWLEDGE BASE TAB ====================
-var KNOWLEDGE = ${kbJson};
+var KNOWLEDGE = await _decompress("${kbJson}");
 
 // KB Stats
 document.getElementById("kbTotalVideos").textContent = KNOWLEDGE.length;
@@ -773,6 +999,162 @@ function toggleKbEntry(header) {
 
 document.getElementById("kbSearchBox").addEventListener("input", renderKb);
 renderKb();
+
+// ==================== VERIFICATION TAB ====================
+var VERIFICATIONS = await _decompress("${verifJson}");
+
+// Verification Stats
+var verifCounts = { verified_useful: 0, partially_verified: 0, not_verified: 0, outdated: 0 };
+VERIFICATIONS.forEach(function(v) {
+  if (verifCounts.hasOwnProperty(v.overall_score)) verifCounts[v.overall_score]++;
+});
+document.getElementById("verifTotal").textContent = VERIFICATIONS.length;
+document.getElementById("verifUseful").textContent = verifCounts.verified_useful;
+document.getElementById("verifPartial").textContent = verifCounts.partially_verified;
+document.getElementById("verifNot").textContent = verifCounts.not_verified;
+document.getElementById("verifOutdated").textContent = verifCounts.outdated;
+
+var verifFilter = "all";
+var verifOpenCards = new Set();
+
+function setVerifFilter(status) {
+  verifFilter = status;
+  document.querySelectorAll(".verif-filter-btn").forEach(function(b) {
+    b.classList.toggle("active", b.dataset.status === status);
+  });
+  renderVerif();
+}
+
+function verifStatusLabel(s) {
+  var labels = { verified_useful: "Verified Useful", partially_verified: "Partially Verified", not_verified: "Not Verified", outdated: "Outdated" };
+  return labels[s] || s;
+}
+
+function verifStatusOrder(s) {
+  var order = { verified_useful: 0, partially_verified: 1, not_verified: 2, outdated: 3 };
+  return order.hasOwnProperty(s) ? order[s] : 4;
+}
+
+function implBadgeClass(result) {
+  if (result === "success") return "impl-success";
+  if (result === "failed") return "impl-failed";
+  return "impl-skipped";
+}
+
+function urlLiveClass(status) {
+  if (status === "yes") return "url-live-yes";
+  if (status === "no") return "url-live-no";
+  return "url-live-na";
+}
+
+function urlLiveLabel(status) {
+  if (status === "yes") return "Live";
+  if (status === "no") return "Dead";
+  return "N/A";
+}
+
+function renderVerif() {
+  var query = document.getElementById("verifSearchBox").value.toLowerCase().trim();
+  var sort = document.getElementById("verifSortSelect").value;
+
+  var items = VERIFICATIONS.filter(function(v) {
+    if (verifFilter !== "all" && v.overall_score !== verifFilter) return false;
+    if (query) {
+      var haystack = [v.username, v.category, v.summary, v.overall_score].join(" ").toLowerCase();
+      return haystack.includes(query);
+    }
+    return true;
+  });
+
+  // Sort
+  if (sort === "confidence-desc") items.sort(function(a, b) { return b.confidence - a.confidence; });
+  else if (sort === "confidence-asc") items.sort(function(a, b) { return a.confidence - b.confidence; });
+  else if (sort === "status") items.sort(function(a, b) { return verifStatusOrder(a.overall_score) - verifStatusOrder(b.overall_score); });
+  else if (sort === "category") items.sort(function(a, b) { return a.category.localeCompare(b.category); });
+  else if (sort === "date") items.sort(function(a, b) { return (b.verified_at || "").localeCompare(a.verified_at || ""); });
+
+  var grid = document.getElementById("verifGrid");
+  var noResults = document.getElementById("verifNoResults");
+
+  if (items.length === 0) {
+    grid.innerHTML = "";
+    noResults.style.display = "block";
+    return;
+  }
+  noResults.style.display = "none";
+
+  grid.innerHTML = items.map(function(v) {
+    var thumbPath = "../videos/thumbnails/" + v.basename + ".jpg";
+    var isOpen = verifOpenCards.has(v.filename);
+
+    // Build item results table
+    var itemsTableHtml = "";
+    if (v.item_results && v.item_results.length > 0) {
+      itemsTableHtml = '<table class="verif-items-table">' +
+        '<thead><tr><th>Item</th><th>Implementation</th><th>URL</th><th>Notes</th></tr></thead><tbody>' +
+        v.item_results.map(function(ir) {
+          return '<tr>' +
+            '<td>' + escHtml(ir.item_name) + '</td>' +
+            '<td><span class="impl-badge ' + implBadgeClass(ir.implementation_result) + '">' + escHtml(ir.implementation_result) + '</span></td>' +
+            '<td><span class="' + urlLiveClass(ir.is_url_live) + '">' + urlLiveLabel(ir.is_url_live) + '</span></td>' +
+            '<td>' + escHtml(ir.notes || "") + '</td>' +
+          '</tr>';
+        }).join("") +
+        '</tbody></table>';
+    }
+
+    var dateStr = v.verified_at ? new Date(v.verified_at).toLocaleDateString() : "";
+
+    return '<div class="verif-card status-' + v.overall_score + (isOpen ? ' open' : '') + '" data-file="' + escAttr(v.filename) + '">' +
+      '<div class="verif-card-header" onclick="toggleVerifCard(this)">' +
+        '<img class="verif-card-thumb" src="' + escAttr(thumbPath) + '" alt="" loading="lazy" onerror="this.style.display=&quot;none&quot;">' +
+        '<div class="verif-card-info">' +
+          '<div class="username">@' + escHtml(v.username || "unknown") + '</div>' +
+          '<div class="category-line">' +
+            '<span class="cat-badge-inline" style="background:' + catBg(v.category) + ';color:' + catColor(v.category) + '">' + escHtml(v.category) + '</span>' +
+            (dateStr ? ' &middot; ' + dateStr : '') +
+          '</div>' +
+          '<div class="verif-badges">' +
+            '<span class="verif-badge ' + v.overall_score + '">' + verifStatusLabel(v.overall_score) + '</span>' +
+            '<span class="confidence-badge">' + v.confidence + '/10 confidence</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="verif-card-toggle">&#9660;</div>' +
+      '</div>' +
+      '<div class="verif-card-summary">' + escHtml(v.summary) + '</div>' +
+      '<div class="verif-card-detail">' +
+        '<div class="kb-section">' +
+          '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Item Verification Results</div>' +
+          '<div class="kb-section-body">' + (itemsTableHtml || '<div style="color:#555;font-style:italic">No item results</div>') + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+function toggleVerifCard(header) {
+  var card = header.parentElement;
+  var file = card.dataset.file;
+  if (verifOpenCards.has(file)) {
+    verifOpenCards.delete(file);
+    card.classList.remove("open");
+  } else {
+    verifOpenCards.add(file);
+    card.classList.add("open");
+  }
+}
+
+document.getElementById("verifSearchBox").addEventListener("input", renderVerif);
+document.getElementById("verifSortSelect").addEventListener("change", renderVerif);
+renderVerif();
+
+// Hoist onclick-referenced functions to global scope
+window.switchTab = switchTab;
+window.switchKbSection = switchKbSection;
+window.toggleKbEntry = toggleKbEntry;
+window.toggleVerifCard = toggleVerifCard;
+window.setVerifFilter = setVerifFilter;
+})(); // end async IIFE
 </script>
 </body>
 </html>`;

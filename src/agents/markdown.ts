@@ -1,8 +1,7 @@
 /**
  * MarkdownAgent — port of generate_markdown.py
  *
- * Reads knowledge_base.json, knowledge_base_batch2.json, classifications.json,
- * metadata.json, video_properties.json.
+ * Reads knowledge_base.json, classifications.json, metadata.json, video_properties.json.
  * Generates knowledge_base/{Category}/{filename}.md per video and knowledge_base/INDEX.md.
  */
 
@@ -388,16 +387,11 @@ export async function runMarkdownAgent(): Promise<void> {
   console.log("\n=== MarkdownAgent ===");
   console.log("Loading data files...");
 
-  const videosDir = path.dirname(CONFIG.STATE.METADATA); // "videos" dir
-
-  // Load knowledge base files
-  const kb1Path = path.join(videosDir, "knowledge_base.json");
-  const kb2Path = path.join(videosDir, "knowledge_base_batch2.json");
-
-  const kb1 = await loadState<Record<string, KnowledgeEntry>>(kb1Path, {});
-  const kb2 = await loadState<Record<string, KnowledgeEntry>>(kb2Path, {});
-  console.log(`  knowledge_base.json: ${Object.keys(kb1).length} entries`);
-  console.log(`  knowledge_base_batch2.json: ${Object.keys(kb2).length} entries`);
+  // Load knowledge base (single merged file)
+  const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(
+    CONFIG.STATE.KNOWLEDGE_BASE, {}
+  );
+  console.log(`  knowledge_base.json: ${Object.keys(knowledgeBase).length} entries`);
 
   const classifications = await loadState<Record<string, ClassificationEntry>>(
     CONFIG.STATE.CLASSIFICATIONS,
@@ -413,10 +407,6 @@ export async function runMarkdownAgent(): Promise<void> {
     {}
   );
   console.log(`  video_properties.json: ${Object.keys(videoProps).length} entries`);
-
-  // Merge knowledge bases
-  const knowledgeBase: Record<string, KnowledgeEntry> = { ...kb1, ...kb2 };
-  console.log(`\nMerged knowledge base: ${Object.keys(knowledgeBase).length} videos`);
 
   // Build metadata index
   const metaIndex = buildMetadataIndex(metadataList);
