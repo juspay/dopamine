@@ -46,6 +46,7 @@ export async function runFullPipeline(options: { startStep?: number; endStep?: n
   const startStep = options.startStep ?? parseInt(process.env.START_STEP ?? "0", 10);
   const endStep   = options.endStep   ?? parseInt(process.env.END_STEP   ?? String(steps.length), 10);
 
+  const errors: string[] = [];
   try {
     for (const [i, step] of steps.entries()) {
       if (i < startStep || i >= endStep) continue;
@@ -53,10 +54,22 @@ export async function runFullPipeline(options: { startStep?: number; endStep?: n
       console.log(`Step ${i + 1}/${steps.length}: ${step.name}`);
       console.log("=".repeat(60));
       const t0 = Date.now();
-      await step.run();
-      console.log(`  Completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      try {
+        await step.run();
+        console.log(`  Completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      } catch (err) {
+        const msg = `Step ${i + 1} (${step.name}) failed: ${err}`;
+        console.error(`  FAILED in ${((Date.now() - t0) / 1000).toFixed(1)}s: ${err}`);
+        errors.push(msg);
+        // Continue to next step instead of crashing
+      }
     }
-    console.log("\nPipeline complete.");
+    if (errors.length > 0) {
+      console.log(`\nPipeline completed with ${errors.length} error(s):`);
+      errors.forEach(e => console.log(`  - ${e.slice(0, 150)}`));
+    } else {
+      console.log("\nPipeline complete. All steps succeeded.");
+    }
   } finally {
     await neurolink.shutdown();
   }
