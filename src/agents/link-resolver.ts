@@ -78,7 +78,15 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
 
   console.log(`Fixed locally: ${fixedLocally}, Unique names for API: ${uniqueNames.size}`);
 
-  const resolvedMap = new Map<string, string>();
+  // Build a reverse index: nameKey -> all (fname, idx) entries needing it
+  const nameToEntries = new Map<string, Array<{ fname: string; idx: number }>>();
+  for (const { fname, idx, link } of needsApi) {
+    const key = link.name.trim().toLowerCase();
+    if (!nameToEntries.has(key)) nameToEntries.set(key, []);
+    nameToEntries.get(key)!.push({ fname, idx });
+  }
+
+  let resolvedCount = 0, failedCount = 0, saveEvery = 10, saveCounter = 0;
 
   for (const [i, [nameKey, link]] of [...uniqueNames.entries()].entries()) {
     const context = [
@@ -129,22 +137,29 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
     }
 
     if (resolved) {
-      resolvedMap.set(nameKey, resolved);
+      // Apply immediately to all entries sharing this name
+      const entries = nameToEntries.get(nameKey) ?? [];
+      for (const { fname, idx } of entries) {
+        links[fname].links[idx].url = resolved;
+      }
+      resolvedCount++;
       console.log(`  Resolved: ${resolved}`);
     } else {
+      failedCount++;
       console.log(`  FAILED to resolve`);
+    }
+
+    // Save incrementally so progress survives restarts (resume mode)
+    saveCounter++;
+    if (saveCounter >= saveEvery) {
+      await saveState(CONFIG.STATE.LINKS_V2, links);
+      saveCounter = 0;
     }
 
     await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
   }
 
-  // Apply resolved URLs back to all matching entries
-  for (const { fname, idx, link } of needsApi) {
-    const key = link.name.trim().toLowerCase();
-    const url = resolvedMap.get(key);
-    if (url) links[fname].links[idx].url = url;
-  }
-
+  // Final save
   await saveState(CONFIG.STATE.LINKS_V2, links);
-  console.log("\nLink resolution complete.");
+  console.log(`\nLink resolution complete. Resolved: ${resolvedCount}, Failed: ${failedCount}`);
 }
