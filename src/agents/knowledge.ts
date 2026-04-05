@@ -48,27 +48,27 @@ export async function runKnowledgeAgent(neurolink: NeuroLink): Promise<void> {
     CONFIG.STATE.KNOWLEDGE_BASE, {}
   );
 
-  // Filter to only target categories (AI & Machine Learning, Tech & Coding)
+  // Process all classified videos (skip only if error or no category)
   const targetVideos = Object.entries(classifications).filter(
-    ([, cls]) =>
-      cls.category !== undefined &&
-      CONFIG.KNOWLEDGE_TARGET_CATEGORIES.has(cls.category) &&
-      !cls.error
+    ([, cls]) => cls.category && !cls.error
   );
 
-  console.log(`Knowledge extraction: ${targetVideos.length} videos in target categories`);
-  console.log(`  Target categories: ${[...CONFIG.KNOWLEDGE_TARGET_CATEGORIES].join(", ")}`);
+  console.log(`Knowledge extraction: ${targetVideos.length} classified videos`);
 
   let extracted = 0, skipped = 0, errors = 0;
 
   for (const [i, [filename, cls]] of targetVideos.entries()) {
     const logPrefix = `[${i + 1}/${targetVideos.length}]`;
 
-    // Resume mode -- skip if already extracted without error
-    if (filename in knowledgeBase && !knowledgeBase[filename].error) {
+    // Resume mode -- skip if already extracted with content (no error, has transcript)
+    const existing = knowledgeBase[filename];
+    if (existing && !existing.error && existing.transcript) {
       skipped++;
       console.log(`${logPrefix} SKIP (already extracted): ${filename}`);
       continue;
+    }
+    if (existing?.error) {
+      console.log(`${logPrefix} RETRY (previous error): ${filename}`);
     }
 
     const videoPath = path.join(CONFIG.VIDEOS_DIR, filename);

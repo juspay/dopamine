@@ -42,11 +42,15 @@ export async function runClassifierAgent(neurolink: NeuroLink): Promise<void> {
     const filename = path.basename(videoPath);
     const logPrefix = `[${i + 1}/${videoFiles.length}]`;
 
-    // Resume mode -- skip already classified
-    if (filename in classifications) {
+    // Resume mode -- skip if already classified with a valid category (no error)
+    const existing = classifications[filename];
+    if (existing && existing.category && !existing.error) {
       skipped++;
       console.log(`${logPrefix} SKIP (already classified): ${filename}`);
       continue;
+    }
+    if (existing && !existing.category) {
+      console.log(`${logPrefix} RETRY (previously failed/empty category): ${filename}`);
     }
 
     const pk = extractPkFromFilename(filename);

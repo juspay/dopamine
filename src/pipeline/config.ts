@@ -50,7 +50,8 @@ export const CONFIG = {
   MAX_RETRIES: 5,
   RETRY_BASE_DELAY_MS: 10_000,
 
-  // Threshold above which thumbnail is used instead of full video
-  // Set to 0 to always use thumbnails (avoids NeuroLink's frame extraction hitting image limits)
-  VIDEO_SIZE_THRESHOLD_BYTES: parseInt(process.env.VIDEO_SIZE_THRESHOLD ?? "0", 10),
+  // Threshold above which thumbnail is used instead of full video.
+  // NeuroLink v9.44.0+ handles video files correctly via Vertex AI Files API.
+  // Default: 50MB — covers all normal Instagram reels. Override via VIDEO_SIZE_THRESHOLD env var.
+  VIDEO_SIZE_THRESHOLD_BYTES: parseInt(process.env.VIDEO_SIZE_THRESHOLD ?? String(50 * 1024 * 1024), 10),
 } as const;

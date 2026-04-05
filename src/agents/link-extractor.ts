@@ -45,8 +45,9 @@ export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
     CONFIG.STATE.KNOWLEDGE_BASE, {}
   );
 
-  // Load existing links
-  const linksState = await loadState<Record<string, Links>>(
+  // Load existing links (may include error field from failed extractions)
+  type LinksWithError = Links & { error?: string };
+  const linksState = await loadState<Record<string, LinksWithError>>(
     CONFIG.STATE.LINKS_V2, {}
   );
 
@@ -62,11 +63,15 @@ export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
   for (const [i, [filename]] of kbVideos.entries()) {
     const logPrefix = `[${i + 1}/${kbVideos.length}]`;
 
-    // Resume mode -- skip if already extracted
-    if (filename in linksState) {
+    // Resume mode -- skip if already extracted successfully (no error field)
+    const existing = linksState[filename];
+    if (existing && !existing.error) {
       skipped++;
       console.log(`${logPrefix} SKIP (already extracted): ${filename}`);
       continue;
+    }
+    if (existing?.error) {
+      console.log(`${logPrefix} RETRY (previous error): ${filename}`);
     }
 
     const videoPath = path.join(CONFIG.VIDEOS_DIR, filename);
@@ -113,7 +118,7 @@ export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
       extracted++;
       console.log(`  -> ${result.value.links.length} links found`);
     } else {
-      linksState[filename] = { links: [] };
+      linksState[filename] = { links: [], error: result.error };
       errors++;
       console.error(`  -> ERROR: ${result.error?.slice(0, 100)}`);
     }

@@ -102,14 +102,15 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
 
     console.log(`\n[${i + 1}/${uniqueNames.size}] Resolving: ${link.name}`);
 
-    // First attempt: with websearchGrounding (built-in tool, active when disableTools not set)
+    // NOTE: gemini-3.1-flash-image-preview routes to image generation when disableTools is
+    // not set, causing every websearchGrounding attempt to fail. Use disableTools: true always.
     let resolved: string | null = null;
     const r1 = await exponentialBackoff(async () => {
       const response = await neurolink.generate({
         input: { text: prompt },
         provider: "vertex",
         model:    CONFIG.MODEL,
-        // No schema, no disableTools -- websearchGrounding is available
+        disableTools: true,
         maxTokens: 256,
         timeout: "30s",
       });
@@ -117,24 +118,7 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
       return match?.[0]?.replace(/\.$/, "") ?? null;
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
-    if (r1.success && r1.value) {
-      resolved = r1.value;
-    } else {
-      // Fallback: plain generation without tools (mirrors resolve_with_gemini_no_search)
-      const r2 = await exponentialBackoff(async () => {
-        const response = await neurolink.generate({
-          input: { text: prompt },
-          provider: "vertex",
-          model:    CONFIG.MODEL,
-          disableTools: true,
-          maxTokens: 256,
-          timeout: "30s",
-        });
-        const match = response.content.match(/https?:\/\/[^\s<>"')]+/);
-        return match?.[0]?.replace(/\.$/, "") ?? null;
-      }, 2, CONFIG.RETRY_BASE_DELAY_MS);
-      if (r2.success && r2.value) resolved = r2.value;
-    }
+    if (r1.success && r1.value) resolved = r1.value;
 
     if (resolved) {
       // Apply immediately to all entries sharing this name
