@@ -46,18 +46,87 @@ function tryFixPartialUrl(url: string | null): string | null {
   return null;
 }
 
+/**
+ * Garbage names that can never have a real URL — extraction artifacts from Gemini.
+ * Return true if the name should be skipped entirely (not sent to API).
+ */
+function isGarbageName(name: string): boolean {
+  const n = name.trim();
+  // HTML tags
+  if (/^<[a-z]+>$/i.test(n)) return true;
+  // Long base64/hash strings (image filenames etc.)
+  if (n.length > 60 && /^[A-Za-z0-9+/=_-]+(\.(jpg|png|gif|jpeg|webp))?$/i.test(n)) return true;
+  // Instagram "Profile Image" extracted as a link
+  if (/profile\s+image$/i.test(n)) return true;
+  // Bare hashtags / generic terms with no URL meaning
+  if (/^(githubprojects|KM\s+\d+|AQPY22)/.test(n)) return true;
+  return false;
+}
+
+/** Instagram username pattern: letters, digits, underscores, dots — no spaces. */
+const INSTAGRAM_HANDLE = /^@?([a-zA-Z0-9._]{1,30})$/;
+
+/**
+ * If the name is an Instagram handle (based on name pattern + description context),
+ * return the Instagram profile URL directly without an API call.
+ */
+function tryResolveInstagramHandle(name: string, description: string): string | null {
+  const n = name.trim();
+  const desc = (description ?? "").toLowerCase();
+
+  // Explicit @handle format
+  const atMatch = n.match(/^@([a-zA-Z0-9._]+)$/);
+  if (atMatch) return `https://www.instagram.com/${atMatch[1]}/`;
+
+  // Handle-shaped name (no spaces, fits pattern) + description mentions Instagram/social
+  const isSocialDesc = /instagram|social media|creator|handle|profile|account|username|personal brand/.test(desc);
+  if (isSocialDesc && INSTAGRAM_HANDLE.test(n)) {
+    return `https://www.instagram.com/${n}/`;
+  }
+
+  // ALL_CAPS or mixed-case handles like "_ASH_.KING" — normalize to lowercase and check
+  const lower = n.toLowerCase();
+  if (isSocialDesc && INSTAGRAM_HANDLE.test(lower)) {
+    return `https://www.instagram.com/${lower}/`;
+  }
+
+  return null;
+}
+
 export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> {
   const links = await loadState<Record<string, { links: LinkEntry[] }>>(
     CONFIG.STATE.LINKS_V2, {}
   );
 
-  // --- First pass: fix obvious partial URLs without API (mirrors resolve_links.py:try_fix_partial_url) ---
-  let fixedLocally = 0;
+  // --- First pass: fix obvious cases without API ---
+  let fixedLocally = 0, removedGarbage = 0;
   const needsApi: Array<{ fname: string; idx: number; link: LinkEntry }> = [];
 
   for (const [fname, entry] of Object.entries(links)) {
-    for (const [idx, link] of (entry.links ?? []).entries()) {
+    // Filter out garbage entries (bad Gemini extractions) — process remaining in-place
+    const cleaned = (entry.links ?? []).filter(link => {
+      if (isGarbageName(link.name)) {
+        removedGarbage++;
+        console.log(`Removed garbage: ${link.name}`);
+        return false;
+      }
+      return true;
+    });
+    links[fname].links = cleaned;
+
+    for (const [idx, link] of links[fname].links.entries()) {
       if (!needsResolution(link.url)) continue;
+
+      // Try Instagram handle resolution (no API needed)
+      const ig = tryResolveInstagramHandle(link.name, link.description);
+      if (ig) {
+        links[fname].links[idx].url = ig;
+        fixedLocally++;
+        console.log(`Instagram handle: ${link.name} -> ${ig}`);
+        continue;
+      }
+
+      // Try fixing partial URL
       const fixed = tryFixPartialUrl(link.url);
       if (fixed) {
         links[fname].links[idx].url = fixed;
@@ -76,7 +145,7 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
     if (!uniqueNames.has(key)) uniqueNames.set(key, link);
   }
 
-  console.log(`Fixed locally: ${fixedLocally}, Unique names for API: ${uniqueNames.size}`);
+  console.log(`Removed garbage: ${removedGarbage}, Fixed locally: ${fixedLocally}, Unique names for API: ${uniqueNames.size}`);
 
   // Build a reverse index: nameKey -> all (fname, idx) entries needing it
   const nameToEntries = new Map<string, Array<{ fname: string; idx: number }>>();
