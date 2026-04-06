@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "build:run": "npm run build && node dist/pipeline/runner.js",
     "pipeline": "node dist/pipeline/runner.js",
+    "dashboard": "node dist/agents/dashboard.js",
+    "merge-kb": "node dist/scripts/merge-knowledge-bases.js",
     "start": "node dist/server/webhook.js",
     "serve": "node dist/server/dashboard-server.js",
     "dev": "tsc --watch",
@@ -20,7 +23,7 @@
     }
   },
   "dependencies": {
-    "@juspay/neurolink": "^9.30.0",
+    "@juspay/neurolink": "^9.44.0",
     "dotenv": "^16.4.0",
     "execa": "^9.0.0",
     "express": "^4.19.0",
