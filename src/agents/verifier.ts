@@ -28,6 +28,51 @@ export interface VerificationEntry extends VerificationReport {
 }
 
 /**
+ * Compute the maximum allowable confidence score based on actual evidence.
+ * This prevents the model from giving high confidence when little or no testing ran.
+ */
+function computeMaxConfidence(
+  research: ResearchEntry | undefined,
+  implementation: ImplementationEntry | undefined,
+): number {
+  const implItems = implementation?.items ?? [];
+
+  // No implementation data at all — everything skipped
+  if (implItems.length === 0) return 3;
+
+  const allSkipped = implItems.every(
+    item => item.overall_status === "skipped" || item.overall_status === "failed"
+  );
+  if (allSkipped) return 3;
+
+  // Some items ran but none have actual verification_results (install_only)
+  const anyHasVerification = implItems.some(
+    item => item.verification_results && item.verification_results.length > 0
+  );
+  if (!anyHasVerification) return 5;
+
+  // Some items have verification results with at least one passing
+  const anyVerificationPassed = implItems.some(
+    item => item.verification_results?.some(vr => vr.exit_code === 0)
+  );
+
+  if (!anyVerificationPassed) return 5;
+
+  // Check if URL is live and install succeeded and verification passed
+  const researchItems = research?.items ?? [];
+  const anyUrlLive = researchItems.some(
+    r => r.url_status === "live" || r.url_status === "redirect"
+  );
+  const anyInstallSuccess = implItems.some(
+    item => item.install_result?.exit_code === 0
+  );
+
+  if (anyUrlLive && anyInstallSuccess && anyVerificationPassed) return 9;
+
+  return 7;
+}
+
+/**
  * Build a synthesis prompt for the verifier.
  */
 function buildVerificationPrompt(
@@ -95,6 +140,10 @@ function buildVerificationPrompt(
   parts.push(`   - notes: any important additional notes`);
   parts.push(`4. confidence: 0-10 how confident you are in this verification`);
   parts.push(`\nReturn ONLY valid JSON matching the schema. No markdown fences.`);
+
+  // Cap confidence based on actual evidence
+  const maxConf = computeMaxConfidence(research, implementation);
+  parts.push(`\n\nIMPORTANT: Based on the evidence above, the maximum confidence score is ${maxConf}/10. Do not exceed this ceiling.`);
 
   return parts.join("\n");
 }

@@ -38,7 +38,7 @@ export interface ImplementationItemResult {
   code_written: boolean;
   code_file: string;
   verification_results: CommandResult[];
-  overall_status: "success" | "partial_success" | "failed" | "skipped";
+  overall_status: "success" | "install_only" | "partial_success" | "failed" | "skipped";
   time_ms: number;
   error?: string;
 }
@@ -294,7 +294,8 @@ async function implementItem(
     else if (installOk || verifyOk) result.overall_status = "partial_success";
     else result.overall_status = "failed";
   } else if (hasInstall) {
-    result.overall_status = result.install_result!.exit_code === 0 ? "success" : "failed";
+    // "success" requires actual verification; install-only gets its own status
+    result.overall_status = result.install_result!.exit_code === 0 ? "install_only" : "failed";
   } else if (result.code_written) {
     result.overall_status = "partial_success"; // Code written but not verified
   } else {
