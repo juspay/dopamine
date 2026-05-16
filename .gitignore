@@ -22,4 +22,6 @@ node_modules_old
 # Debug artifacts
 dashboard-*.png
 videos/*.backup.*
+videos/*.bak
+videos/*.bak.*
 videos/smoke-test-*.json
