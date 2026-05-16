@@ -36,23 +36,29 @@ export interface AnalysisEntry extends Analysis {
   error?: string;
 }
 
-const ANALYSIS_PROMPT = `You are an expert technology analyst. Given a knowledge-base entry about a video, extract ALL actionable items that a developer could implement, install, or try.
+const ANALYSIS_PROMPT = `You are an expert technology analyst. Extract ALL actionable items from this video knowledge-base entry.
 
-For each actionable item, determine:
+**Extraction rules — be aggressive about extracting:**
+- Look at EVERY field: transcript, visual_description, key_takeaways, topics, links_and_resources. Often the transcript is short but visual_description names specific tools.
+- A tool/website mentioned by name (e.g. "Lordicon", "Figma", "Vertex AI", "BigQuery") IS an actionable item of type "tool_install" or "api_setup". Extract it even without an install command.
+- A technique or workflow described in steps (e.g. "create a sitemap and submit it") IS an actionable item of type "workflow" or "technique".
+- A GitHub repo or website URL IS an actionable item — extract it with the URL filled in.
+- Empty array [] is ONLY valid for genuinely non-actionable content (pure entertainment, pet videos, decor showcases with no tools mentioned). If ANY tool/technique is named in any field, extract it.
+
+For each actionable item:
 - type: "tool_install" | "code_snippet" | "api_setup" | "workflow" | "technique"
-- name: what to implement
-- description: clear step-by-step instructions for implementation
-- install_command: shell command if applicable (npm install X, pip install X, brew install X), otherwise empty string
-- code: any code to write/run, otherwise empty string
-- url: URL to find it, otherwise empty string
-- verification_steps: how to verify it works (list of steps)
+- name: tool/technique name
+- description: step-by-step implementation
+- install_command: shell command if applicable, else ""
+- code: code snippet if applicable, else ""
+- url: URL if applicable, else ""
+- verification_steps: list of steps to verify it works
 
 Also rate:
-- implementability_score: 0-10 (10 = can be implemented right now with a command)
+- implementability_score: 0-10 (10 = ready-to-run command, 5 = needs setup, 2 = conceptual technique)
 - usefulness_prediction: "highly_useful" | "useful" | "somewhat_useful" | "not_useful"
 
-Be thorough. Extract every tool, library, technique, and workflow mentioned.
-Return ONLY valid JSON matching the schema provided. No markdown fences.`;
+Return ONLY valid JSON matching the schema. No markdown fences.`;
 
 function buildContextPrompt(entry: KnowledgeEntry): string {
   const parts: string[] = [ANALYSIS_PROMPT, "\n\n--- VIDEO KNOWLEDGE BASE ENTRY ---\n"];
@@ -140,6 +146,9 @@ export async function runAnalyzerAgent(neurolink: NeuroLink): Promise<void> {
         schema:   AnalysisSchema,
         output:   { format: "json" },
         disableTools: true,  // REQUIRED: Gemini rejects tools + JSON schema together
+        temperature: 0.1,    // Lower temp -> more deterministic extraction. Default 0.7
+                             // was causing ~16% of entries to randomly return 0 items
+                             // even when the KB content clearly listed tools.
         maxTokens: 8192,
         timeout: "180s",
       });
