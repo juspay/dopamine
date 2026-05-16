@@ -55,12 +55,55 @@ const MAX_REDIRECTS = parseInt(process.env.MAX_REDIRECTS ?? "10", 10);
  */
 function isHallucinated(text: string): boolean {
   const hallucinationPatterns = [
+    // Model "thinking out loud" instead of answering
     "I'm currently focused on",
     "I'm gathering information",
     "I'm adapting my approach",
     "I'm utilizing external search",
     "I'm currently",
+    "I am now dissecting",
+    "I am now formulating",
+    "I am now refining",
+    "I am now focusing",
+    "I am now",
+    "Examining the Query",
+    "Examining User Intent",
+    "Refining Search Parameters",
+    "Assessing Current Information",
+    "I'm focused on grasping",
+    "I'm breaking down",
+    "I'm focusing on",
+    "I'm focused on",
+    "grasping the user's",
+    "I'll prioritize",
     "tool malfunction",
+    "I'm digging into",
+    "I'm digging",
+    "I am pinpointed",
+    "I am starting with",
+    "I'm looking at how",
+    "I'm looking at",
+    "I'm starting with",
+    "Delving into Specifics",
+    "Delving into",
+    "Initial search",
+    "Initial searches",
+    "I am unable to browse",
+    "I am unable to perform",
+    "I am unable to verify",
+    "I cannot browse",
+    "due to a technical limitation",
+    "internal configuration issue with",
+    "credentials are not configured",
+    // NeuroLink/Vertex error messages that should never appear in research output
+    "Check Google Cloud credentials",
+    "Verify project ID and location",
+    "Ensure Vertex AI API is enabled",
+    "Vertex AI Provider Error",
+    "Image generation completed but model returned text",
+    // Image-preview model leaking its image-generation behavior
+    "Generated image using",
+    "Generated image with",
   ];
   return hallucinationPatterns.some(pattern => text.includes(pattern));
 }
@@ -314,9 +357,10 @@ async function processBatch(
     items.map(item => checkPackageRegistry(item.url, item.name, item.install_command ?? "").catch(() => ""))
   );
 
-  // 3. Do web research via NeuroLink (no schema — free text)
-  // disableTools: true is required — without it, gemini-3.1-flash-image-preview routes to
-  // image generation and produces hallucinated "I'm currently gathering..." process descriptions.
+  // 3. Do web research via NeuroLink with Google Search grounding.
+  // output:{format:"text"} forces routing through the standard text path (instead of
+  // executeImageGeneration) on dual-mode image-preview models. enabledToolNames lets
+  // the model actually call websearchGrounding to fetch live data.
   let webResearchText = "";
   const researchResult = await exponentialBackoff(async () => {
     const response = await neurolink.generate({
@@ -325,10 +369,10 @@ async function processBatch(
       },
       provider: "vertex",
       model:    CONFIG.MODEL,
-      // No schema — free text output
-      disableTools: true,
+      output:   { format: "text" },
+      enabledToolNames: ["websearchGrounding"],
       maxTokens: 8192,
-      timeout: "120s",
+      timeout: "180s",
     });
     return response.content;
   }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
@@ -341,7 +385,10 @@ async function processBatch(
       webResearchText = "";
     }
   } else {
-    webResearchText = `Research failed: ${researchResult.error}`;
+    // Don't save error messages into the research field — they pollute downstream
+    // verification. Leave empty so the entry is treated as having no research data.
+    console.warn(`    Research failed for ${filename}: ${researchResult.error}`);
+    webResearchText = "";
   }
 
   // 4. Parse research text per item (split by numbered sections)

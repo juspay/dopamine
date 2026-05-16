@@ -6,7 +6,7 @@ import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
-import { getVideoFiles, extractPkFromFilename, getThumbnailPath } from "../utils/video.js";
+import { getVideoFiles, extractPkFromFilename, getThumbnailPath, extractVideoFrames } from "../utils/video.js";
 import type { MetadataEntry } from "../types/index.js";
 
 interface ClassificationEntry extends Classification {
@@ -58,12 +58,26 @@ export async function runClassifierAgent(neurolink: NeuroLink): Promise<void> {
 
     const { size } = await fs.stat(videoPath);
     const useThumbnail = size > CONFIG.VIDEO_SIZE_THRESHOLD_BYTES;
-    const inputFile = useThumbnail
-      ? (await getThumbnailPath(filename) ?? videoPath)
-      : videoPath;
 
+    // Extract ≤10 evenly-spaced frames via ffmpeg. This bypasses NeuroLink's
+    // VideoProcessor (which has no frame limit) and stays under Vertex's 16-image cap.
+    // The AI SDK doesn't support video/mp4 inline, so frame extraction is required.
+    let inputImages: Buffer[] | null = null;
     if (useThumbnail) {
       console.log(`${logPrefix} Large file (${(size / 1024 / 1024).toFixed(1)}MB), using thumbnail`);
+    } else {
+      inputImages = await extractVideoFrames(videoPath, 10);
+      if (inputImages.length === 0) {
+        console.log(`${logPrefix} Frame extraction failed, using thumbnail`);
+      } else {
+        console.log(`${logPrefix} Extracted ${inputImages.length} frames (${(size / 1024 / 1024).toFixed(1)}MB)`);
+      }
+    }
+
+    // Fall back to thumbnail if large or ffmpeg failed
+    let thumbnailInput: string | null = null;
+    if (!inputImages || inputImages.length === 0) {
+      thumbnailInput = await getThumbnailPath(filename) ?? videoPath;
     }
 
     const username  = meta?.username ?? "unknown";
@@ -75,10 +89,9 @@ export async function runClassifierAgent(neurolink: NeuroLink): Promise<void> {
 
     const result = await exponentialBackoff(async () => {
       const response = await neurolink.generate({
-        input: {
-          text: CLASSIFY_PROMPT(username, caption, hashtags),
-          files: [path.resolve(inputFile)],  // Must be absolute path
-        },
+        input: inputImages
+          ? { text: CLASSIFY_PROMPT(username, caption, hashtags), images: inputImages }
+          : { text: CLASSIFY_PROMPT(username, caption, hashtags), images: [thumbnailInput!] },
         provider: "vertex",
         model:    CONFIG.MODEL,
         schema:   ClassificationSchema,

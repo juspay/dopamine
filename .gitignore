@@ -18,3 +18,8 @@ logs/
 service-account*.json
 credentials*.json
 node_modules_old
+
+# Debug artifacts
+dashboard-*.png
+videos/*.backup.*
+videos/smoke-test-*.json

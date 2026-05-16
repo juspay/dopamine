@@ -16,6 +16,7 @@ import { VerificationReportSchema, type VerificationReport } from "../schemas/ve
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
+import { safeJsonParse } from "../utils/json-repair.js";
 import type { AnalysisEntry } from "./analyzer.js";
 import type { ResearchEntry } from "./researcher.js";
 import type { ImplementationEntry } from "./implementer.js";
@@ -29,47 +30,68 @@ export interface VerificationEntry extends VerificationReport {
 
 /**
  * Compute the maximum allowable confidence score based on actual evidence.
- * This prevents the model from giving high confidence when little or no testing ran.
+ *
+ * The old logic capped at 3 whenever all implementation items were "skipped",
+ * but ~70% of actionable items are workflow/technique type that CAN'T be
+ * npm-installed. This made 69% of all videos "not_verified" regardless of
+ * whether their URLs are live and research confirmed the content.
+ *
+ * New logic separates items into "testable" (tool_install, code_snippet,
+ * api_setup) and "knowledge-only" (workflow, technique), and scores based
+ * on what's actually verifiable.
  */
 function computeMaxConfidence(
+  analysis: AnalysisEntry | undefined,
   research: ResearchEntry | undefined,
   implementation: ImplementationEntry | undefined,
 ): number {
-  const implItems = implementation?.items ?? [];
-
-  // No implementation data at all — everything skipped
-  if (implItems.length === 0) return 3;
-
-  const allSkipped = implItems.every(
-    item => item.overall_status === "skipped" || item.overall_status === "failed"
-  );
-  if (allSkipped) return 3;
-
-  // Some items ran but none have actual verification_results (install_only)
-  const anyHasVerification = implItems.some(
-    item => item.verification_results && item.verification_results.length > 0
-  );
-  if (!anyHasVerification) return 5;
-
-  // Some items have verification results with at least one passing
-  const anyVerificationPassed = implItems.some(
-    item => item.verification_results?.some(vr => vr.exit_code === 0)
-  );
-
-  if (!anyVerificationPassed) return 5;
-
-  // Check if URL is live and install succeeded and verification passed
   const researchItems = research?.items ?? [];
-  const anyUrlLive = researchItems.some(
+  const implItems = implementation?.items ?? [];
+  const actionableItems = analysis?.actionable_items ?? [];
+
+  // Categorize items by testability
+  const testableTypes = new Set(["tool_install", "code_snippet", "api_setup"]);
+  const testableItems = actionableItems.filter(i => testableTypes.has(i.type));
+  const knowledgeItems = actionableItems.filter(i => !testableTypes.has(i.type));
+
+  // Research signals: live URLs and verified claims
+  const liveUrls = researchItems.filter(
     r => r.url_status === "live" || r.url_status === "redirect"
-  );
-  const anyInstallSuccess = implItems.some(
-    item => item.install_result?.exit_code === 0
-  );
+  ).length;
+  const deadUrls = researchItems.filter(r => r.url_status === "dead").length;
+  const urlsChecked = researchItems.filter(r => r.url_status !== "no_url").length;
+  const verifiedClaims = researchItems.filter(
+    r => r.claim_verification === "verified" || r.claim_verification === "partially_verified"
+  ).length;
 
-  if (anyUrlLive && anyInstallSuccess && anyVerificationPassed) return 9;
+  // Implementation signals
+  const installSuccesses = implItems.filter(
+    i => i.install_result?.exit_code === 0
+  ).length;
+  const verificationPassed = implItems.filter(
+    i => i.verification_results?.some(vr => vr.exit_code === 0)
+  ).length;
 
-  return 7;
+  // If most URLs are dead → likely outdated content, cap low
+  if (urlsChecked > 0 && deadUrls > urlsChecked * 0.6) return 3;
+
+  // ALL items are knowledge-only (no installable tools)
+  // Score based on research quality, not implementation
+  if (testableItems.length === 0) {
+    if (liveUrls > 0 && verifiedClaims > 0) return 8;
+    if (liveUrls > 0) return 7;
+    if (verifiedClaims > 0) return 6;
+    return 5; // knowledge exists but can't verify beyond research
+  }
+
+  // Has testable items — use implementation results
+  if (verificationPassed > 0 && liveUrls > 0 && installSuccesses > 0) return 9;
+  if (installSuccesses > 0 && liveUrls > 0) return 7;
+  if (installSuccesses > 0) return 6;
+  if (liveUrls > 0) return 5;
+
+  // Testable items but nothing worked
+  return 3;
 }
 
 /**
@@ -130,7 +152,12 @@ function buildVerificationPrompt(
 
   parts.push(`\n--- INSTRUCTIONS ---`);
   parts.push(`Based on ALL the evidence above, produce a verification report:`);
-  parts.push(`1. overall_score: "verified_useful" (most items work and are useful), "partially_verified" (some work), "not_verified" (cannot confirm), "outdated" (tools are deprecated/dead)`);
+  parts.push(`1. overall_score — choose the BEST fit:`);
+  parts.push(`   "verified_useful": URLs are live, tools/resources work or research confirms the content is valid and current`);
+  parts.push(`   "partially_verified": some items verified, others couldn't be tested but nothing is clearly wrong`);
+  parts.push(`   "not_verified": URLs are dead, tools broken, claims refuted, or content is clearly wrong`);
+  parts.push(`   "outdated": tools/services have been deprecated, shut down, or superseded`);
+  parts.push(`   NOTE: Videos with workflow/technique items that can't be mechanically tested should still be "verified_useful" or "partially_verified" if the URLs are live and research doesn't refute the content. "not_verified" means the content is WRONG or DEAD, not just untestable.`);
   parts.push(`2. summary: 1-3 sentence recommendation for someone considering this video's content`);
   parts.push(`3. item_results: one entry per actionable item with:`);
   parts.push(`   - item_name: name of the item`);
@@ -142,7 +169,7 @@ function buildVerificationPrompt(
   parts.push(`\nReturn ONLY valid JSON matching the schema. No markdown fences.`);
 
   // Cap confidence based on actual evidence
-  const maxConf = computeMaxConfidence(research, implementation);
+  const maxConf = computeMaxConfidence(analysis, research, implementation);
   parts.push(`\n\nIMPORTANT: Based on the evidence above, the maximum confidence score is ${maxConf}/10. Do not exceed this ceiling.`);
 
   return parts.join("\n");
@@ -203,7 +230,7 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
         maxTokens: 4096,
         timeout: "120s",
       });
-      return VerificationReportSchema.parse(JSON.parse(response.content));
+      return VerificationReportSchema.parse(safeJsonParse(response.content));
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
     if (result.success) {

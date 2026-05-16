@@ -98,26 +98,67 @@ export function repairJson(raw: string): string {
 }
 
 /**
+ * Extract just the outermost JSON object or array from a string.
+ * Handles responses where the model appends extra text after the JSON.
+ */
+function extractJsonContent(text: string): string {
+  const startObj = text.indexOf("{");
+  const startArr = text.indexOf("[");
+  let start = -1;
+  let endChar: string;
+
+  if (startObj === -1 && startArr === -1) return text;
+  if (startObj === -1) { start = startArr; endChar = "]"; }
+  else if (startArr === -1) { start = startObj; endChar = "}"; }
+  else if (startObj < startArr) { start = startObj; endChar = "}"; }
+  else { start = startArr; endChar = "]"; }
+
+  const openChar = text[start];
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' && (i === 0 || text[i - 1] !== "\\")) {
+      inString = !inString;
+    } else if (!inString) {
+      if (ch === openChar) depth++;
+      else if (ch === endChar) {
+        depth--;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+    }
+  }
+  return text.slice(start);
+}
+
+/**
  * Convenience: parse JSON with automatic repair.
  *
- * 1. Try `JSON.parse(raw)` directly (fast path — no repair needed).
- * 2. If that fails, apply `repairJson` and retry.
- * 3. If still failing, throw with both the original error and the repaired text
- *    for debugging.
+ * 1. Try `JSON.parse(raw)` directly (fast path).
+ * 2. Extract just the JSON object/array (handles trailing non-JSON text).
+ * 3. Apply `repairJson` and retry.
+ * 4. Throw if still failing.
  */
 export function safeJsonParse<T = unknown>(raw: string): T {
   // Fast path
   try {
     return JSON.parse(raw) as T;
   } catch {
+    // Fall through to extraction + repair
+  }
+
+  // Extract just the JSON object/array (model may append non-JSON text after)
+  const extracted = extractJsonContent(raw);
+  try {
+    return JSON.parse(extracted) as T;
+  } catch {
     // Fall through to repair
   }
 
-  const repaired = repairJson(raw);
+  const repaired = repairJson(extracted);
   try {
     return JSON.parse(repaired) as T;
   } catch (err) {
-    // Log the raw response for debugging before re-throwing
     console.error("[json-repair] Failed to parse even after repair.");
     console.error("[json-repair] Raw response (first 500 chars):", raw.slice(0, 500));
     console.error("[json-repair] Repaired text (first 500 chars):", repaired.slice(0, 500));

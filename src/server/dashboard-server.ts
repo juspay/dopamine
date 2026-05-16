@@ -1,5 +1,6 @@
 import express from "express";
 import path from "node:path";
+import fs from "node:fs/promises";
 
 const app = express();
 
@@ -30,8 +31,9 @@ app.use((req, res, next) => {
     return;
   }
 
-  // Only allow /dashboard/ and /videos/ paths
+  // Only allow /, /dashboard/, and /videos/ paths
   if (
+    lowerPath !== "/" &&
     !lowerPath.startsWith("/dashboard") &&
     !lowerPath.startsWith("/videos")
   ) {
@@ -40,6 +42,19 @@ app.use((req, res, next) => {
   }
 
   next();
+});
+
+// ---------------------------------------------------------------------------
+// Serve the overview page at root
+// ---------------------------------------------------------------------------
+app.get("/", async (_req, res) => {
+  try {
+    const html = await fs.readFile(path.resolve("docs/overview.html"), "utf-8");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  } catch {
+    res.redirect("/dashboard/");
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -57,7 +72,8 @@ app.use(
 );
 
 const PORT = parseInt(process.env.DASHBOARD_PORT ?? "3001", 10);
-app.listen(PORT, () => {
+const HOST = process.env.DASHBOARD_HOST ?? "127.0.0.1";
+app.listen(PORT, HOST, () => {
   console.log(`Dashboard: http://localhost:${PORT}/dashboard/`);
   console.log(`Thumbnails: http://localhost:${PORT}/videos/thumbnails/`);
 });

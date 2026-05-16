@@ -13,6 +13,7 @@ import fs from "node:fs/promises";
 import { AnalysisSchema, type Analysis } from "../schemas/analysis.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { safeJsonParse } from "../utils/json-repair.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { getThumbnailPath } from "../utils/video.js";
 
@@ -142,7 +143,7 @@ export async function runAnalyzerAgent(neurolink: NeuroLink): Promise<void> {
         maxTokens: 8192,
         timeout: "180s",
       });
-      return AnalysisSchema.parse(JSON.parse(response.content));
+      return AnalysisSchema.parse(safeJsonParse(response.content));
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
     if (result.success) {

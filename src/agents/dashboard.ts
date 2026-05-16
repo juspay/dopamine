@@ -66,6 +66,7 @@ interface VerifDashboardEntry {
   item_results: VerificationItemResult[];
   implementability_score: number;
   usefulness_prediction: string;
+  actionable_items?: ActionableItemForUi[];
 }
 
 interface KnowledgeEntry {
@@ -78,9 +79,20 @@ interface KnowledgeEntry {
   links_and_resources?: Array<{ url?: string; description?: string; timestamp?: string }>;
   key_takeaways?: string[];
   topics?: string[];
+  low_content?: boolean;
 }
 
 /** Shape embedded in the dashboard HTML as KNOWLEDGE array entries. */
+interface ActionableItemForUi {
+  item_name: string;
+  item_type?: string;
+  description?: string;
+  url?: string;
+  install_command?: string;
+  code?: string;
+  verification_steps?: string;
+}
+
 interface KbDashboardEntry {
   filename: string;
   basename: string;
@@ -99,6 +111,15 @@ interface KbDashboardEntry {
   full_name: string;
   taken_at: string;
   like_count: number;
+  low_content: boolean;
+  // Verification metadata
+  verification_status?: string;
+  verification_score?: string;
+  verification_summary?: string;
+  actionable_items_count?: number;
+  implementability_score?: number;
+  // Actionable items from analysis stage
+  actionable_items?: ActionableItemForUi[];
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +170,14 @@ export async function runDashboardAgent(): Promise<void> {
   // Build a Map for O(1) catalog lookups instead of O(n) find() per KB entry
   const catalogByFilename = new Map(catalog.map((c) => [c.filename, c]));
 
+  // Pre-load verifications + analysis to enrich KB entries
+  const verificationsForKb = await loadState<Record<string, VerificationEntry>>(
+    CONFIG.STATE.VERIFICATIONS, {}
+  );
+  const analysisForKb = await loadState<Record<string, AnalysisEntry>>(
+    CONFIG.STATE.ANALYSIS, {}
+  );
+
   // Build knowledge base entries enriched with catalog metadata
   const kbEntries: KbDashboardEntry[] = [];
 
@@ -185,6 +214,26 @@ export async function runDashboardAgent(): Promise<void> {
     let links = kbData.links_and_resources ?? [];
     if (!Array.isArray(links)) links = [];
 
+    const verEntry = verificationsForKb[filename];
+    const anEntry = analysisForKb[filename];
+    const actionableForUi: ActionableItemForUi[] | undefined = anEntry?.actionable_items
+      ? (anEntry.actionable_items as Array<Record<string, unknown>>).map((a) => {
+          const vs = a.verification_steps;
+          const verificationStepsStr = Array.isArray(vs)
+            ? vs.map(String).filter(Boolean).join("\n")
+            : (typeof vs === "string" ? vs : "");
+          return {
+            item_name: String(a.name ?? a.item_name ?? ""),
+            item_type: (a.type ?? a.item_type) as string | undefined,
+            description: a.description as string | undefined,
+            url: a.url as string | undefined,
+            install_command: a.install_command as string | undefined,
+            code: a.code as string | undefined,
+            verification_steps: verificationStepsStr || undefined,
+          };
+        }).filter((a) => a.item_name)
+      : undefined;
+
     const entry: KbDashboardEntry = {
       filename,
       basename: filename.includes(".")
@@ -193,7 +242,7 @@ export async function runDashboardAgent(): Promise<void> {
       category: kbData.category ?? "Unknown",
       subcategory: kbData.subcategory ?? "",
       username:
-        kbData.username ?? catEntry?.instagram_user ?? "",
+        kbData.username || catEntry?.instagram_user || "",
       transcript: transcript as string,
       visual_description: visDesc,
       links_and_resources: links,
@@ -206,6 +255,13 @@ export async function runDashboardAgent(): Promise<void> {
       full_name: "",
       taken_at: catEntry?.taken_at ?? "",
       like_count: catEntry?.like_count ?? 0,
+      low_content: kbData.low_content === true,
+      verification_status: verEntry?.overall_score,
+      verification_score: verEntry?.overall_score,
+      verification_summary: verEntry?.summary,
+      actionable_items_count: anEntry?.actionable_items?.length ?? 0,
+      implementability_score: anEntry?.implementability_score,
+      actionable_items: actionableForUi,
     };
     kbEntries.push(entry);
   }
@@ -217,13 +273,9 @@ export async function runDashboardAgent(): Promise<void> {
   const kbCategories = [...new Set(kbEntries.map((e) => e.category))].sort();
   console.log(`KB categories: ${kbCategories}`);
 
-  // Load verification + analysis data
-  const verifications = await loadState<Record<string, VerificationEntry>>(
-    CONFIG.STATE.VERIFICATIONS, {}
-  );
-  const analysis = await loadState<Record<string, AnalysisEntry>>(
-    CONFIG.STATE.ANALYSIS, {}
-  );
+  // Reuse already-loaded verifications + analysis
+  const verifications = verificationsForKb;
+  const analysis = analysisForKb;
   console.log(`Verifications: ${Object.keys(verifications).length}, Analysis: ${Object.keys(analysis).length}`);
 
   // Build combined verification dashboard entries
@@ -232,6 +284,23 @@ export async function runDashboardAgent(): Promise<void> {
     if (ver.error) continue;
     const an = analysis[filename];
     const catEntry = catalogByFilename.get(filename);
+    const actionableForUi: ActionableItemForUi[] | undefined = an?.actionable_items
+      ? (an.actionable_items as Array<Record<string, unknown>>).map((a) => {
+          const vs = a.verification_steps;
+          const verificationStepsStr = Array.isArray(vs)
+            ? vs.map(String).filter(Boolean).join("\n")
+            : (typeof vs === "string" ? vs : "");
+          return {
+            item_name: String(a.name ?? a.item_name ?? ""),
+            item_type: (a.type ?? a.item_type) as string | undefined,
+            description: a.description as string | undefined,
+            url: a.url as string | undefined,
+            install_command: a.install_command as string | undefined,
+            code: a.code as string | undefined,
+            verification_steps: verificationStepsStr || undefined,
+          };
+        }).filter((a) => a.item_name)
+      : undefined;
     verifEntries.push({
       filename,
       basename: filename.includes(".") ? filename.slice(0, filename.lastIndexOf(".")) : filename,
@@ -244,6 +313,7 @@ export async function runDashboardAgent(): Promise<void> {
       item_results: ver.item_results ?? [],
       implementability_score: an?.implementability_score ?? 0,
       usefulness_prediction: an?.usefulness_prediction ?? "unknown",
+      actionable_items: actionableForUi,
     });
   }
   // Default sort: confidence descending
@@ -288,7 +358,7 @@ function buildHtml(catalogJsonStr: string, kbJson: string, verifJson: string): s
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Video Dashboard</title>
+<title>Dopamine — Dashboard</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #0f0f13; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
@@ -313,22 +383,24 @@ body { background: #0f0f13; color: #e0e0e0; font-family: -apple-system, BlinkMac
 .search-box { flex: 1; min-width: 200px; padding: 10px 16px; border-radius: 8px; border: 1px solid #2a2a3a; background: #1a1a24; color: #e0e0e0; font-size: 0.95em; outline: none; transition: border-color 0.2s; }
 .search-box:focus { border-color: #7c6aef; }
 .sort-select { padding: 10px 16px; border-radius: 8px; border: 1px solid #2a2a3a; background: #1a1a24; color: #e0e0e0; font-size: 0.95em; cursor: pointer; outline: none; }
-.category-bar { display: flex; gap: 8px; flex-wrap: wrap; }
-.cat-pill { padding: 6px 14px; border-radius: 20px; font-size: 0.8em; cursor: pointer; border: 1px solid transparent; transition: all 0.2s; user-select: none; opacity: 0.6; }
+.category-bar { display: flex; gap: 6px; flex-wrap: wrap; max-height: 80px; overflow-y: auto; padding: 2px 0; }
+.cat-pill { padding: 5px 12px; border-radius: 20px; font-size: 0.75em; cursor: pointer; border: 1px solid transparent; transition: all 0.2s; user-select: none; opacity: 0.6; white-space: nowrap; }
 .cat-pill:hover { opacity: 0.85; }
 .cat-pill.active { opacity: 1; border-color: #fff3; box-shadow: 0 0 8px #0004; }
 .cat-pill .count { margin-left: 4px; opacity: 0.7; }
 
 /* Grid */
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; padding: 24px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; padding: 24px; max-width: 1800px; margin: 0 auto; }
 @media (max-width: 640px) { .grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; } }
 
 /* Card */
 .card { background: #1a1a24; border-radius: 12px; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; cursor: pointer; }
 .card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px #0006; }
-.card.expanded { grid-column: 1 / -1; max-width: 800px; }
-.thumb-wrap { position: relative; width: 100%; padding-top: 56.25%; background: #111; overflow: hidden; }
-.thumb-wrap img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+.card.expanded { grid-column: 1 / -1; max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 0; }
+@media (max-width: 900px) { .card.expanded { grid-template-columns: 1fr; } }
+.thumb-wrap { position: relative; width: 100%; padding-top: 56.25%; background: linear-gradient(135deg, #1a1a28 0%, #14141e 100%); overflow: hidden; }
+.thumb-wrap::before { content: "▶"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #2a2a3a; font-size: 2.5em; pointer-events: none; }
+.thumb-wrap img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
 .thumb-wrap .duration { position: absolute; bottom: 8px; right: 8px; background: #000b; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 600; }
 .thumb-wrap .cat-badge { position: absolute; top: 8px; left: 8px; padding: 3px 10px; border-radius: 6px; font-size: 0.7em; font-weight: 600; }
 .card-body { padding: 12px 16px; }
@@ -343,7 +415,22 @@ body { background: #0f0f13; color: #e0e0e0; font-family: -apple-system, BlinkMac
 .video-container { display: none; padding: 0; }
 .card.expanded .video-container { display: block; }
 .card.expanded .thumb-wrap { display: none; }
-.video-container video { width: 100%; max-height: 70vh; background: #000; }
+.video-container video { width: 100%; max-height: 60vh; background: #000; display: block; }
+.card.expanded .card-body { max-height: 60vh; overflow-y: auto; padding: 20px 24px; }
+.card.expanded .card-body::-webkit-scrollbar { width: 8px; }
+.card.expanded .card-body::-webkit-scrollbar-track { background: transparent; }
+.card.expanded .card-body::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
+.card.expanded .card-body .username { font-size: 1.1em; margin-bottom: 8px; }
+.card.expanded .card-body .desc { font-size: 0.92em; line-height: 1.55; color: #b8b8c4; margin-bottom: 16px; }
+.card.expanded .card-meta { font-size: 0.85em; padding-top: 12px; border-top: 1px solid #2a2a3a; }
+
+/* Expanded card affordances -- text is selectable; explicit close button */
+.card.expanded .card-body { user-select: text; -webkit-user-select: text; cursor: text; }
+.card.expanded .card-body .desc, .card.expanded .card-body .username { cursor: text; }
+.card-close { display: none; position: absolute; top: 10px; right: 10px; z-index: 5; background: #2a2a3a; color: #ddd; border: 1px solid #3a3a4a; border-radius: 50%; width: 32px; height: 32px; font-size: 1em; line-height: 30px; text-align: center; cursor: pointer; padding: 0; transition: background 0.2s; }
+.card-close:hover { background: #7c6aef; color: #fff; }
+.card.expanded .card-close { display: block; }
+.card.expanded { position: relative; }
 
 /* No results */
 .no-results { text-align: center; padding: 60px 20px; color: #555; font-size: 1.1em; }
@@ -358,11 +445,16 @@ body { background: #0f0f13; color: #e0e0e0; font-family: -apple-system, BlinkMac
 .kb-search-box:focus { border-color: #7c6aef; }
 .kb-search-hint { font-size: 0.75em; color: #555; margin-bottom: 12px; }
 
-.kb-section-toggle { display: flex; gap: 8px; margin-bottom: 12px; }
+.kb-section-toggle { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
 .kb-section-btn { padding: 8px 20px; border-radius: 8px; font-size: 0.85em; font-weight: 600; cursor: pointer; border: 1px solid #2a2a3a; background: #1a1a24; color: #888; transition: all 0.2s; }
 .kb-section-btn.active { background: #7c6aef; color: #fff; border-color: #7c6aef; }
+.kb-sort-select { margin-left: auto; padding: 8px 14px; border-radius: 8px; border: 1px solid #2a2a3a; background: #1a1a24; color: #e0e0e0; font-size: 0.85em; cursor: pointer; outline: none; }
+.kb-entry-info .date { color: #777; font-size: 0.78em; margin-left: 6px; }
+.low-content-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px; font-size: 0.65em; font-weight: 700; letter-spacing: 0.5px; background: #3a2a1a; color: #c97b2a; border: 1px solid #5a3d20; }
+.kb-hide-low-content { display: flex; align-items: center; gap: 6px; font-size: 0.8em; color: #888; cursor: pointer; user-select: none; }
+.kb-hide-low-content input { cursor: pointer; }
 
-.kb-list { padding: 16px 24px; }
+.kb-list { padding: 16px 24px; max-width: 1200px; margin: 0 auto; }
 .kb-entry { background: #1a1a24; border-radius: 12px; margin-bottom: 16px; overflow: hidden; animation: fadeIn 0.3s ease; }
 .kb-entry-header { display: flex; gap: 16px; padding: 16px; cursor: pointer; align-items: center; }
 .kb-entry-header:hover { background: #1e1e2a; }
@@ -391,6 +483,21 @@ body { background: #0f0f13; color: #e0e0e0; font-family: -apple-system, BlinkMac
 .kb-takeaways { list-style: none; padding: 0; }
 .kb-takeaways li { padding: 6px 0; padding-left: 20px; position: relative; }
 .kb-takeaways li::before { content: "\\2022"; color: #7c6aef; font-size: 1.2em; position: absolute; left: 4px; top: 5px; }
+
+/* Actionable items */
+.actionable-item { background: #14141e; border-left: 3px solid #7c6aef; padding: 10px 14px; margin-bottom: 10px; border-radius: 4px; }
+.actionable-item .ai-name { font-weight: 600; color: #e0e0e8; margin-bottom: 4px; font-size: 0.95em; }
+.actionable-item .ai-type { font-size: 0.7em; padding: 2px 8px; background: #2a2a3a; border-radius: 4px; color: #a8a8b8; margin-left: 6px; font-weight: 500; }
+.actionable-item .ai-desc { font-size: 0.88em; color: #b0b0bc; line-height: 1.5; margin-bottom: 6px; }
+.actionable-item .ai-url { font-size: 0.85em; margin-bottom: 8px; word-break: break-all; }
+.actionable-item .ai-url a { color: #9d8ff5; }
+.actionable-item .ai-label { font-size: 0.72em; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-top: 8px; margin-bottom: 4px; font-weight: 600; }
+.actionable-item .ai-cmd, .actionable-item .ai-code { background: #0a0a12; padding: 8px 12px; border-radius: 4px; font-family: 'SF Mono', 'Fira Code', Consolas, monospace; font-size: 0.85em; color: #c8c8d4; overflow-x: auto; white-space: pre; line-height: 1.5; }
+.actionable-item .ai-cmd { color: #4ade80; }
+.actionable-item .ai-verify { font-size: 0.88em; color: #b8b8c4; line-height: 1.5; }
+.action-count { background: #2a2a3a; color: #b8a4ff; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 600; margin-left: 8px; }
+.verif-summary-text { color: #c8c8d4; line-height: 1.6; padding: 4px 0; font-size: 0.92em; }
+
 
 /* Links table */
 .kb-links-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
@@ -431,10 +538,11 @@ mark { background: #7c6aef44; color: #e0e0e0; padding: 1px 2px; border-radius: 2
 .verif-search-box { flex: 1; min-width: 200px; padding: 10px 16px; border-radius: 8px; border: 1px solid #2a2a3a; background: #1a1a24; color: #e0e0e0; font-size: 0.95em; outline: none; transition: border-color 0.2s; }
 .verif-search-box:focus { border-color: #7c6aef; }
 
-.verif-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; padding: 24px; }
+.verif-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; padding: 24px; max-width: 1800px; margin: 0 auto; }
 @media (max-width: 640px) { .verif-grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; } }
 
 .verif-card { background: #1a1a24; border-radius: 12px; overflow: hidden; border-left: 4px solid #555; transition: transform 0.2s, box-shadow 0.2s; animation: fadeIn 0.3s ease; }
+.verif-card.open { grid-column: 1 / -1; max-width: 1400px; margin: 0 auto; }
 .verif-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px #0005; }
 .verif-card.status-verified_useful { border-left-color: #4CAF50; }
 .verif-card.status-partially_verified { border-left-color: #FFC107; }
@@ -445,8 +553,8 @@ mark { background: #7c6aef44; color: #e0e0e0; padding: 1px 2px; border-radius: 2
 .verif-card-header:hover { background: #1e1e2a; }
 .verif-card-thumb { width: 100px; height: 56px; border-radius: 6px; object-fit: cover; background: #111; flex-shrink: 0; }
 .verif-card-info { flex: 1; min-width: 0; }
-.verif-card-info .username { font-weight: 600; font-size: 0.9em; margin-bottom: 2px; }
-.verif-card-info .category-line { font-size: 0.78em; color: #888; margin-bottom: 4px; }
+.verif-card-info .username { font-weight: 600; font-size: 1em; margin-bottom: 4px; color: #e0e0e0; }
+.verif-card-info .category-line { font-size: 0.85em; color: #aaa; margin-bottom: 6px; }
 .verif-card-info .verif-badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
 .verif-badge { padding: 2px 10px; border-radius: 10px; font-size: 0.7em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -455,20 +563,23 @@ mark { background: #7c6aef44; color: #e0e0e0; padding: 1px 2px; border-radius: 2
 .verif-badge.not_verified { background: #F4433622; color: #F44336; }
 .verif-badge.outdated { background: #9E9E9E22; color: #9E9E9E; }
 
-.confidence-badge { font-size: 0.72em; color: #aaa; font-weight: 600; }
+.confidence-badge { font-size: 0.82em; color: #d8d8e8; font-weight: 600; background: #2a2a3a; padding: 2px 8px; border-radius: 6px; }
 
 .verif-card-toggle { color: #7c6aef; font-size: 1.1em; padding: 0 8px; flex-shrink: 0; transition: transform 0.2s; }
 .verif-card.open .verif-card-toggle { transform: rotate(180deg); }
 
-.verif-card-summary { padding: 0 16px 12px; font-size: 0.82em; color: #999; line-height: 1.5; }
+.verif-card-summary { padding: 0 16px 14px; font-size: 0.92em; color: #c0c0cc; line-height: 1.6; }
 
 .verif-card-detail { display: none; padding: 0 16px 16px; }
 .verif-card.open .verif-card-detail { display: block; }
 
-.verif-items-table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 8px; }
-.verif-items-table th { text-align: left; padding: 8px; color: #888; border-bottom: 1px solid #2a2a3a; font-weight: 600; font-size: 0.9em; }
-.verif-items-table td { padding: 8px; border-bottom: 1px solid #1a1a2a; vertical-align: top; }
-.verif-items-table .impl-badge { padding: 2px 8px; border-radius: 8px; font-size: 0.85em; font-weight: 600; }
+.verif-items-table { width: 100%; border-collapse: collapse; font-size: 0.92em; margin-top: 8px; }
+.verif-items-table th { text-align: left; padding: 10px; color: #b0b0c0; border-bottom: 1px solid #2a2a3a; font-weight: 600; font-size: 0.95em; }
+.verif-items-table td { padding: 10px; border-bottom: 1px solid #1a1a2a; vertical-align: top; color: #c8c8d4; line-height: 1.5; }
+.verif-items-table .item-name { font-weight: 600; color: #e0e0e0; }
+.verif-items-table .research-summary { font-size: 0.92em; color: #a0a0b0; line-height: 1.55; max-width: 380px; }
+.verif-items-table .item-notes { font-size: 0.92em; color: #999; line-height: 1.5; max-width: 280px; }
+.verif-items-table .impl-badge { padding: 3px 10px; border-radius: 8px; font-size: 0.88em; font-weight: 600; }
 .impl-success { background: #4CAF5022; color: #4CAF50; }
 .impl-skipped { background: #FFC10722; color: #FFC107; }
 .impl-failed { background: #F4433622; color: #F44336; }
@@ -482,6 +593,7 @@ mark { background: #7c6aef44; color: #e0e0e0; padding: 1px 2px; border-radius: 2
 
 <!-- Tab Navigation -->
 <div class="tab-nav">
+  <a href="/" class="tab-btn" style="text-decoration:none;color:#888;display:flex;align-items:center;">← Overview</a>
   <button class="tab-btn active" data-tab="videos" onclick="switchTab('videos')">Videos</button>
   <button class="tab-btn" data-tab="knowledge" onclick="switchTab('knowledge')">Knowledge Base</button>
   <button class="tab-btn" data-tab="verification" onclick="switchTab('verification')">Verification</button>
@@ -530,6 +642,17 @@ mark { background: #7c6aef44; color: #e0e0e0; padding: 1px 2px; border-radius: 2
   <div class="kb-section-toggle">
     <button class="kb-section-btn active" data-section="entries" onclick="switchKbSection('entries')">Video Entries</button>
     <button class="kb-section-btn" data-section="links" onclick="switchKbSection('links')">Links Directory</button>
+    <label class="kb-hide-low-content" title="Hide entries where Gemini could not extract meaningful content">
+      <input type="checkbox" id="kbHideLowContent" checked>
+      Hide low-content
+    </label>
+    <select class="kb-sort-select" id="kbSortSelect">
+      <option value="date">Sort: Date (newest)</option>
+      <option value="date-asc">Sort: Date (oldest)</option>
+      <option value="username">Sort: Username (A-Z)</option>
+      <option value="category">Sort: Category (A-Z)</option>
+      <option value="takeaways">Sort: Most takeaways</option>
+    </select>
   </div>
   <div class="category-bar" id="kbCategoryBar"></div>
 </div>
@@ -716,6 +839,7 @@ function render() {
     var dateStr = v.taken_at ? new Date(v.taken_at).toLocaleDateString() : "";
 
     return '<div class="card' + (isExpanded ? ' expanded' : '') + '" data-file="' + escAttr(v.filename) + '">' +
+      (isExpanded ? '<button class="card-close" type="button" title="Close" aria-label="Close">&times;</button>' : '') +
       '<div class="thumb-wrap">' +
         '<img src="' + escAttr(thumbPath) + '" alt="" loading="lazy" onerror="this.style.display=&quot;none&quot;">' +
         '<span class="duration">' + fmtDuration(v.duration_seconds) + '</span>' +
@@ -737,7 +861,21 @@ function render() {
 
   grid.querySelectorAll(".card").forEach(function(card) {
     card.addEventListener("click", function(e) {
+      // Ignore interactions inside the video player
       if (e.target.tagName === "VIDEO") return;
+      // Don't collapse if the user is selecting text -- they want to copy
+      if (window.getSelection && window.getSelection().toString().length > 0) return;
+      var isExpanded = card.classList.contains("expanded");
+      // Explicit close button always toggles
+      if (e.target.closest(".card-close")) {
+        expandedFile = null;
+        render();
+        return;
+      }
+      // When expanded, clicks inside the body or video area must not collapse
+      // (they're for reading/selecting/copying text). Only the thumb-wrap (hidden
+      // when expanded) or the close button collapses.
+      if (isExpanded && e.target.closest(".card-body, .video-container")) return;
       var file = card.dataset.file;
       expandedFile = expandedFile === file ? null : file;
       render();
@@ -822,8 +960,13 @@ var kbOpenEntries = new Set();
 
 function renderKb() {
   var query = document.getElementById("kbSearchBox").value.toLowerCase().trim();
+  var sortEl = document.getElementById("kbSortSelect");
+  var sort = sortEl ? sortEl.value : "date";
+  var hideLowEl = document.getElementById("kbHideLowContent");
+  var hideLow = hideLowEl ? hideLowEl.checked : true;
 
   var items = KNOWLEDGE.filter(function(v) {
+    if (hideLow && v.low_content) return false;
     if (kbActiveCats.size > 0 && !kbActiveCats.has(v.category)) return false;
     if (query) {
       var haystack = [
@@ -838,6 +981,13 @@ function renderKb() {
     }
     return true;
   });
+
+  // Sort items -- default is newest first
+  if (sort === "date") items.sort(function(a, b) { return (b.taken_at || "").localeCompare(a.taken_at || ""); });
+  else if (sort === "date-asc") items.sort(function(a, b) { return (a.taken_at || "").localeCompare(b.taken_at || ""); });
+  else if (sort === "username") items.sort(function(a, b) { return (a.username || "").localeCompare(b.username || ""); });
+  else if (sort === "category") items.sort(function(a, b) { return (a.category || "").localeCompare(b.category || ""); });
+  else if (sort === "takeaways") items.sort(function(a, b) { return (b.key_takeaways || []).length - (a.key_takeaways || []).length; });
 
   var noResults = document.getElementById("kbNoResults");
 
@@ -854,6 +1004,7 @@ function renderKb() {
       var thumbPath = "../videos/thumbnails/" + v.basename + ".jpg";
       var isOpen = kbOpenEntries.has(v.filename);
       var topicPills = (v.topics || []).map(function(t) { return '<span class="topic-pill">' + escHtml(t) + '</span>'; }).join("");
+      var dateStr = v.taken_at ? new Date(v.taken_at).toLocaleDateString() : "";
 
       // Match context for search
       var matchCtx = "";
@@ -894,19 +1045,60 @@ function renderKb() {
         takeawaysHtml = '<ul class="kb-takeaways">' +
           v.key_takeaways.map(function(t) { return '<li>' + (query ? highlightText(t, query) : escHtml(t)) + '</li>'; }).join("") +
           '</ul>';
+      } else if (v.low_content) {
+        takeawaysHtml = '<div style="color:#777;font-style:italic">This video has minimal extractable content (entertainment/lifestyle reel with no spoken content or actionable visuals). Gemini\u2019s frame-based analysis could not produce meaningful takeaways.</div>';
       } else {
         takeawaysHtml = '<div style="color:#555;font-style:italic">No takeaways extracted</div>';
+      }
+
+      // Verification status badge
+      var verifBadge = "";
+      if (v.verification_status) {
+        verifBadge = '<span class="verif-badge ' + escAttr(v.verification_status) + '" style="margin-left:8px;font-size:0.72em;padding:2px 8px;">' + escHtml(verifStatusLabel(v.verification_status)) + '</span>';
+      }
+
+      // Actionable items section
+      var actionableHtml = "";
+      if (v.actionable_items && v.actionable_items.length > 0) {
+        actionableHtml = '<div class="kb-section">' +
+          '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Actionable Items (' + v.actionable_items.length + ')</div>' +
+          '<div class="kb-section-body">' +
+          v.actionable_items.map(function(a) {
+            var html = '<div class="actionable-item">' +
+              '<div class="ai-name">' + escHtml(a.item_name) + (a.item_type ? ' <span class="ai-type">' + escHtml(a.item_type) + '</span>' : '') + '</div>';
+            if (a.description) html += '<div class="ai-desc">' + escHtml(a.description) + '</div>';
+            if (a.url) html += '<div class="ai-url"><a href="' + escAttr(a.url) + '" target="_blank" rel="noopener">' + escHtml(a.url) + '</a></div>';
+            if (a.install_command) html += '<div class="ai-label">Install:</div><pre class="ai-cmd">' + escHtml(a.install_command) + '</pre>';
+            if (a.code) html += '<div class="ai-label">Code:</div><pre class="ai-code">' + escHtml(a.code) + '</pre>';
+            if (a.verification_steps) html += '<div class="ai-label">Verification:</div><div class="ai-verify">' + escHtml(a.verification_steps).replace(/\\n/g, "<br>") + '</div>';
+            html += '</div>';
+            return html;
+          }).join("") +
+          '</div>' +
+        '</div>';
+      }
+
+      // Verification summary section (if available)
+      var verifSummaryHtml = "";
+      if (v.verification_summary) {
+        verifSummaryHtml = '<div class="kb-section">' +
+          '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Verification Summary</div>' +
+          '<div class="kb-section-body"><div class="verif-summary-text">' + escHtml(v.verification_summary) + '</div></div>' +
+        '</div>';
       }
 
       return '<div class="kb-entry' + (isOpen ? ' open' : '') + '" data-file="' + escAttr(v.filename) + '">' +
         '<div class="kb-entry-header" onclick="toggleKbEntry(this)">' +
           '<img class="kb-entry-thumb" src="' + escAttr(thumbPath) + '" alt="" loading="lazy" onerror="this.style.display=&quot;none&quot;">' +
           '<div class="kb-entry-info">' +
-            '<div class="username">@' + escHtml(v.username || "unknown") + (v.full_name ? ' <span style="color:#666;font-weight:400">(' + escHtml(v.full_name) + ')</span>' : '') + '</div>' +
+            '<div class="username">@' + escHtml(v.username || "unknown") + (v.full_name ? ' <span style="color:#666;font-weight:400">(' + escHtml(v.full_name) + ')</span>' : '') + verifBadge + '</div>' +
             '<div class="meta">' +
               '<span class="cat-badge-inline" style="background:' + catBg(v.category) + ';color:' + catColor(v.category) + '">' + escHtml(v.category) + '</span>' +
               escHtml(v.subcategory || "") +
               (v.duration ? ' &middot; ' + fmtDuration(v.duration) : '') +
+              (dateStr ? '<span class="date">&middot; ' + escHtml(dateStr) + '</span>' : '') +
+              (v.actionable_items_count ? ' <span class="action-count" title="Actionable items">' + v.actionable_items_count + ' actions</span>' : '') +
+              (v.low_content ? '<span class="low-content-badge" title="Gemini could not extract meaningful content from this video">LOW CONTENT</span>' : '') +
             '</div>' +
             '<div class="topic-pills">' + topicPills + '</div>' +
             matchCtx +
@@ -914,10 +1106,12 @@ function renderKb() {
           '<div class="kb-entry-toggle">&#9660;</div>' +
         '</div>' +
         '<div class="kb-entry-detail">' +
+          verifSummaryHtml +
           '<div class="kb-section">' +
             '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Key Takeaways</div>' +
             '<div class="kb-section-body">' + takeawaysHtml + '</div>' +
           '</div>' +
+          actionableHtml +
           '<div class="kb-section">' +
             '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Links &amp; Resources</div>' +
             '<div class="kb-section-body">' + linksHtml + '</div>' +
@@ -986,6 +1180,8 @@ function renderLinksDirectory(items, query) {
 }
 
 function toggleKbEntry(header) {
+  // Don't toggle if the user is selecting text -- they want to copy
+  if (window.getSelection && window.getSelection().toString().length > 0) return;
   var entry = header.parentElement;
   var file = entry.dataset.file;
   if (kbOpenEntries.has(file)) {
@@ -998,6 +1194,8 @@ function toggleKbEntry(header) {
 }
 
 document.getElementById("kbSearchBox").addEventListener("input", renderKb);
+document.getElementById("kbSortSelect").addEventListener("change", renderKb);
+document.getElementById("kbHideLowContent").addEventListener("change", renderKb);
 renderKb();
 
 // ==================== VERIFICATION TAB ====================
@@ -1091,13 +1289,14 @@ function renderVerif() {
     var itemsTableHtml = "";
     if (v.item_results && v.item_results.length > 0) {
       itemsTableHtml = '<table class="verif-items-table">' +
-        '<thead><tr><th>Item</th><th>Implementation</th><th>URL</th><th>Notes</th></tr></thead><tbody>' +
+        '<thead><tr><th style="width:22%">Item</th><th style="width:30%">Research</th><th>Impl</th><th>URL</th><th>Notes</th></tr></thead><tbody>' +
         v.item_results.map(function(ir) {
           return '<tr>' +
-            '<td>' + escHtml(ir.item_name) + '</td>' +
+            '<td><div class="item-name">' + escHtml(ir.item_name) + '</div></td>' +
+            '<td><div class="research-summary">' + escHtml(ir.research_summary || "—") + '</div></td>' +
             '<td><span class="impl-badge ' + implBadgeClass(ir.implementation_result) + '">' + escHtml(ir.implementation_result) + '</span></td>' +
             '<td><span class="' + urlLiveClass(ir.is_url_live) + '">' + urlLiveLabel(ir.is_url_live) + '</span></td>' +
-            '<td>' + escHtml(ir.notes || "") + '</td>' +
+            '<td><div class="item-notes">' + escHtml(ir.notes || "") + '</div></td>' +
           '</tr>';
         }).join("") +
         '</tbody></table>';
@@ -1127,12 +1326,30 @@ function renderVerif() {
           '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Item Verification Results</div>' +
           '<div class="kb-section-body">' + (itemsTableHtml || '<div style="color:#555;font-style:italic">No item results</div>') + '</div>' +
         '</div>' +
+        ((v.actionable_items && v.actionable_items.length > 0) ?
+          ('<div class="kb-section">' +
+            '<div class="kb-section-title" onclick="event.stopPropagation(); this.nextElementSibling.classList.toggle(&quot;collapsed&quot;)">Actionable Items (' + v.actionable_items.length + ')</div>' +
+            '<div class="kb-section-body">' +
+            v.actionable_items.map(function(a) {
+              var html = '<div class="actionable-item">' +
+                '<div class="ai-name">' + escHtml(a.item_name) + (a.item_type ? ' <span class="ai-type">' + escHtml(a.item_type) + '</span>' : '') + '</div>';
+              if (a.description) html += '<div class="ai-desc">' + escHtml(a.description) + '</div>';
+              if (a.url) html += '<div class="ai-url"><a href="' + escAttr(a.url) + '" target="_blank" rel="noopener">' + escHtml(a.url) + '</a></div>';
+              if (a.install_command) html += '<div class="ai-label">Install:</div><pre class="ai-cmd">' + escHtml(a.install_command) + '</pre>';
+              if (a.code) html += '<div class="ai-label">Code:</div><pre class="ai-code">' + escHtml(a.code) + '</pre>';
+              if (a.verification_steps) html += '<div class="ai-label">Verification:</div><div class="ai-verify">' + escHtml(a.verification_steps).replace(/\\n/g, "<br>") + '</div>';
+              return html + '</div>';
+            }).join("") +
+            '</div>' +
+          '</div>') : '') +
       '</div>' +
     '</div>';
   }).join("");
 }
 
 function toggleVerifCard(header) {
+  // Don't toggle if the user is selecting text -- they want to copy
+  if (window.getSelection && window.getSelection().toString().length > 0) return;
   var card = header.parentElement;
   var file = card.dataset.file;
   if (verifOpenCards.has(file)) {

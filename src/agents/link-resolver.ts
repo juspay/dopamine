@@ -171,14 +171,17 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
 
     console.log(`\n[${i + 1}/${uniqueNames.size}] Resolving: ${link.name}`);
 
-    // NOTE: gemini-3.1-flash-image-preview routes to image generation when disableTools is
-    // not set, causing every websearchGrounding attempt to fail. Use disableTools: true always.
+    // Use the text-only gemini-2.5-flash here, not CONFIG.MODEL (image-preview).
+    // The image-preview model routes link-resolver prompts through executeImageGeneration
+    // which returns empty parts when Vertex's safety filter trips on benign descriptions
+    // (e.g. "Personal account inferred from filename" triggered "No content parts").
+    // 2.5-flash is text-only and bulletproof for this use case.
     let resolved: string | null = null;
     const r1 = await exponentialBackoff(async () => {
       const response = await neurolink.generate({
         input: { text: prompt },
         provider: "vertex",
-        model:    CONFIG.MODEL,
+        model:    "gemini-2.5-flash",
         disableTools: true,
         maxTokens: 256,
         timeout: "30s",
