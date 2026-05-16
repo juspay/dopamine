@@ -76,14 +76,14 @@ export async function runClassifierAgent(neurolink: NeuroLink): Promise<void> {
     const { size } = await fs.stat(videoPath);
     const useThumbnail = size > CONFIG.VIDEO_SIZE_THRESHOLD_BYTES;
 
-    // Extract ≤10 evenly-spaced frames via ffmpeg. This bypasses NeuroLink's
-    // VideoProcessor (which has no frame limit) and stays under Vertex's 16-image cap.
-    // The AI SDK doesn't support video/mp4 inline, so frame extraction is required.
+    // Extract ≤3 evenly-spaced frames via ffmpeg. Category classification doesn't
+    // need 10 frames — caption + 3 keyframes is sufficient and 3x faster.
+    const CLASSIFY_FRAMES = parseInt(process.env.CLASSIFY_FRAMES ?? "3", 10);
     let inputImages: Buffer[] | null = null;
     if (useThumbnail) {
       console.log(`${logPrefix} Large file (${(size / 1024 / 1024).toFixed(1)}MB), using thumbnail`);
     } else {
-      inputImages = await extractVideoFrames(videoPath, 10);
+      inputImages = await extractVideoFrames(videoPath, CLASSIFY_FRAMES);
       if (inputImages.length === 0) {
         console.log(`${logPrefix} Frame extraction failed, using thumbnail`);
       } else {

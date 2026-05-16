@@ -45,8 +45,8 @@ export const CONFIG = {
       : ["AI & Machine Learning", "Tech & Coding", "Business & Marketing", "UI/UX Design"]
   ),
 
-  // Rate limiting (mirrors Python constants)
-  DELAY_BETWEEN_REQUESTS_MS: 2_000,
+  // Rate limiting — override via DELAY_MS env var if Vertex quota errors appear.
+  DELAY_BETWEEN_REQUESTS_MS: parseInt(process.env.DELAY_MS ?? "500", 10),
   MAX_RETRIES: 5,
   RETRY_BASE_DELAY_MS: 10_000,
 
