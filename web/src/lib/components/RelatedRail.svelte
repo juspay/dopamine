@@ -73,12 +73,14 @@
     aspect-ratio: 16 / 9;
     background: var(--elevated);
     overflow: hidden;
+    /* Size the library <Img> (defaults to 24x24) to fill the 16:9 frame.
+       Vars win because the library's own scoped `img` rule reads them. */
+    --image-width: 100%;
+    --image-height: 100%;
+    --image-object-fit: cover;
   }
 
-  :global(.rail-thumb-img) {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+  .rail-thumb :global(.rail-thumb-img) {
     display: block;
   }
 
