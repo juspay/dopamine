@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getById } from '$lib/data.js';
+  import { getById } from '$lib/data.svelte.js';
   import { fmtDuration } from '$lib/format.js';
   import type { IndexRecord } from '$lib/types.js';
 

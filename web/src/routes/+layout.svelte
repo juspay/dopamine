@@ -1,7 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import { onMount } from 'svelte';
-  import { loadIndex } from '$lib/data.js';
+  import { loadIndex } from '$lib/data.svelte.js';
   import TopBar from '$lib/components/TopBar.svelte';
 
   const { children } = $props();
