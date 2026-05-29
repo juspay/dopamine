@@ -776,3 +776,16 @@ export async function buildDashboardData(): Promise<void> {
   console.log(`meta.totalDurationSec: ${Math.round(meta.totalDurationSec)}`);
   console.log(`Output: ${dataDir}`);
 }
+
+// ---------------------------------------------------------------------------
+// CLI entry — invoke when run directly via `node dist/dashboard/data-builder.js`
+// ---------------------------------------------------------------------------
+const isMain =
+  process.argv[1] !== undefined &&
+  (await import("node:url")).fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+  buildDashboardData().catch((err) => {
+    console.error("Data builder failed:", err);
+    process.exit(1);
+  });
+}

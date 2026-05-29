@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import path from "node:path";
 import fs from "node:fs/promises";
 
@@ -14,13 +15,13 @@ app.use((_req, res, next) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'self'",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'",
   );
   next();
 });
 
 // ---------------------------------------------------------------------------
-// Block access to sensitive files — deny before static middleware
+// Block access to dotfiles — deny before static middleware
 // ---------------------------------------------------------------------------
 app.use((req, res, next) => {
   const lowerPath = req.path.toLowerCase();
@@ -31,49 +32,52 @@ app.use((req, res, next) => {
     return;
   }
 
-  // Only allow /, /dashboard/, and /videos/ paths
-  if (
-    lowerPath !== "/" &&
-    !lowerPath.startsWith("/dashboard") &&
-    !lowerPath.startsWith("/videos")
-  ) {
-    res.status(404).send("Not found");
-    return;
-  }
-
   next();
 });
 
 // ---------------------------------------------------------------------------
-// Serve the overview page at root
+// Compression
 // ---------------------------------------------------------------------------
-app.get("/", async (_req, res) => {
-  try {
-    const html = await fs.readFile(path.resolve("docs/overview.html"), "utf-8");
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(html);
-  } catch {
-    res.redirect("/dashboard/");
-  }
-});
+app.use(compression());
 
 // ---------------------------------------------------------------------------
-// Serve only the directories the dashboard needs:
-//   /dashboard/  -> dashboard/index.html
-//   /videos/     -> videos/thumbnails/*.jpg, videos/user_saved/*.mp4
+// Serve the SvelteKit app (index.html, _app/, data/) at root
 // ---------------------------------------------------------------------------
-app.use(
-  "/dashboard",
-  express.static(path.resolve("dashboard"), { dotfiles: "deny" }),
-);
-app.use(
-  "/videos",
-  express.static(path.resolve("videos"), { dotfiles: "deny" }),
-);
+app.use(express.static(path.resolve("dashboard"), { dotfiles: "deny" }));
+
+// ---------------------------------------------------------------------------
+// Serve video files
+// ---------------------------------------------------------------------------
+app.use("/videos", express.static(path.resolve("videos"), { dotfiles: "deny" }));
+
+// ---------------------------------------------------------------------------
+// SPA fallback — serve index.html for all unknown client-side routes
+// ---------------------------------------------------------------------------
+app.get("*", async (req, res) => {
+  if (req.method !== "GET" || !req.accepts("html")) {
+    res.status(404).send("Not found");
+    return;
+  }
+  if (
+    req.path.startsWith("/videos") ||
+    req.path.startsWith("/data") ||
+    req.path.includes(".")
+  ) {
+    res.status(404).send("Not found");
+    return;
+  }
+  try {
+    res
+      .type("html")
+      .send(await fs.readFile(path.resolve("dashboard/index.html"), "utf-8"));
+  } catch {
+    res.status(404).send("Not found");
+  }
+});
 
 const PORT = parseInt(process.env.DASHBOARD_PORT ?? "3001", 10);
 const HOST = process.env.DASHBOARD_HOST ?? "127.0.0.1";
 app.listen(PORT, HOST, () => {
-  console.log(`Dashboard: http://localhost:${PORT}/dashboard/`);
+  console.log(`Dashboard: http://localhost:${PORT}/`);
   console.log(`Thumbnails: http://localhost:${PORT}/videos/thumbnails/`);
 });
