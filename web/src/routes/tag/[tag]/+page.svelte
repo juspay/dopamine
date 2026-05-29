@@ -5,7 +5,7 @@
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
 
-  const tag = $derived(decodeURIComponent($page.params.tag));
+  const tag = $derived(decodeURIComponent($page.params.tag ?? ''));
 
   const all = $derived(getVideos());
   const loaded = $derived(isIndexLoaded());

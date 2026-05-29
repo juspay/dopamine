@@ -8,7 +8,7 @@
   import Spinner from '$lib/components/Spinner.svelte';
 
   // Decode the category param reactively so navigation between categories works
-  const cat = $derived(decodeURIComponent($page.params.cat));
+  const cat = $derived(decodeURIComponent($page.params.cat ?? ''));
 
   // Reactive: all videos filtered to this category
   const items = $derived(getVideos().filter((v) => v.category === cat));
