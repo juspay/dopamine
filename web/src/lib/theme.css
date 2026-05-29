@@ -1,0 +1,42 @@
+:root {
+  /* Surfaces */
+  --bg: #0b0d10;
+  --surface: #14171c;
+  --elevated: #1c2026;
+  --border: #262b33;
+
+  /* Text */
+  --text: #e8ebef;
+  --muted: #9aa3ad;
+  --faint: #6b7480;
+
+  /* Accent — warm amber */
+  --accent: #f0a868;
+  --accent-press: #e0945a;
+
+  /* Verification status */
+  --ok: #3fb950;
+  --warn: #d29922;
+  --neutral: #8b949e;
+  --bad: #f85149;
+
+  /* Geometry */
+  --radius: 10px;
+  --radius-pill: 999px;
+  --maxw: 1320px;
+
+  /* Motion */
+  --t-fast: 120ms;
+  --t: 160ms;
+
+  /* Type scale */
+  --fs-0: 12px;
+  --fs-1: 14px;
+  --fs-2: 16px;
+  --fs-3: 20px;
+  --fs-4: 26px;
+  --fs-5: 34px;
+
+  /* Elevation */
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.25);
+}

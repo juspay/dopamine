@@ -10,6 +10,8 @@
     "merge-kb": "node dist/scripts/merge-knowledge-bases.js",
     "start": "node dist/server/webhook.js",
     "serve": "node dist/server/dashboard-server.js",
+    "dashboard:data": "node dist/dashboard/data-builder.js",
+    "dashboard:build": "npm run build && npm --prefix web install && npm --prefix web run build && npm run dashboard:data",
     "dev": "tsc --watch",
     "test": "node node_modules/vitest/vitest.mjs run",
     "commit": "cz",
