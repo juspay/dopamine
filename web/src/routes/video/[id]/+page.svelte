@@ -278,7 +278,7 @@
   /* ── Two-column layout ── */
   .layout {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: minmax(0, 1fr) 320px;
     gap: 32px;
     align-items: start;
   }
@@ -590,7 +590,7 @@
   /* ── Responsive: stack at <=900px ── */
   @media (max-width: 900px) {
     .layout {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .sidebar {
