@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ActionableItem as ActionableItemType } from '$lib/types.js';
-  import Chip from './Chip.svelte';
+  import { Pill, Snippet } from '@juspay/svelte-ui-components';
 
   interface Props {
     item: ActionableItemType;
@@ -36,7 +36,7 @@
 <div class="actionable-item">
   <div class="item-header">
     <div class="item-left">
-      <Chip label={item.type} size="sm" />
+      <Pill text={item.type} />
       <span class="item-name">{item.name}</span>
     </div>
     <div class="item-right">
@@ -99,13 +99,13 @@
       {#if item.installCommand}
         <div class="code-block">
           <span class="code-label">Install</span>
-          <pre>{item.installCommand}</pre>
+          <Snippet text={item.installCommand} prompt="$" showCopyButton />
         </div>
       {/if}
       {#if item.code}
         <div class="code-block">
           <span class="code-label">Usage</span>
-          <pre>{item.code}</pre>
+          <Snippet text={item.code} showCopyButton />
         </div>
       {/if}
     </div>
@@ -226,18 +226,4 @@
     letter-spacing: 0.06em;
   }
 
-  pre {
-    margin: 0;
-    padding: 10px 12px;
-    background: var(--elevated);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: var(--fs-0);
-    color: var(--text);
-    overflow-x: auto;
-    font-family: 'Fira Code', 'JetBrains Mono', ui-monospace, monospace;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
 </style>

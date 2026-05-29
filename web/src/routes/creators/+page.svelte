@@ -3,6 +3,7 @@
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import { Avatar } from '@juspay/svelte-ui-components';
 
   $effect(() => {
     loadFacets();
@@ -50,7 +51,7 @@
   <div class="grid">
     {#each filtered as c (c.name)}
       <a class="creator-card" href={'/creator/' + encodeURIComponent(c.name)}>
-        <span class="avatar" aria-hidden="true">{(c.name[0] ?? '?').toUpperCase()}</span>
+        <Avatar name={c.name} alt={c.name} size="medium" />
         <span class="info">
           <span class="name">@{c.name}</span>
           {#if c.fullName}<span class="full">{c.fullName}</span>{/if}
@@ -114,19 +115,6 @@
     border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
     transform: translateY(-1px);
     text-decoration: none;
-  }
-  .avatar {
-    flex-shrink: 0;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--elevated);
-    color: var(--accent);
-    font-weight: 700;
-    font-size: var(--fs-2);
   }
   .info {
     display: flex;

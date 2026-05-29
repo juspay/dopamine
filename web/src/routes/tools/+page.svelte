@@ -2,12 +2,11 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { loadTools, getTools } from '$lib/data.svelte.js';
-  import Chip from '$lib/components/Chip.svelte';
   import CategoryChip from '$lib/components/CategoryChip.svelte';
-  import CreatorLink from '$lib/components/CreatorLink.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
-  import EmptyState from '$lib/components/EmptyState.svelte';
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
+  import { Table, Pill, EmptyState } from '@juspay/svelte-ui-components';
+  import type { JSONValue } from 'type-decoder';
 
   // Track whether the load attempt has settled (distinguishes "loading" from "empty")
   let _loadAttempted = $state(false);
@@ -73,6 +72,22 @@
 
     return result;
   });
+
+  // Build tableData rows for the library Table.
+  // Columns: Tool | Type | Status | Source | Category
+  // Each row stores string|null values so the library can still sort if needed.
+  // The cell snippet looks up filtered[rowIdx] for rich rendering.
+  const tableHeaders = ['Tool', 'Type', 'Status', 'Source', 'Category'];
+
+  const tableData = $derived<JSONValue[][]>(
+    filtered.map((t) => [
+      t.name ?? null,            // col 0 – Tool
+      t.type ?? null,            // col 1 – Type
+      t.urlStatus ?? null,       // col 2 – Status
+      t.videoTitle || t.videoId || null, // col 3 – Source
+      t.category ?? null,        // col 4 – Category
+    ])
+  );
 
   function setParam(key: string, value: string) {
     const params = new URLSearchParams($page.url.searchParams.toString());
@@ -211,103 +226,87 @@
 
   {#if !_loadAttempted}
     <Spinner />
-  {:else if filtered.length === 0}
-    <EmptyState message={tools.length === 0 ? 'No tools found.' : 'No tools match your filters.'} />
   {:else}
-    <div class="table-wrap" role="region" aria-label="Tools table">
-      <table class="tools-table">
-        <thead>
-          <tr>
-            <th class="col-name" scope="col">Tool</th>
-            <th class="col-type" scope="col">Type</th>
-            <th class="col-status" scope="col">Status</th>
-            <th class="col-category" scope="col">Category</th>
-            <th class="col-creator" scope="col">Creator</th>
-            <th class="col-video" scope="col">Source Video</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each filtered as tool (tool.name + tool.videoId)}
-            <tr class="tool-row">
-              <!-- Tool name + description + external link -->
-              <td class="col-name">
-                <div class="tool-name-cell">
-                  {#if tool.url}
-                    <a
-                      class="tool-name"
-                      href={tool.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={tool.url}
-                    >
-                      {tool.name}
-                      <span class="ext-icon" aria-hidden="true">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                          <polyline points="15 3 21 3 21 9"/>
-                          <line x1="10" y1="14" x2="21" y2="3"/>
-                        </svg>
-                      </span>
-                    </a>
-                  {:else}
-                    <span class="tool-name tool-name--no-link">{tool.name}</span>
-                  {/if}
-                  {#if tool.description}
-                    <p class="tool-desc">{tool.description}</p>
-                  {/if}
-                </div>
-              </td>
+    <div class="table-container-wrap">
+      <Table
+        {tableHeaders}
+        {tableData}
+        sortable={false}
+        stickyHeader={true}
+        isTableScrollable={true}
+        classes="tools-table-override"
+      >
+        {#snippet cell(value: JSONValue, rowIdx: number, colIdx: number)}
+          {@const tool = filtered[rowIdx]}
+          {#if colIdx === 0}
+            <!-- Tool name + description + external link -->
+            <div class="tool-name-cell">
+              {#if tool?.url}
+                <a
+                  class="tool-name"
+                  href={tool.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={tool.url}
+                >
+                  {tool.name}
+                  <span class="ext-icon" aria-hidden="true">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                      <polyline points="15 3 21 3 21 9"/>
+                      <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                  </span>
+                </a>
+              {:else}
+                <span class="tool-name tool-name--no-link">{tool?.name}</span>
+              {/if}
+              {#if tool?.description}
+                <p class="tool-desc">{tool.description}</p>
+              {/if}
+            </div>
+          {:else if colIdx === 1}
+            <!-- Type pill -->
+            {#if tool?.type}
+              <Pill text={tool.type} />
+            {:else}
+              <span class="na">—</span>
+            {/if}
+          {:else if colIdx === 2}
+            <!-- URL status pill with per-instance color override -->
+            <span
+              style="--pill-background:{statusBg(tool?.urlStatus ?? '')};--pill-color:{statusColor(tool?.urlStatus ?? '')};--pill-hover-background:{statusBg(tool?.urlStatus ?? '')};--pill-hover-color:{statusColor(tool?.urlStatus ?? '')}"
+            >
+              <Pill text={statusLabel(tool?.urlStatus ?? '')} />
+            </span>
+          {:else if colIdx === 3}
+            <!-- Source video link -->
+            {#if tool?.videoId}
+              <a class="video-link" href={`/video/${encodeURIComponent(tool.videoId)}`}>
+                {tool.videoTitle || tool.videoId}
+              </a>
+            {:else}
+              <span class="na">—</span>
+            {/if}
+          {:else if colIdx === 4}
+            <!-- Category chip -->
+            {#if tool?.category}
+              <CategoryChip cat={tool.category} />
+            {:else}
+              <span class="na">—</span>
+            {/if}
+          {/if}
+        {/snippet}
 
-              <!-- Type chip -->
-              <td class="col-type">
-                {#if tool.type}
-                  <Chip label={tool.type} />
-                {:else}
-                  <span class="na">—</span>
-                {/if}
-              </td>
-
-              <!-- URL status badge -->
-              <td class="col-status">
-                <Chip
-                  label={statusLabel(tool.urlStatus)}
-                  color={statusColor(tool.urlStatus)}
-                  bg={statusBg(tool.urlStatus)}
-                />
-              </td>
-
-              <!-- Category -->
-              <td class="col-category">
-                {#if tool.category}
-                  <CategoryChip cat={tool.category} />
-                {:else}
-                  <span class="na">—</span>
-                {/if}
-              </td>
-
-              <!-- Creator -->
-              <td class="col-creator">
-                {#if tool.username}
-                  <CreatorLink name={tool.username} />
-                {:else}
-                  <span class="na">—</span>
-                {/if}
-              </td>
-
-              <!-- Source video link -->
-              <td class="col-video">
-                {#if tool.videoId}
-                  <a class="video-link" href={`/video/${encodeURIComponent(tool.videoId)}`}>
-                    {tool.videoTitle || tool.videoId}
-                  </a>
-                {:else}
-                  <span class="na">—</span>
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+        {#snippet empty()}
+          <EmptyState
+            title={tools.length === 0 ? 'No tools found' : 'No tools match your filters'}
+            description={tools.length === 0
+              ? 'Tools will appear here once the data loads.'
+              : 'Try adjusting your search or filter criteria.'}
+          />
+        {/snippet}
+      </Table>
     </div>
   {/if}
 </div>
@@ -444,82 +443,14 @@
     border-color: var(--muted);
   }
 
-  /* ── Table ─────────────────────────────────────────────────────────────── */
-  .table-wrap {
+  /* ── Table wrapper ──────────────────────────────────────────────────────── */
+  /* The library Table with isTableScrollable uses a fixed container height.
+     Override via CSS var to fill available space up to a comfortable viewport
+     fraction, letting it scroll horizontally on narrow screens. */
+  .table-container-wrap {
+    --table-container-height: clamp(300px, 65vh, 800px);
+    /* Allow horizontal overflow so the inner scrollable-table handles it */
     overflow-x: auto;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-  }
-
-  .tools-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--fs-1);
-  }
-
-  .tools-table thead {
-    background: var(--elevated);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .tools-table th {
-    padding: 10px 14px;
-    text-align: left;
-    font-size: var(--fs-0);
-    font-weight: 600;
-    color: var(--faint);
-    white-space: nowrap;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  .tool-row {
-    border-bottom: 1px solid var(--border);
-    transition: background var(--t-fast);
-  }
-
-  .tool-row:last-child {
-    border-bottom: none;
-  }
-
-  .tool-row:hover {
-    background: var(--elevated);
-  }
-
-  .tools-table td {
-    padding: 12px 14px;
-    vertical-align: top;
-    color: var(--text);
-  }
-
-  /* ── Column widths ──────────────────────────────────────────────────────── */
-  .col-name {
-    min-width: 180px;
-    max-width: 280px;
-  }
-
-  .col-type {
-    width: 100px;
-    white-space: nowrap;
-  }
-
-  .col-status {
-    width: 90px;
-    white-space: nowrap;
-  }
-
-  .col-category {
-    width: 170px;
-  }
-
-  .col-creator {
-    width: 130px;
-    white-space: nowrap;
-  }
-
-  .col-video {
-    min-width: 160px;
-    max-width: 280px;
   }
 
   /* ── Cell content ───────────────────────────────────────────────────────── */
@@ -527,6 +458,8 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    min-width: 160px;
+    max-width: 260px;
   }
 
   .tool-name {
@@ -578,6 +511,8 @@
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    min-width: 140px;
+    max-width: 240px;
   }
 
   .video-link:hover {
@@ -591,13 +526,6 @@
   }
 
   /* ── Responsive ─────────────────────────────────────────────────────────── */
-  @media (max-width: 900px) {
-    .col-category,
-    .col-creator {
-      display: none;
-    }
-  }
-
   @media (max-width: 640px) {
     .tools-page {
       gap: 14px;
@@ -622,10 +550,6 @@
 
     .filter-select {
       flex: 1;
-    }
-
-    .col-video {
-      display: none;
     }
   }
 </style>

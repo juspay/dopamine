@@ -5,14 +5,13 @@
   import TagChip from './TagChip.svelte';
   import CreatorLink from './CreatorLink.svelte';
   import VerificationBadge from './VerificationBadge.svelte';
+  import { Img } from '@juspay/svelte-ui-components';
 
   interface Props {
     record: IndexRecord;
   }
 
   const { record }: Props = $props();
-
-  let imgError = $state(false);
 
   const visibleTags = $derived(record.tags.slice(0, 5));
   const duration = $derived(fmtDuration(record.durationSec));
@@ -28,20 +27,7 @@
 -->
 <article class="video-card">
   <div class="thumb-wrap">
-    {#if !imgError}
-      <img
-        src={record.thumb}
-        alt=""
-        loading="lazy"
-        decoding="async"
-        onerror={() => { imgError = true; }}
-        class="thumb-img"
-      />
-    {:else}
-      <div class="thumb-placeholder" aria-hidden="true">
-        <span class="play-icon">▶</span>
-      </div>
-    {/if}
+    <Img src={record.thumb} alt={record.title} classes="thumb-img" />
 
     <div class="overlay-cat">
       <CategoryChip cat={record.category} />
@@ -110,32 +96,19 @@
     background: var(--elevated);
     overflow: hidden;
     flex-shrink: 0;
+    /* Size the library <Img> (defaults to 24x24) to fill the 16:9 frame */
+    --image-width: 100%;
+    --image-height: 100%;
+    --image-object-fit: cover;
   }
 
-  .thumb-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+  .thumb-wrap :global(.thumb-img) {
     display: block;
     transition: transform var(--t);
   }
 
-  .video-card:hover .thumb-img {
+  .video-card:hover :global(.thumb-img) {
     transform: scale(1.03);
-  }
-
-  .thumb-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--elevated);
-  }
-
-  .play-icon {
-    font-size: 28px;
-    color: var(--faint);
   }
 
   /* Category overlay sits above the stretched link so it stays clickable */

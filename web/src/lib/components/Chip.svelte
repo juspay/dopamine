@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { Pill } from '@juspay/svelte-ui-components';
+  import { goto } from '$app/navigation';
+
   interface Props {
     label: string;
     href?: string;
@@ -10,62 +13,50 @@
 
   const { label, href, color, bg, size = 'sm', onclick }: Props = $props();
 
-  const style = $derived(
-    [color ? `color:${color}` : '', bg ? `background:${bg}` : ''].filter(Boolean).join(';')
+  const pillVars = $derived(
+    [
+      bg ? `--pill-background:${bg}` : '',
+      bg ? `--pill-hover-background:${bg}` : '',
+      color ? `--pill-color:${color}` : '',
+      color ? `--pill-hover-color:${color}` : ''
+    ]
+      .filter(Boolean)
+      .join(';')
   );
+
+  const isInteractive = $derived(!!(onclick || href));
+
+  function handleClick(e: MouseEvent): void {
+    if (onclick) {
+      onclick(e);
+    } else if (href) {
+      goto(href);
+    }
+  }
 </script>
 
-{#if href}
-  <a
-    {href}
-    class="chip"
-    class:chip-md={size === 'md'}
-    style={style || undefined}
-    onclick={onclick}
-  >
-    {label}
-  </a>
-{:else}
-  <span class="chip" class:chip-md={size === 'md'} style={style || undefined}>
-    {label}
-  </span>
-{/if}
+<span
+  class="chip-wrap"
+  class:chip-md={size === 'md'}
+  class:chip-passive={!isInteractive}
+  style={pillVars || undefined}
+>
+  <Pill text={label} onclick={isInteractive ? handleClick : undefined} />
+</span>
 
 <style>
-  .chip {
+  .chip-wrap {
     display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: var(--radius-pill);
-    font-size: var(--fs-0);
-    font-weight: 500;
-    line-height: 1.6;
-    color: var(--muted);
-    background: var(--elevated);
-    text-decoration: none;
-    white-space: nowrap;
-    border: 1px solid transparent;
-    transition: filter var(--t-fast), border-color var(--t-fast);
-    cursor: default;
+    --pill-padding: 2px 8px;
+    --pill-font-size: var(--fs-0);
   }
 
-  a.chip {
-    cursor: pointer;
-  }
-
-  a.chip:hover {
-    text-decoration: none;
-    filter: brightness(1.2);
-    border-color: currentColor;
-  }
-
-  a.chip:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+  .chip-wrap.chip-passive {
+    --pill-cursor: default;
   }
 
   .chip-md {
-    padding: 4px 12px;
-    font-size: var(--fs-1);
+    --pill-padding: 4px 12px;
+    --pill-font-size: var(--fs-1);
   }
 </style>

@@ -2,6 +2,7 @@
   import { getById } from '$lib/data.svelte.js';
   import { fmtDuration } from '$lib/format.js';
   import type { IndexRecord } from '$lib/types.js';
+  import { Scroller, Img } from '@juspay/svelte-ui-components';
 
   interface Props {
     ids: string[];
@@ -17,52 +18,29 @@
 </script>
 
 {#if records.length > 0}
-  <div class="rail-wrap">
-    <div class="rail">
-      {#each records as record}
-        <a href={'/video/' + encodeURIComponent(record.id)} class="rail-card" title={record.title}>
-          <div class="rail-thumb">
-            <img
-              src={record.thumb}
-              alt={record.title}
-              loading="lazy"
-              decoding="async"
-              onerror={(e) => {
-                const img = e.currentTarget as HTMLImageElement;
-                img.style.display = 'none';
-              }}
-            />
-            {#if record.durationSec > 0}
-              <span class="rail-dur">{fmtDuration(record.durationSec)}</span>
-            {/if}
-          </div>
-          <div class="rail-meta">
-            <p class="rail-title">{record.title}</p>
-            <span class="rail-creator">@{record.username}</span>
-          </div>
-        </a>
-      {/each}
-    </div>
-  </div>
+  <Scroller direction="horizontal" showArrows dragToScroll hideScrollbar>
+    {#snippet children()}
+      <div class="rail">
+        {#each records as record}
+          <a href={'/video/' + encodeURIComponent(record.id)} class="rail-card" title={record.title}>
+            <div class="rail-thumb">
+              <Img src={record.thumb} alt={record.title} classes="rail-thumb-img" />
+              {#if record.durationSec > 0}
+                <span class="rail-dur">{fmtDuration(record.durationSec)}</span>
+              {/if}
+            </div>
+            <div class="rail-meta">
+              <p class="rail-title">{record.title}</p>
+              <span class="rail-creator">@{record.username}</span>
+            </div>
+          </a>
+        {/each}
+      </div>
+    {/snippet}
+  </Scroller>
 {/if}
 
 <style>
-  .rail-wrap {
-    overflow-x: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-    padding-bottom: 4px;
-  }
-
-  .rail-wrap::-webkit-scrollbar {
-    height: 4px;
-  }
-
-  .rail-wrap::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 2px;
-  }
-
   .rail {
     display: flex;
     gap: 12px;
@@ -97,7 +75,7 @@
     overflow: hidden;
   }
 
-  .rail-thumb img {
+  :global(.rail-thumb-img) {
     width: 100%;
     height: 100%;
     object-fit: cover;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Pill } from '@juspay/svelte-ui-components';
   import { verifLabel, verifColor } from '$lib/format.js';
 
   interface Props {
@@ -26,12 +27,11 @@
   ></span>
 {:else}
   <span
-    class="verif-badge"
-    style="color:{color};border-color:color-mix(in srgb,{color} 35%,transparent);background:color-mix(in srgb,{color} 10%,transparent)"
+    class="verif-pill-wrap"
     {title}
+    style="--pill-color:{color};--pill-background:color-mix(in srgb,{color} 18%,transparent);--pill-hover-background:color-mix(in srgb,{color} 28%,transparent);--pill-hover-color:{color};--pill-border:1px solid color-mix(in srgb,{color} 35%,transparent)"
   >
-    <span class="dot" style="background:{color}" aria-hidden="true"></span>
-    {label}
+    <Pill text={label} />
   </span>
 {/if}
 
@@ -44,22 +44,7 @@
     flex-shrink: 0;
   }
 
-  .verif-badge {
+  .verif-pill-wrap {
     display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 8px;
-    border-radius: var(--radius-pill);
-    font-size: var(--fs-0);
-    font-weight: 500;
-    border: 1px solid;
-    white-space: nowrap;
-  }
-
-  .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
   }
 </style>
