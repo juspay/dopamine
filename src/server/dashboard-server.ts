@@ -48,21 +48,27 @@ app.use(express.static(path.resolve("dashboard"), { dotfiles: "deny" }));
 // ---------------------------------------------------------------------------
 // Serve video files
 // ---------------------------------------------------------------------------
-app.use("/videos", express.static(path.resolve("videos"), { dotfiles: "deny" }));
+app.use(
+  "/videos",
+  express.static(path.resolve("videos"), { dotfiles: "deny", redirect: false }),
+);
 
 // ---------------------------------------------------------------------------
-// SPA fallback — serve index.html for all unknown client-side routes
+// SPA fallback — serve index.html for all unknown client-side routes.
+// Real static files (app bundle, /data/*, /videos/*) are served by the static
+// middleware above. Only genuine asset requests (identified by a known file
+// extension) 404 here — so client routes like /videos or /creator/testuser
+// (note the dot) correctly resolve to the SPA shell instead of 404ing.
 // ---------------------------------------------------------------------------
+const ASSET_RE =
+  /\.(?:js|mjs|css|map|json|ico|png|jpe?g|gif|webp|avif|svg|mp4|webm|mov|woff2?|ttf|eot|txt|xml|wasm)$/i;
+
 app.get("*", async (req, res) => {
   if (req.method !== "GET" || !req.accepts("html")) {
     res.status(404).send("Not found");
     return;
   }
-  if (
-    req.path.startsWith("/videos") ||
-    req.path.startsWith("/data") ||
-    req.path.includes(".")
-  ) {
+  if (ASSET_RE.test(req.path)) {
     res.status(404).send("Not found");
     return;
   }
