@@ -85,7 +85,7 @@
 
   .video-card:hover {
     transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); /* intentional: accent-subtle is 12%; 40% hover is distinct */
     box-shadow: var(--shadow);
   }
 
@@ -114,38 +114,38 @@
   /* Category overlay sits above the stretched link so it stays clickable */
   .overlay-cat {
     position: absolute;
-    top: 8px;
-    left: 8px;
+    top: var(--space-2);
+    left: var(--space-2);
     z-index: 2;
   }
 
   .overlay-dur {
     position: absolute;
-    bottom: 8px;
-    right: 8px;
-    background: rgba(0, 0, 0, 0.75);
-    color: #fff;
+    bottom: var(--space-2);
+    right: var(--space-2);
+    background: var(--scrim);
+    color: var(--text);
     font-size: var(--fs-0);
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 4px;
+    font-weight: var(--fw-semibold);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
     line-height: 1.4;
     backdrop-filter: blur(4px);
   }
 
   .card-body {
-    padding: 12px 14px 14px;
+    padding: var(--space-3) 14px var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
     flex: 1;
   }
 
   .title {
     margin: 0;
     font-size: var(--fs-1);
-    font-weight: 600;
-    line-height: 1.4;
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-normal);
   }
 
   .title-link {
@@ -186,15 +186,15 @@
   .tags-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .footer-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     margin-top: auto;
-    padding-top: 4px;
+    padding-top: var(--space-1);
   }
 
   .footer-meta {

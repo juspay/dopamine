@@ -5,8 +5,9 @@
   import CategoryChip from '$lib/components/CategoryChip.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
-  import { Table, Pill, EmptyState } from '@juspay/svelte-ui-components';
+  import { Table, Pill, EmptyState, Select, Input } from '@juspay/svelte-ui-components';
   import type { JSONValue } from 'type-decoder';
+  import type { SelectItem } from '@juspay/svelte-ui-components';
 
   // Track whether the load attempt has settled (distinguishes "loading" from "empty")
   let _loadAttempted = $state(false);
@@ -23,13 +24,28 @@
   const catFilter = $derived($page.url.searchParams.get('cat') ?? 'all');
   const textFilter = $derived($page.url.searchParams.get('q') ?? '');
 
-  // Derived unique filter options from data
-  const allTypes = $derived(
-    ['all', ...new Set(tools.map((t) => t.type).filter(Boolean).sort())]
-  );
-  const allCategories = $derived(
-    ['all', ...new Set(tools.map((t) => t.category).filter(Boolean).sort())]
-  );
+  // SUI Select expects value as string[] — wrap single filter values
+  const statusValue = $derived([urlStatus]);
+  const typeValue = $derived([typeFilter]);
+  const catValue = $derived([catFilter]);
+
+  // Derived unique filter options from data mapped to SUI SelectItem shape
+  const statusItems: SelectItem[] = [
+    { id: 'all', label: 'All statuses' },
+    { id: 'live', label: 'Live only' },
+    { id: 'redirect', label: 'Redirect' },
+    { id: 'dead', label: 'Dead' },
+  ];
+
+  const typeItems = $derived<SelectItem[]>([
+    { id: 'all', label: 'All types' },
+    ...[...new Set(tools.map((t) => t.type).filter(Boolean).sort())].map((t) => ({ id: t, label: t })),
+  ]);
+
+  const catItems = $derived<SelectItem[]>([
+    { id: 'all', label: 'All categories' },
+    ...[...new Set(tools.map((t) => t.category).filter(Boolean).sort())].map((c) => ({ id: c, label: c })),
+  ]);
 
   // Filtering + sorting
   const filtered = $derived.by(() => {
@@ -75,17 +91,15 @@
 
   // Build tableData rows for the library Table.
   // Columns: Tool | Type | Status | Source | Category
-  // Each row stores string|null values so the library can still sort if needed.
-  // The cell snippet looks up filtered[rowIdx] for rich rendering.
   const tableHeaders = ['Tool', 'Type', 'Status', 'Source', 'Category'];
 
   const tableData = $derived<JSONValue[][]>(
     filtered.map((t) => [
-      t.name ?? null,            // col 0 – Tool
-      t.type ?? null,            // col 1 – Type
-      t.urlStatus ?? null,       // col 2 – Status
-      t.videoTitle || t.videoId || null, // col 3 – Source
-      t.category ?? null,        // col 4 – Category
+      t.name ?? null,
+      t.type ?? null,
+      t.urlStatus ?? null,
+      t.videoTitle || t.videoId || null,
+      t.category ?? null,
     ])
   );
 
@@ -99,9 +113,8 @@
     goto(`/tools?${params.toString()}`, { replaceState: true, keepFocus: true });
   }
 
-  function onTextInput(e: Event) {
-    const val = (e.currentTarget as HTMLInputElement).value;
-    setParam('q', val);
+  function onSearchInput(q: string) {
+    setParam('q', q);
   }
 
   function statusColor(status: string): string {
@@ -115,10 +128,10 @@
 
   function statusBg(status: string): string {
     switch (status) {
-      case 'live': return 'rgba(63,185,80,0.12)';
-      case 'redirect': return 'rgba(210,153,34,0.12)';
-      case 'dead': return 'rgba(248,81,73,0.12)';
-      default: return 'rgba(139,148,158,0.12)';
+      case 'live': return 'var(--ok-bg)';
+      case 'redirect': return 'var(--warn-bg)';
+      case 'dead': return 'var(--bad-bg)';
+      default: return 'var(--neutral-bg)';
     }
   }
 
@@ -156,70 +169,55 @@
     </div>
 
     <div class="filters">
-      <!-- Text search -->
+      <!-- Text search via SUI Input (live filter-as-you-type) -->
       <div class="search-wrap">
-        <span class="search-icon" aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-        </span>
-        <input
-          class="search-input"
-          type="search"
-          placeholder="Search tools…"
+        <Input
           value={textFilter}
-          oninput={onTextInput}
-          aria-label="Search tools"
-          autocomplete="off"
-          spellcheck="false"
+          placeholder="Search tools…"
+          onInput={(v) => onSearchInput(v)}
+          classes="tools-search-input"
         />
       </div>
 
-      <!-- URL status filter -->
+      <!-- URL status filter — SUI Select -->
       <div class="filter-group">
         <label class="filter-label" for="filter-status">Status</label>
-        <select
-          id="filter-status"
-          class="filter-select"
-          value={urlStatus}
-          onchange={(e) => setParam('status', (e.currentTarget as HTMLSelectElement).value)}
-        >
-          <option value="all">All</option>
-          <option value="live">Live only</option>
-          <option value="redirect">Redirect</option>
-          <option value="dead">Dead</option>
-        </select>
+        <div class="select-wrap">
+          <Select
+            items={statusItems}
+            value={statusValue}
+            onchange={(v) => setParam('status', v[0] ?? 'all')}
+            placeholder="All statuses"
+          />
+        </div>
       </div>
 
-      <!-- Type filter -->
+      <!-- Type filter — SUI Select (searchable since list can be long) -->
       <div class="filter-group">
         <label class="filter-label" for="filter-type">Type</label>
-        <select
-          id="filter-type"
-          class="filter-select"
-          value={typeFilter}
-          onchange={(e) => setParam('type', (e.currentTarget as HTMLSelectElement).value)}
-        >
-          {#each allTypes as t}
-            <option value={t}>{t === 'all' ? 'All types' : t}</option>
-          {/each}
-        </select>
+        <div class="select-wrap">
+          <Select
+            items={typeItems}
+            value={typeValue}
+            onchange={(v) => setParam('type', v[0] ?? 'all')}
+            placeholder="All types"
+            searchable
+          />
+        </div>
       </div>
 
-      <!-- Category filter -->
+      <!-- Category filter — SUI Select (searchable) -->
       <div class="filter-group">
         <label class="filter-label" for="filter-cat">Category</label>
-        <select
-          id="filter-cat"
-          class="filter-select"
-          value={catFilter}
-          onchange={(e) => setParam('cat', (e.currentTarget as HTMLSelectElement).value)}
-        >
-          {#each allCategories as c}
-            <option value={c}>{c === 'all' ? 'All categories' : c}</option>
-          {/each}
-        </select>
+        <div class="select-wrap">
+          <Select
+            items={catItems}
+            value={catValue}
+            onchange={(v) => setParam('cat', v[0] ?? 'all')}
+            placeholder="All categories"
+            searchable
+          />
+        </div>
       </div>
     </div>
   </header>
@@ -227,6 +225,7 @@
   {#if !_loadAttempted}
     <Spinner />
   {:else}
+    <!-- Desktop: SUI Table (hidden at ≤640px) -->
     <div class="table-container-wrap">
       <Table
         {tableHeaders}
@@ -273,7 +272,7 @@
               <span class="na">—</span>
             {/if}
           {:else if colIdx === 2}
-            <!-- URL status pill with per-instance color override -->
+            <!-- URL status pill with semantic token colors -->
             <span
               style="--pill-background:{statusBg(tool?.urlStatus ?? '')};--pill-color:{statusColor(tool?.urlStatus ?? '')};--pill-hover-background:{statusBg(tool?.urlStatus ?? '')};--pill-hover-color:{statusColor(tool?.urlStatus ?? '')}"
             >
@@ -308,6 +307,74 @@
         {/snippet}
       </Table>
     </div>
+
+    <!-- Mobile: card list (shown only at ≤640px instead of table) -->
+    <div class="mobile-card-list" aria-label="Tools list">
+      {#if filtered.length === 0}
+        <EmptyState
+          title={tools.length === 0 ? 'No tools found' : 'No tools match your filters'}
+          description={tools.length === 0
+            ? 'Tools will appear here once the data loads.'
+            : 'Try adjusting your search or filter criteria.'}
+        />
+      {:else}
+        {#each filtered as tool (tool.name + tool.videoId)}
+          <div class="mobile-card">
+            <div class="mobile-card-header">
+              <div class="mobile-card-title-row">
+                {#if tool.url}
+                  <a
+                    class="mobile-tool-name"
+                    href={tool.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {tool.name}
+                    <span class="ext-icon" aria-hidden="true">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/>
+                        <line x1="10" y1="14" x2="21" y2="3"/>
+                      </svg>
+                    </span>
+                  </a>
+                {:else}
+                  <span class="mobile-tool-name mobile-tool-name--no-link">{tool.name}</span>
+                {/if}
+              </div>
+              <!-- Status badge -->
+              <span
+                class="mobile-status-badge"
+                style="color:{statusColor(tool.urlStatus)};background:{statusBg(tool.urlStatus)};border-color:color-mix(in srgb,{statusColor(tool.urlStatus)} 30%,transparent)"
+              >
+                {statusLabel(tool.urlStatus)}
+              </span>
+            </div>
+
+            {#if tool.description}
+              <p class="mobile-tool-desc">{tool.description}</p>
+            {/if}
+
+            <div class="mobile-card-meta">
+              {#if tool.type}
+                <Pill text={tool.type} />
+              {/if}
+              {#if tool.category}
+                <CategoryChip cat={tool.category} />
+              {/if}
+              {#if tool.videoId}
+                <a class="mobile-video-link" href={`/video/${encodeURIComponent(tool.videoId)}`}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                  {tool.videoTitle || 'Source video'}
+                </a>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -315,29 +382,29 @@
   .tools-page {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: var(--space-5);
   }
 
   /* ── Header ────────────────────────────────────────────────────────────── */
   .page-header {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--space-4);
   }
 
   .title-row {
     display: flex;
     align-items: baseline;
-    gap: 12px;
+    gap: var(--space-3);
     flex-wrap: wrap;
   }
 
   .page-title {
     margin: 0;
     font-size: var(--fs-4);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
     color: var(--text);
-    line-height: 1.2;
+    line-height: var(--lh-tight);
   }
 
   .counts {
@@ -348,7 +415,7 @@
 
   .counts-total {
     color: var(--faint);
-    font-weight: 400;
+    font-weight: var(--fw-regular);
   }
 
   /* ── Filters ────────────────────────────────────────────────────────────── */
@@ -356,59 +423,19 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-2);
   }
 
   .search-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-    background: var(--elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-pill);
-    overflow: hidden;
-    transition: border-color var(--t-fast);
     flex: 1;
     min-width: 180px;
     max-width: 320px;
   }
 
-  .search-wrap:focus-within {
-    border-color: var(--accent);
-  }
-
-  .search-icon {
-    display: flex;
-    align-items: center;
-    padding: 0 8px 0 12px;
-    color: var(--faint);
-    flex-shrink: 0;
-    pointer-events: none;
-  }
-
-  .search-input {
-    flex: 1;
-    background: none;
-    border: none;
-    outline: none;
-    color: var(--text);
-    font-size: var(--fs-1);
-    padding: 7px 12px 7px 0;
-    min-width: 0;
-  }
-
-  .search-input::placeholder {
-    color: var(--faint);
-  }
-
-  .search-input::-webkit-search-cancel-button {
-    display: none;
-  }
-
   .filter-group {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1);
   }
 
   .filter-label {
@@ -418,46 +445,120 @@
     user-select: none;
   }
 
-  .filter-select {
-    appearance: none;
-    background: var(--elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-pill);
-    color: var(--text);
-    font-size: var(--fs-1);
-    padding: 5px 28px 5px 12px;
-    cursor: pointer;
-    outline: none;
-    transition: border-color var(--t-fast);
-    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7480' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    min-width: 100px;
+  .select-wrap {
+    min-width: 120px;
+    /* Constrain SUI Select width */
+    --select-width: 140px;
+    --select-trigger-min-height: 34px;
+    --select-trigger-padding: 5px 12px;
+    --select-trigger-border-radius: var(--radius-pill);
+    --select-dropdown-max-height: 220px;
   }
 
-  .filter-select:focus {
-    border-color: var(--accent);
-  }
-
-  .filter-select:hover {
-    border-color: var(--muted);
-  }
-
-  /* ── Table wrapper ──────────────────────────────────────────────────────── */
-  /* The library Table with isTableScrollable uses a fixed container height.
-     Override via CSS var to fill available space up to a comfortable viewport
-     fraction, letting it scroll horizontally on narrow screens. */
+  /* ── Table wrapper (desktop only) ──────────────────────────────────────── */
   .table-container-wrap {
     --table-container-height: clamp(300px, 65vh, 800px);
-    /* Allow horizontal overflow so the inner scrollable-table handles it */
     overflow-x: auto;
   }
 
-  /* ── Cell content ───────────────────────────────────────────────────────── */
+  /* ── Mobile card list (shown only ≤640px) ───────────────────────────────── */
+  .mobile-card-list {
+    display: none;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .mobile-card {
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .mobile-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .mobile-card-title-row {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-tool-name {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--accent);
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-1);
+    text-decoration: none;
+    word-break: break-word;
+  }
+
+  .mobile-tool-name:hover {
+    text-decoration: underline;
+  }
+
+  .mobile-tool-name--no-link {
+    color: var(--text);
+  }
+
+  .mobile-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-0);
+    font-weight: var(--fw-medium);
+    border: 1px solid;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .mobile-tool-desc {
+    margin: 0;
+    font-size: var(--fs-0);
+    color: var(--muted);
+    line-height: var(--lh-normal);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .mobile-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .mobile-video-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--muted);
+    font-size: var(--fs-0);
+    text-decoration: none;
+    transition: color var(--t-fast);
+  }
+
+  .mobile-video-link:hover {
+    color: var(--accent);
+  }
+
+  /* ── Shared cell styles (desktop table) ────────────────────────────────── */
   .tool-name-cell {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     min-width: 160px;
     max-width: 260px;
   }
@@ -465,9 +566,9 @@
   .tool-name {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     color: var(--accent);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     font-size: var(--fs-1);
     text-decoration: none;
     word-break: break-word;
@@ -493,7 +594,7 @@
     margin: 0;
     font-size: var(--fs-0);
     color: var(--muted);
-    line-height: 1.5;
+    line-height: var(--lh-normal);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
@@ -528,7 +629,7 @@
   /* ── Responsive ─────────────────────────────────────────────────────────── */
   @media (max-width: 640px) {
     .tools-page {
-      gap: 14px;
+      gap: var(--space-3);
     }
 
     .page-title {
@@ -548,8 +649,18 @@
       justify-content: space-between;
     }
 
-    .filter-select {
+    .select-wrap {
+      --select-width: 100%;
       flex: 1;
+    }
+
+    /* Hide desktop table, show mobile cards */
+    .table-container-wrap {
+      display: none;
+    }
+
+    .mobile-card-list {
+      display: flex;
     }
   }
 </style>

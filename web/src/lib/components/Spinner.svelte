@@ -7,10 +7,18 @@
   }
 
   const { size = 24, label = 'Loading…' }: Props = $props();
+
+  // Derive proportional pseudo-element sizes from the outer size.
+  // Loader defaults: outer=20, :before=10 (50%), :after=15 (75%).
+  const beforeSize = $derived(Math.round(size * 0.5));
+  const afterSize = $derived(Math.round(size * 0.75));
 </script>
 
 <div class="spinner-wrap" role="status" aria-label={label}>
-  <span style="font-size:{size}px">
+  <span
+    class="loader-sizer"
+    style="--loader-width:{size}px; --loader-height:{size}px; --loader-before-width:{beforeSize}px; --loader-before-height:{beforeSize}px; --loader-after-width:{afterSize}px; --loader-after-height:{afterSize}px;"
+  >
     <Loader />
   </span>
   <span class="sr-only">{label}</span>
@@ -21,7 +29,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 48px;
+    padding: var(--space-12);
+  }
+
+  .loader-sizer {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .sr-only {

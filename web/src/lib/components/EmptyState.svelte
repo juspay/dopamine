@@ -17,7 +17,7 @@
 
 <style>
   .empty-icon {
-    font-size: 32px;
+    font-size: var(--fs-4);
     opacity: 0.4;
   }
 </style>

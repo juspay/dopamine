@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ActionableItem as ActionableItemType } from '$lib/types.js';
-  import { Pill, Snippet } from '@juspay/svelte-ui-components';
+  import { Accordion, Pill, Snippet } from '@juspay/svelte-ui-components';
 
   interface Props {
     item: ActionableItemType;
@@ -12,7 +12,17 @@
 
   const hasCode = $derived(!!(item.installCommand || item.code));
 
-  const statusColor = $derived(
+  const statusBg = $derived(
+    item.urlStatus === 'live' || item.urlStatus === 'ok'
+      ? 'var(--ok-bg)'
+      : item.urlStatus === 'redirect'
+        ? 'var(--warn-bg)'
+        : item.urlStatus === 'dead' || item.urlStatus === 'error'
+          ? 'var(--bad-bg)'
+          : 'var(--neutral-bg)'
+  );
+
+  const statusFg = $derived(
     item.urlStatus === 'live' || item.urlStatus === 'ok'
       ? 'var(--ok)'
       : item.urlStatus === 'redirect'
@@ -40,10 +50,10 @@
       <span class="item-name">{item.name}</span>
     </div>
     <div class="item-right">
-      <!-- URL status badge -->
+      <!-- URL status badge using semantic status tokens -->
       <span
         class="url-status"
-        style="color:{statusColor};background:color-mix(in srgb,{statusColor} 12%,transparent);border-color:color-mix(in srgb,{statusColor} 30%,transparent)"
+        style="color:{statusFg};background:{statusBg};border-color:color-mix(in srgb,{statusFg} 30%,transparent)"
       >
         {statusLabel}
       </span>
@@ -66,7 +76,7 @@
         </a>
       {/if}
 
-      <!-- Expand/collapse -->
+      <!-- Expand/collapse toggle for code snippets -->
       {#if hasCode}
         <button
           class="toggle-btn"
@@ -94,39 +104,42 @@
     <p class="item-desc">{item.description}</p>
   {/if}
 
-  {#if expanded && hasCode}
-    <div class="item-code">
-      {#if item.installCommand}
-        <div class="code-block">
-          <span class="code-label">Install</span>
-          <Snippet text={item.installCommand} prompt="$" showCopyButton />
-        </div>
-      {/if}
-      {#if item.code}
-        <div class="code-block">
-          <span class="code-label">Usage</span>
-          <Snippet text={item.code} showCopyButton />
-        </div>
-      {/if}
-    </div>
+  <!-- SUI Accordion for animated expand/collapse with keyboard a11y -->
+  {#if hasCode}
+    <Accordion expand={expanded}>
+      <div class="item-code">
+        {#if item.installCommand}
+          <div class="code-block">
+            <span class="code-label">Install</span>
+            <Snippet text={item.installCommand} prompt="$" showCopyButton />
+          </div>
+        {/if}
+        {#if item.code}
+          <div class="code-block">
+            <span class="code-label">Usage</span>
+            <Snippet text={item.code} showCopyButton />
+          </div>
+        {/if}
+      </div>
+    </Accordion>
   {/if}
 </div>
 
 <style>
   .actionable-item {
-    padding: 12px 16px;
+    padding: var(--space-3) var(--space-4);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .item-header {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    gap: var(--space-2);
     flex-wrap: wrap;
     justify-content: space-between;
   }
@@ -134,14 +147,14 @@
   .item-left {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     min-width: 0;
     flex: 1;
   }
 
   .item-name {
     font-size: var(--fs-1);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     color: var(--text);
     word-break: break-word;
   }
@@ -149,7 +162,7 @@
   .item-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     flex-shrink: 0;
   }
 
@@ -159,7 +172,7 @@
     padding: 2px 7px;
     border-radius: var(--radius-pill);
     font-size: var(--fs-0);
-    font-weight: 500;
+    font-weight: var(--fw-medium);
     border: 1px solid;
     white-space: nowrap;
   }
@@ -187,11 +200,12 @@
     align-items: center;
     justify-content: center;
     color: var(--muted);
-    padding: 4px;
+    padding: var(--space-1);
     min-width: 32px;
     min-height: 32px;
     border-radius: var(--radius);
     transition: color var(--t-fast), background var(--t-fast);
+    cursor: pointer;
   }
 
   .toggle-btn:hover {
@@ -203,27 +217,27 @@
     margin: 0;
     font-size: var(--fs-1);
     color: var(--muted);
-    line-height: 1.5;
+    line-height: var(--lh-normal);
   }
 
   .item-code {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
   }
 
   .code-block {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .code-label {
     font-size: var(--fs-0);
-    font-weight: 500;
+    font-weight: var(--fw-medium);
     color: var(--faint);
     text-transform: uppercase;
     letter-spacing: 0.06em;
   }
-
 </style>

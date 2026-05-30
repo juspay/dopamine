@@ -33,7 +33,7 @@
     max-width: 160px;
     display: inline-block;
     vertical-align: bottom;
-    line-height: 1.5;
+    line-height: var(--lh-normal);
   }
 
   .creator-link:hover {

@@ -6,8 +6,9 @@
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
+  import { Avatar } from '@juspay/svelte-ui-components';
 
-  const name = $derived($page.params.name);
+  const name = $derived($page.params.name ?? '');
 
   const all = $derived(getVideos());
   const loaded = $derived(isIndexLoaded());
@@ -34,12 +35,15 @@
 
   <header class="page-header">
     <div class="identity">
-      <h1 class="handle">
-        <span class="at" aria-hidden="true">@</span>{name}
-      </h1>
-      {#if fullName}
-        <p class="full-name">{fullName}</p>
-      {/if}
+      <Avatar alt={fullName || name} name={fullName || name} size="large" />
+      <div class="identity-text">
+        <h1 class="handle">
+          <span class="at" aria-hidden="true">@</span>{name}
+        </h1>
+        {#if fullName}
+          <p class="full-name">{fullName}</p>
+        {/if}
+      </div>
     </div>
 
     {#if loaded && videoCount > 0}
@@ -69,29 +73,35 @@
   .creator-page {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: var(--space-6);
   }
 
   .page-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 16px;
+    gap: var(--space-4);
     flex-wrap: wrap;
   }
 
   .identity {
     display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .identity-text {
+    display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .handle {
     margin: 0;
     font-size: var(--fs-4);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
     color: var(--text);
-    line-height: 1.2;
+    line-height: var(--lh-tight);
   }
 
   .at {
@@ -107,9 +117,9 @@
 
   .stats {
     display: flex;
-    gap: 24px;
+    gap: var(--space-6);
     margin: 0;
-    padding: 12px 16px;
+    padding: var(--space-3) var(--space-4);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -120,7 +130,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: var(--space-1);
   }
 
   .stat-label {
@@ -128,13 +138,13 @@
     color: var(--faint);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    font-weight: 500;
+    font-weight: var(--fw-medium);
   }
 
   .stat-value {
     margin: 0;
     font-size: var(--fs-3);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
     color: var(--text);
     line-height: 1;
   }
@@ -142,7 +152,7 @@
   @media (max-width: 640px) {
     .page-header {
       flex-direction: column;
-      gap: 12px;
+      gap: var(--space-3);
     }
 
     .handle {

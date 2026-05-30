@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pill } from '@juspay/svelte-ui-components';
+  import Chip from './Chip.svelte';
   import { goto } from '$app/navigation';
 
   interface Props {
@@ -20,19 +20,4 @@
   }
 </script>
 
-<span class="chip-wrap" class:chip-md={size === 'md'}>
-  <Pill text={'#' + tag} onclick={handleClick} />
-</span>
-
-<style>
-  .chip-wrap {
-    display: inline-flex;
-    --pill-padding: 2px 8px;
-    --pill-font-size: var(--fs-0);
-  }
-
-  .chip-md {
-    --pill-padding: 4px 12px;
-    --pill-font-size: var(--fs-1);
-  }
-</style>
+<Chip label={'#' + tag} {size} onclick={handleClick} />

@@ -3,7 +3,7 @@
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
-  import { Avatar } from '@juspay/svelte-ui-components';
+  import { Avatar, Input } from '@juspay/svelte-ui-components';
 
   $effect(() => {
     loadFacets();
@@ -34,12 +34,13 @@
 </header>
 
 <div class="search">
-  <input
-    class="search-input"
-    type="search"
+  <Input
+    value={query}
     placeholder="Search creators…"
-    bind:value={query}
-    aria-label="Search creators"
+    addFocusColor={true}
+    autoComplete="off"
+    onInput={(val) => { query = val; }}
+    classes="creators-search-input"
   />
 </div>
 
@@ -66,44 +67,42 @@
   .head {
     display: flex;
     align-items: baseline;
-    gap: 12px;
-    margin: 8px 0 20px;
+    gap: var(--space-3);
+    margin: var(--space-2) 0 var(--space-5);
   }
   .title {
     margin: 0;
     font-size: var(--fs-4);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
   }
   .count {
     font-size: var(--fs-2);
     color: var(--muted);
   }
   .search {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-6);
   }
-  .search-input {
+  /* SUI Input wrapper scoped overrides — pill-shaped search bar */
+  .search :global(.creators-search-input) {
     width: 100%;
-    padding: 12px 16px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-pill);
-    color: var(--text);
-    font-size: var(--fs-1);
   }
-  .search-input:focus {
-    outline: none;
-    border-color: var(--accent);
+  .search :global(.creators-search-input input) {
+    width: 100%;
+    margin: 0;
+    border-radius: var(--radius-pill);
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface);
   }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 12px;
+    gap: var(--space-3);
   }
   .creator-card {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-3);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -112,9 +111,13 @@
     transition: border-color var(--t), transform var(--t);
   }
   .creator-card:hover {
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    border-color: var(--accent);
     transform: translateY(-1px);
     text-decoration: none;
+  }
+  .creator-card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   .info {
     display: flex;
@@ -123,7 +126,7 @@
     flex: 1;
   }
   .name {
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     font-size: var(--fs-1);
     white-space: nowrap;
     overflow: hidden;
@@ -141,7 +144,7 @@
     font-size: var(--fs-0);
     color: var(--muted);
     background: var(--elevated);
-    padding: 2px 8px;
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-pill);
   }
 </style>

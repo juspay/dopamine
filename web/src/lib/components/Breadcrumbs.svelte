@@ -47,7 +47,7 @@
   li {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   a {
@@ -57,17 +57,23 @@
   }
 
   a:hover {
-    color: var(--accent);
+    color: var(--accent-subtle);
     text-decoration: none;
+  }
+
+  a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
   }
 
   span[aria-current='page'] {
     color: var(--text);
-    font-weight: 500;
+    font-weight: var(--fw-medium);
   }
 
   .sep {
     color: var(--border);
-    margin: 0 2px;
+    margin: 0 var(--space-1);
   }
 </style>

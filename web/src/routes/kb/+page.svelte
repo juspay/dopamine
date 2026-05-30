@@ -7,6 +7,7 @@
   import TagChip from '$lib/components/TagChip.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import { Input } from '@juspay/svelte-ui-components';
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const all = $derived(getVideos());
@@ -68,33 +69,14 @@
       {/if}
     </p>
     <div class="kb-search">
-      <span class="search-icon" aria-hidden="true">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.35-4.35" />
-        </svg>
-      </span>
-      <input
-        type="search"
-        bind:value={query}
+      <Input
+        value={query}
         placeholder="Filter by title, category, creator, or tag…"
-        aria-label="Filter knowledge base"
-        autocomplete="off"
-        spellcheck="false"
-        class="kb-input"
+        addFocusColor={true}
+        autoComplete="off"
+        onInput={(val) => { query = val; }}
+        classes="kb-search-input"
       />
-      {#if query}
-        <button
-          class="kb-clear"
-          onclick={() => (query = '')}
-          aria-label="Clear filter"
-          type="button"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
-      {/if}
     </div>
   </header>
 
@@ -224,94 +206,53 @@
   .kb-page {
     max-width: 72ch;
     margin: 0 auto;
-    padding: 40px 20px 80px;
+    padding: var(--space-12) var(--space-5) var(--space-16);
   }
 
   /* ── Header ──────────────────────────────────────────────────────────── */
   .kb-header {
-    margin-bottom: 32px;
+    margin-bottom: var(--space-8);
   }
 
   .kb-title {
     font-size: var(--fs-4);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
     color: var(--text);
-    margin: 0 0 6px;
+    margin: 0 0 var(--space-1);
     letter-spacing: -0.02em;
-    line-height: 1.2;
+    line-height: var(--lh-tight);
   }
 
   .kb-subtitle {
     font-size: var(--fs-1);
     color: var(--muted);
-    margin: 0 0 20px;
-    line-height: 1.5;
+    margin: 0 0 var(--space-5);
+    line-height: var(--lh-normal);
   }
 
-  /* ── Search ──────────────────────────────────────────────────────────── */
+  /* ── Search — SUI Input wrapper ──────────────────────────────────────── */
   .kb-search {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    background: var(--elevated);
-    border: 1px solid var(--border);
+    width: 100%;
+  }
+
+  /* Scope SUI Input styles so it fits our pill-style search bar */
+  .kb-search :global(.kb-search-input) {
+    width: 100%;
+  }
+
+  .kb-search :global(.kb-search-input input) {
+    width: 100%;
+    margin: 0;
     border-radius: var(--radius-pill);
-    overflow: hidden;
-    transition: border-color var(--t-fast);
-  }
-
-  .kb-search:focus-within {
-    border-color: var(--accent);
-  }
-
-  .search-icon {
-    display: flex;
-    align-items: center;
-    padding: 0 10px 0 14px;
-    color: var(--faint);
-    flex-shrink: 0;
-  }
-
-  .kb-input {
-    flex: 1;
-    background: none;
-    border: none;
-    outline: none;
-    color: var(--text);
-    font-size: var(--fs-1);
-    padding: 9px 4px;
-    min-width: 0;
-  }
-
-  .kb-input::placeholder {
-    color: var(--faint);
-  }
-
-  .kb-input::-webkit-search-cancel-button {
-    display: none;
-  }
-
-  .kb-clear {
-    background: none;
-    border: none;
-    padding: 9px 14px;
-    color: var(--muted);
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    transition: color var(--t-fast);
-    flex-shrink: 0;
-  }
-
-  .kb-clear:hover {
-    color: var(--text);
+    padding: var(--space-2) var(--space-4);
+    background: var(--elevated);
   }
 
   /* ── Result count ────────────────────────────────────────────────────── */
   .result-count {
     font-size: var(--fs-0);
     color: var(--faint);
-    margin: 0 0 16px;
+    margin: 0 0 var(--space-4);
     letter-spacing: 0.02em;
     text-transform: uppercase;
   }
@@ -336,28 +277,28 @@
 
   .entry:hover,
   .entry--expanded {
-    border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+    border-color: var(--accent);
   }
 
   /* ── Entry head ──────────────────────────────────────────────────────── */
   .entry-head {
-    padding: 14px 16px 12px;
+    padding: var(--space-3) var(--space-4) var(--space-3);
   }
 
   .entry-top {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 8px;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
   }
 
   .entry-title {
     flex: 1;
     font-size: var(--fs-2);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     color: var(--text);
     text-decoration: none;
-    line-height: 1.4;
+    line-height: var(--lh-normal);
     transition: color var(--t-fast);
   }
 
@@ -369,7 +310,7 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .meta-date {
@@ -378,13 +319,13 @@
     white-space: nowrap;
   }
 
-  /* ── Expand button ───────────────────────────────────────────────────── */
+  /* ── Expand button — WCAG 44×44px touch target ───────────────────────── */
   .expand-btn {
     background: none;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    width: 26px;
-    height: 26px;
+    border-radius: var(--radius-sm);
+    min-width: 44px;
+    min-height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -393,13 +334,18 @@
     color: var(--muted);
     transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
     padding: 0;
-    margin-top: 2px;
+    margin-top: var(--space-1);
   }
 
   .expand-btn:hover {
     border-color: var(--accent);
     color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    background: var(--accent-subtle);
+  }
+
+  .expand-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .chevron {
@@ -413,22 +359,22 @@
   /* ── Entry body (expanded) ───────────────────────────────────────────── */
   .entry-body {
     border-top: 1px solid var(--border);
-    padding: 18px 16px 16px;
+    padding: var(--space-4) var(--space-4) var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: var(--space-4);
     background: var(--bg);
   }
 
   .inline-spinner {
     display: flex;
     justify-content: center;
-    padding: 12px 0;
+    padding: var(--space-3) 0;
   }
 
   /* Override Spinner's own padding for inline use */
   .inline-spinner :global(.spinner-wrap) {
-    padding: 4px;
+    padding: var(--space-1);
   }
 
   .detail-error {
@@ -441,12 +387,12 @@
   .detail-section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .detail-heading {
     font-size: var(--fs-0);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.07em;
@@ -455,44 +401,44 @@
 
   .takeaway-list {
     margin: 0;
-    padding: 0 0 0 18px;
+    padding: 0 0 0 var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: var(--space-1);
   }
 
   .takeaway-item {
     font-size: var(--fs-1);
     color: var(--text);
-    line-height: 1.55;
+    line-height: var(--lh-normal);
   }
 
   .chip-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--space-1);
   }
 
   .transcript-excerpt {
     margin: 0;
-    padding: 12px 14px;
+    padding: var(--space-3) var(--space-3);
     border-left: 3px solid var(--border);
     background: var(--elevated);
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     font-size: var(--fs-1);
     color: var(--muted);
-    line-height: 1.65;
+    line-height: var(--lh-relaxed);
     font-style: italic;
   }
 
   .read-more {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: var(--space-1);
     font-size: var(--fs-1);
     color: var(--accent);
     text-decoration: none;
-    font-weight: 500;
+    font-weight: var(--fw-medium);
     transition: opacity var(--t-fast);
     align-self: flex-start;
   }
@@ -505,7 +451,7 @@
   /* ── Responsive ──────────────────────────────────────────────────────── */
   @media (max-width: 600px) {
     .kb-page {
-      padding: 24px 16px 60px;
+      padding: var(--space-6) var(--space-4) var(--space-12);
     }
 
     .kb-title {
@@ -521,7 +467,7 @@
     }
 
     .entry-body {
-      padding: 14px 14px 12px;
+      padding: var(--space-3) var(--space-3) var(--space-3);
     }
   }
 </style>

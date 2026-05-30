@@ -14,6 +14,7 @@
   import RelatedRail from '$lib/components/RelatedRail.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
+  import { Progress } from '@juspay/svelte-ui-components';
 
   const id = $derived(decodeURIComponent($page.params.id ?? ''));
 
@@ -237,11 +238,8 @@
               <dt>Implementability</dt>
               <dd>
                 <div class="score-bar-wrap" aria-label="Implementability {detail.implementability}/10">
-                  <div class="score-bar">
-                    <div
-                      class="score-fill"
-                      style="width:{Math.min(100, (detail.implementability / 10) * 100)}%"
-                    ></div>
+                  <div class="progress-wrap">
+                    <Progress value={detail.implementability} max={10} />
                   </div>
                   <span class="score-val">{detail.implementability}<span class="score-denom">/10</span></span>
                 </div>
@@ -272,21 +270,21 @@
   .video-page {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: var(--space-5);
   }
 
   /* ── Two-column layout ── */
   .layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 320px;
-    gap: 32px;
+    gap: var(--space-8);
     align-items: start;
   }
 
   .main {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: var(--space-5);
     min-width: 0;
   }
 
@@ -294,8 +292,8 @@
   .title {
     margin: 0;
     font-size: var(--fs-4);
-    font-weight: 700;
-    line-height: 1.25;
+    font-weight: var(--fw-bold);
+    line-height: var(--lh-tight);
     color: var(--text);
   }
 
@@ -304,7 +302,7 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-2);
     font-size: var(--fs-1);
     color: var(--muted);
   }
@@ -321,11 +319,11 @@
   .ig-link {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     color: var(--muted);
     font-size: var(--fs-1);
     text-decoration: none;
-    padding: 2px 8px;
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-pill);
     border: 1px solid var(--border);
     background: var(--elevated);
@@ -334,7 +332,7 @@
 
   .ig-link:hover {
     color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    border-color: var(--accent);
     text-decoration: none;
   }
 
@@ -342,7 +340,7 @@
   .tags-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   /* ── Media ── */
@@ -361,7 +359,7 @@
     width: 100%;
     max-height: 540px;
     display: block;
-    background: #000;
+    background: oklch(0 0 0);
   }
 
   .thumb-img {
@@ -375,31 +373,31 @@
   .content-section {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
     scroll-margin-top: 80px;
   }
 
   .section-heading {
     margin: 0;
     font-size: var(--fs-2);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     color: var(--text);
-    padding-top: 4px;
+    padding-top: var(--space-1);
   }
 
   .takeaways-list {
     margin: 0;
-    padding: 0 0 0 20px;
+    padding: 0 0 0 var(--space-5);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
     color: var(--text);
     font-size: var(--fs-1);
-    line-height: 1.6;
+    line-height: var(--lh-relaxed);
   }
 
   .takeaways-list li {
-    padding-left: 4px;
+    padding-left: var(--space-1);
   }
 
   .transcript-body {
@@ -411,11 +409,11 @@
 
   .transcript-pre {
     margin: 0;
-    padding: 16px 20px;
+    padding: var(--space-4) var(--space-5);
     font-size: var(--fs-1);
     font-family: inherit;
     color: var(--text);
-    line-height: 1.65;
+    line-height: var(--lh-relaxed);
     white-space: pre-wrap;
     word-break: break-word;
     overflow-wrap: break-word;
@@ -425,13 +423,13 @@
     margin: 0;
     font-size: var(--fs-1);
     color: var(--muted);
-    line-height: 1.65;
+    line-height: var(--lh-relaxed);
   }
 
   .tools-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-3);
   }
 
   .links-list {
@@ -440,19 +438,19 @@
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .link-item {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-1);
   }
 
   .link-anchor {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     font-size: var(--fs-1);
     color: var(--accent);
     text-decoration: none;
@@ -471,7 +469,7 @@
   .link-desc {
     font-size: var(--fs-0);
     color: var(--faint);
-    padding-left: 20px;
+    padding-left: var(--space-5);
   }
 
   .empty-text {
@@ -484,51 +482,51 @@
   .sidebar {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--space-4);
     position: sticky;
-    top: 20px;
+    top: var(--space-5);
   }
 
   .sidebar-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 16px;
+    padding: var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .verif-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .sidebar-prose {
     margin: 0;
     font-size: var(--fs-1);
     color: var(--muted);
-    line-height: 1.55;
+    line-height: var(--lh-normal);
   }
 
   .stats-dl {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-3);
     margin: 0;
   }
 
   .stat-row {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .stat-row dt {
     font-size: var(--fs-0);
     color: var(--faint);
-    font-weight: 500;
+    font-weight: var(--fw-medium);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -546,42 +544,39 @@
   .score-bar-wrap {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
-  .score-bar {
+  .progress-wrap {
     flex: 1;
-    height: 6px;
-    background: var(--elevated);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-
-  .score-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 3px;
-    transition: width var(--t);
+    /* Align Progress CSS vars to Dopamine theme */
+    --progress-track-height: 6px;
+    --progress-track-background: var(--elevated);
+    --progress-track-border-radius: var(--radius-xs);
+    --progress-bar-background: var(--accent);
+    --progress-bar-border-radius: var(--radius-xs);
+    --progress-container-width: 100%;
+    --progress-container-gap: 0;
   }
 
   .score-val {
     font-size: var(--fs-1);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     color: var(--text);
-    min-width: 32px;
+    min-width: var(--space-8);
     text-align: right;
   }
 
   .score-denom {
     font-size: var(--fs-0);
     color: var(--faint);
-    font-weight: 400;
+    font-weight: var(--fw-regular);
   }
 
   .sidebar-section-title {
     margin: 0;
     font-size: var(--fs-1);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     color: var(--text);
     text-transform: uppercase;
     letter-spacing: 0.06em;

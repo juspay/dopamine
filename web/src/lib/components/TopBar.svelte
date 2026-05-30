@@ -108,7 +108,7 @@
   .topbar {
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: var(--z-sticky);
     background: color-mix(in srgb, var(--surface) 92%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -118,19 +118,19 @@
   .topbar-inner {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: var(--space-4);
     max-width: var(--maxw);
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 var(--space-5);
     height: 54px;
   }
 
   .logo {
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: var(--space-2);
     font-size: var(--fs-2);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
     color: var(--text);
     text-decoration: none;
     letter-spacing: -0.02em;
@@ -145,7 +145,7 @@
 
   .logo-dot {
     color: var(--accent);
-    font-size: 14px;
+    font-size: var(--fs-1);
   }
 
   .search-wrap {
@@ -157,13 +157,13 @@
   .nav-desktop {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     flex-shrink: 0;
     margin-left: auto;
   }
 
   .nav-link {
-    padding: 6px 12px;
+    padding: var(--space-2) var(--space-3);
     border-radius: var(--radius);
     font-size: var(--fs-1);
     color: var(--muted);
@@ -179,14 +179,14 @@
 
   .nav-link.active {
     color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    background: var(--accent-subtle);
   }
 
   /* Mobile controls — hidden on desktop */
   .mobile-controls {
     display: none;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     margin-left: auto;
     flex-shrink: 0;
   }
@@ -216,13 +216,13 @@
   .nav-mobile {
     display: flex;
     flex-direction: column;
-    padding: 8px 20px 16px;
+    padding: var(--space-2) var(--space-5) var(--space-4);
     border-top: 1px solid var(--border);
-    gap: 2px;
+    gap: var(--space-1);
   }
 
   .mobile-link {
-    padding: 11px 12px;
+    padding: 11px var(--space-3);
     border-radius: var(--radius);
     font-size: var(--fs-2);
     color: var(--muted);
@@ -241,7 +241,7 @@
 
   .mobile-link.active {
     color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    background: var(--accent-subtle);
   }
 
   @media (max-width: 640px) {
@@ -255,7 +255,7 @@
       display: none;
     }
     .topbar-inner {
-      padding: 0 14px;
+      padding: 0 var(--space-3);
     }
   }
 </style>

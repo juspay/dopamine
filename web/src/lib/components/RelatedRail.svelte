@@ -43,8 +43,8 @@
 <style>
   .rail {
     display: flex;
-    gap: 12px;
-    padding: 2px 0;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
     width: max-content;
   }
 
@@ -63,7 +63,7 @@
   }
 
   .rail-card:hover {
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); /* intentional: 40% hover accent is distinct from --accent-subtle (12%) */
     transform: translateY(-1px);
     text-decoration: none;
   }
@@ -86,25 +86,25 @@
 
   .rail-dur {
     position: absolute;
-    bottom: 4px;
-    right: 4px;
-    background: rgba(0, 0, 0, 0.75);
-    color: #fff;
-    font-size: 10px;
-    font-weight: 600;
-    padding: 1px 4px;
-    border-radius: 3px;
+    bottom: var(--space-1);
+    right: var(--space-1);
+    background: var(--scrim);
+    color: var(--text);
+    font-size: var(--fs-0);
+    font-weight: var(--fw-semibold);
+    padding: 1px var(--space-1);
+    border-radius: var(--radius-xs);
   }
 
   .rail-meta {
-    padding: 8px;
+    padding: var(--space-2);
   }
 
   .rail-title {
-    margin: 0 0 4px;
+    margin: 0 0 var(--space-1);
     font-size: var(--fs-0);
-    font-weight: 500;
-    line-height: 1.35;
+    font-weight: var(--fw-medium);
+    line-height: var(--lh-normal);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
@@ -114,7 +114,7 @@
   }
 
   .rail-creator {
-    font-size: 11px;
+    font-size: var(--fs-0);
     color: var(--faint);
   }
 </style>

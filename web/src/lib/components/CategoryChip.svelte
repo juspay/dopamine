@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pill } from '@juspay/svelte-ui-components';
+  import Chip from './Chip.svelte';
   import { goto } from '$app/navigation';
   import { catColor, catBg } from '$lib/format.js';
 
@@ -14,10 +14,6 @@
   const bg = $derived(catBg(cat));
   const color = $derived(catColor(cat));
 
-  const pillVars = $derived(
-    `--pill-background:${bg};--pill-hover-background:${bg};--pill-color:${color};--pill-hover-color:${color}`
-  );
-
   function handleClick(e: MouseEvent): void {
     e.stopPropagation();
     if (onclick) {
@@ -28,19 +24,4 @@
   }
 </script>
 
-<span class="chip-wrap" class:chip-md={size === 'md'} style={pillVars}>
-  <Pill text={cat} onclick={handleClick} />
-</span>
-
-<style>
-  .chip-wrap {
-    display: inline-flex;
-    --pill-padding: 2px 8px;
-    --pill-font-size: var(--fs-0);
-  }
-
-  .chip-md {
-    --pill-padding: 4px 12px;
-    --pill-font-size: var(--fs-1);
-  }
-</style>
+<Chip label={cat} {size} color={color} bg={bg} onclick={handleClick} />

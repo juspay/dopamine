@@ -99,8 +99,8 @@
   .page {
     display: flex;
     flex-direction: column;
-    gap: 24px;
-    padding-top: 8px;
+    gap: var(--space-6);
+    padding-top: var(--space-2);
   }
 
   /* ── Category header ────────────────────────────────────────────────────── */
@@ -109,7 +109,7 @@
     background: var(--cat-bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px 24px;
+    padding: var(--space-5) var(--space-6);
     display: flex;
     align-items: center;
   }
@@ -117,22 +117,22 @@
   .cat-badge {
     display: flex;
     align-items: baseline;
-    gap: 12px;
+    gap: var(--space-3);
     flex-wrap: wrap;
   }
 
   .cat-name {
     font-size: var(--fs-4);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
     color: var(--cat-color);
     letter-spacing: -0.5px;
-    line-height: 1.2;
+    line-height: var(--lh-tight);
   }
 
   .cat-count {
     font-size: var(--fs-1);
     color: var(--muted);
-    font-weight: 400;
+    font-weight: var(--fw-regular);
   }
 
   /* ── Subcategory filter row ─────────────────────────────────────────────── */
@@ -140,19 +140,19 @@
   .subcat-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-2);
     align-items: center;
   }
 
   .subcat-chip {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 4px 12px;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
     border-radius: var(--radius-pill);
     font-size: var(--fs-1);
-    font-weight: 500;
-    line-height: 1.6;
+    font-weight: var(--fw-medium);
+    line-height: var(--lh-relaxed);
     color: var(--muted);
     background: var(--elevated);
     border: 1px solid var(--border);
@@ -167,7 +167,7 @@
 
   .subcat-chip.active {
     color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, var(--elevated));
+    background: var(--accent-subtle);
     border-color: var(--accent);
   }
 
@@ -179,7 +179,7 @@
   .subcat-count {
     font-size: var(--fs-0);
     color: var(--faint);
-    font-weight: 400;
+    font-weight: var(--fw-regular);
   }
 
   .subcat-chip.active .subcat-count {
@@ -191,7 +191,7 @@
 
   @media (max-width: 600px) {
     .cat-header {
-      padding: 16px;
+      padding: var(--space-4);
     }
 
     .cat-name {
@@ -199,11 +199,11 @@
     }
 
     .subcat-row {
-      gap: 6px;
+      gap: var(--space-2);
     }
 
     .subcat-chip {
-      padding: 3px 10px;
+      padding: var(--space-1) var(--space-3);
       font-size: var(--fs-0);
     }
   }

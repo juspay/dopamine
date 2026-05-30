@@ -6,6 +6,8 @@
   import type { IndexRecord } from '$lib/types.js';
   import VideoGrid from '$lib/components/VideoGrid.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import { Input, Select } from '@juspay/svelte-ui-components';
+  import type { SelectItem } from '@juspay/svelte-ui-components';
 
   // ── Load facets once ─────────────────────────────────────────────────────
   $effect(() => { loadFacets(); });
@@ -59,14 +61,14 @@
     { value: 'outdated',          label: 'Outdated' },
   ] as const;
 
-  // ── Sort options ─────────────────────────────────────────────────────────
-  const SORT_OPTIONS = [
-    { value: 'date-desc',  label: 'Newest first' },
-    { value: 'date-asc',   label: 'Oldest first' },
-    { value: 'dur-desc',   label: 'Longest first' },
-    { value: 'likes-desc', label: 'Most liked' },
-    { value: 'cat-asc',    label: 'Category A–Z' },
-  ] as const;
+  // ── Sort options — shaped for SUI Select (id + label) ───────────────────
+  const SORT_OPTIONS: SelectItem[] = [
+    { id: 'date-desc',  label: 'Newest first' },
+    { id: 'date-asc',   label: 'Oldest first' },
+    { id: 'dur-desc',   label: 'Longest first' },
+    { id: 'likes-desc', label: 'Most liked' },
+    { id: 'cat-asc',    label: 'Category A–Z' },
+  ];
 
   // ── Filter + sort pipeline ────────────────────────────────────────────────
   const filtered = $derived((): IndexRecord[] => {
@@ -133,6 +135,15 @@
     syncUrl();
   }
 
+  // SUI Select.onchange passes string[]; we extract the first element.
+  function handleSortChange(values: string[]) {
+    const next = values[0];
+    if (next && next !== sort) {
+      sort = next;
+      syncUrl();
+    }
+  }
+
   const hasFilters = $derived(q.trim() !== '' || cats.length > 0 || verif !== 'all' || sort !== 'date-desc');
 </script>
 
@@ -152,53 +163,26 @@
 
   <!-- Controls bar -->
   <div class="controls">
-    <!-- Text search — inline, not using SearchBox (we manage the value & debounce here) -->
+    <!-- Text search — SUI Input with addFocusColor -->
     <div class="search-wrap">
-      <span class="search-icon" aria-hidden="true">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.35-4.35" />
-        </svg>
-      </span>
-      <input
-        class="search-input"
-        type="search"
-        placeholder="Search titles, creators, tags…"
-        aria-label="Search videos"
-        autocomplete="off"
-        spellcheck="false"
+      <Input
         value={q}
-        oninput={(e) => {
-          q = (e.currentTarget as HTMLInputElement).value;
-          syncUrl();
-        }}
+        placeholder="Search titles, creators, tags…"
+        addFocusColor={true}
+        autoComplete="off"
+        onInput={(val) => { q = val; syncUrl(); }}
+        classes="videos-search-input"
       />
-      {#if q}
-        <button
-          class="search-clear"
-          type="button"
-          aria-label="Clear search"
-          onclick={() => { q = ''; syncUrl(); }}
-        >✕</button>
-      {/if}
     </div>
 
-    <!-- Sort select -->
+    <!-- Sort — SUI Select (single-select, no search) -->
     <div class="select-wrap">
-      <select
-        class="sort-select"
-        aria-label="Sort order"
-        value={sort}
-        onchange={(e) => {
-          sort = (e.currentTarget as HTMLSelectElement).value;
-          syncUrl();
-        }}
-      >
-        {#each SORT_OPTIONS as opt}
-          <option value={opt.value}>{opt.label}</option>
-        {/each}
-      </select>
-      <span class="select-arrow" aria-hidden="true">▾</span>
+      <Select
+        items={SORT_OPTIONS}
+        value={[sort]}
+        onchange={handleSortChange}
+        classes="videos-sort-select"
+      />
     </div>
   </div>
 
@@ -254,24 +238,24 @@
 
 <style>
   .library-page {
-    padding: 24px 0 64px;
+    padding: var(--space-6) 0 var(--space-16);
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--space-4);
   }
 
   /* ── Header ────────────────────────────────────────────── */
   .page-header {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     flex-wrap: wrap;
   }
 
   .header-left {
     display: flex;
     align-items: baseline;
-    gap: 10px;
+    gap: var(--space-2);
     flex: 1;
     min-width: 0;
   }
@@ -279,19 +263,19 @@
   .page-title {
     margin: 0;
     font-size: var(--fs-4);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
     color: var(--text);
-    line-height: 1.2;
+    line-height: var(--lh-tight);
   }
 
   .count-badge {
     font-size: var(--fs-1);
-    font-weight: 500;
+    font-weight: var(--fw-medium);
     color: var(--muted);
     background: var(--elevated);
     border: 1px solid var(--border);
     border-radius: var(--radius-pill);
-    padding: 2px 10px;
+    padding: var(--space-1) var(--space-2);
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -302,7 +286,7 @@
     border-radius: var(--radius-pill);
     color: var(--muted);
     font-size: var(--fs-0);
-    padding: 4px 12px;
+    padding: var(--space-1) var(--space-3);
     cursor: pointer;
     white-space: nowrap;
     transition: color var(--t-fast), border-color var(--t-fast);
@@ -317,125 +301,55 @@
   /* ── Controls bar ──────────────────────────────────────── */
   .controls {
     display: flex;
-    gap: 10px;
-    align-items: center;
+    gap: var(--space-2);
+    align-items: flex-start;
     flex-wrap: wrap;
   }
 
-  /* Search */
+  /* SUI Input wrapper: stretch to fill remaining space */
   .search-wrap {
-    position: relative;
     flex: 1;
     min-width: 200px;
-    display: flex;
-    align-items: center;
-    background: var(--elevated);
-    border: 1px solid var(--border);
+  }
+
+  /* Override SUI Input vars to fit the pill-style search row */
+  .search-wrap :global(.videos-search-input input) {
+    width: 100%;
+    margin: 0;
     border-radius: var(--radius-pill);
-    overflow: hidden;
-    transition: border-color var(--t-fast);
+    padding: var(--space-2) var(--space-4);
+    background: var(--elevated);
   }
 
-  .search-wrap:focus-within {
-    border-color: var(--accent);
+  .search-wrap :global(.videos-search-input) {
+    width: 100%;
   }
 
-  .search-icon {
-    display: flex;
-    align-items: center;
-    padding: 0 8px 0 14px;
-    color: var(--faint);
-    flex-shrink: 0;
-    pointer-events: none;
-  }
-
-  .search-input {
-    flex: 1;
-    background: none;
-    border: none;
-    outline: none;
-    color: var(--text);
-    font-size: var(--fs-1);
-    padding: 8px 6px;
-    min-width: 0;
-  }
-
-  .search-input::placeholder {
-    color: var(--faint);
-  }
-
-  .search-input::-webkit-search-cancel-button {
-    display: none;
-  }
-
-  .search-clear {
-    background: none;
-    border: none;
-    padding: 8px 12px;
-    color: var(--faint);
-    font-size: var(--fs-1);
-    cursor: pointer;
-    transition: color var(--t-fast);
-    flex-shrink: 0;
-  }
-
-  .search-clear:hover {
-    color: var(--text);
-  }
-
-  /* Sort select */
+  /* SUI Select wrapper: fixed-width sort control */
   .select-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
     flex-shrink: 0;
+    min-width: 150px;
   }
 
-  .sort-select {
-    appearance: none;
-    background: var(--elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-pill);
-    color: var(--text);
-    font-size: var(--fs-1);
-    padding: 8px 32px 8px 14px;
-    cursor: pointer;
-    outline: none;
-    transition: border-color var(--t-fast);
-  }
-
-  .sort-select:focus {
-    border-color: var(--accent);
-  }
-
-  .sort-select option {
-    background: var(--surface);
-  }
-
-  .select-arrow {
-    position: absolute;
-    right: 12px;
-    pointer-events: none;
-    color: var(--faint);
-    font-size: 10px;
-    line-height: 1;
+  .select-wrap :global(.videos-sort-select) {
+    width: 100%;
   }
 
   /* ── Category chips ────────────────────────────────────── */
   .cat-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--space-1);
   }
 
   .cat-chip {
     display: inline-flex;
     align-items: center;
-    padding: 3px 12px;
+    padding: var(--space-1) var(--space-3);
     border-radius: var(--radius-pill);
     font-size: var(--fs-0);
-    font-weight: 500;
-    line-height: 1.6;
+    font-weight: var(--fw-medium);
+    line-height: var(--lh-normal);
     border: 1px solid transparent;
     cursor: pointer;
     transition: filter var(--t-fast), border-color var(--t-fast), opacity var(--t-fast);
@@ -459,18 +373,18 @@
   .verif-pills {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--space-1);
   }
 
   .verif-pill {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 3px 12px;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
     border-radius: var(--radius-pill);
     font-size: var(--fs-0);
-    font-weight: 500;
-    line-height: 1.6;
+    font-weight: var(--fw-medium);
+    line-height: var(--lh-normal);
     border: 1px solid var(--border);
     background: var(--elevated);
     color: var(--muted);
@@ -484,21 +398,21 @@
   }
 
   .verif-pill.active {
-    background: color-mix(in srgb, var(--pill-color, var(--accent)) 15%, var(--elevated));
+    background: var(--accent-subtle);
     border-color: var(--pill-color, var(--accent));
     color: var(--pill-color, var(--accent));
   }
 
   .verif-dot {
-    width: 6px;
-    height: 6px;
+    width: var(--space-1);
+    height: var(--space-1);
     border-radius: 50%;
     flex-shrink: 0;
   }
 
   /* ── Results ───────────────────────────────────────────── */
   .results {
-    margin-top: 4px;
+    margin-top: var(--space-1);
   }
 
   /* ── Responsive ────────────────────────────────────────── */
@@ -516,7 +430,8 @@
       min-width: 0;
     }
 
-    .sort-select {
+    .select-wrap {
+      min-width: 0;
       width: 100%;
     }
   }

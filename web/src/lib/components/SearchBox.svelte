@@ -37,6 +37,7 @@
   <input
     class="search-input"
     type="search"
+    name="q"
     {placeholder}
     bind:value={query}
     aria-label="Search"

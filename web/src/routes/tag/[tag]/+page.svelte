@@ -49,7 +49,7 @@
     flex-direction: column;
     gap: var(--space-4);
     padding: var(--space-4) var(--space-5);
-    max-width: var(--content-max, 1280px);
+    max-width: var(--content-max);
     margin: 0 auto;
     width: 100%;
   }
@@ -64,9 +64,9 @@
   .tag-heading {
     margin: 0;
     font-size: var(--fs-4);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
     color: var(--text);
-    line-height: 1.2;
+    line-height: var(--lh-tight);
   }
 
   .hash {
@@ -82,7 +82,7 @@
 
   @media (max-width: 640px) {
     .tag-page {
-      padding: var(--space-3) var(--space-3);
+      padding: var(--space-3);
     }
 
     .tag-heading {
