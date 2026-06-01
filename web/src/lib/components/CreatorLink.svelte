@@ -13,14 +13,19 @@
   }
 </script>
 
-<a
-  href={'/creator/' + encodeURIComponent(name)}
-  class="creator-link"
-  title={fullName || name}
-  onclick={handleClick}
->
-  <span class="at" aria-hidden="true">@</span>{name}
-</a>
+{#if name}
+  <a
+    href={'/creator/' + encodeURIComponent(name)}
+    class="creator-link"
+    title={fullName || name}
+    onclick={handleClick}
+  >
+    <span class="at" aria-hidden="true">@</span>{name}
+  </a>
+{:else}
+  <!-- A few pipeline records have no extracted username; don't render a dead @-link. -->
+  <span class="creator-link creator-unknown" title="Unknown creator">unknown</span>
+{/if}
 
 <style>
   .creator-link {
@@ -38,6 +43,15 @@
 
   .creator-link:hover {
     text-decoration: underline;
+  }
+
+  .creator-unknown {
+    color: var(--faint);
+    cursor: default;
+  }
+
+  .creator-unknown:hover {
+    text-decoration: none;
   }
 
   .at {

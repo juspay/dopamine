@@ -232,16 +232,19 @@ interface LinksV2Entry {
 
 function normalizeTranscript(raw: KnowledgeEntry["transcript"]): string {
   if (!raw) return "";
-  if (Array.isArray(raw)) return raw.map(String).join("\n");
-  return String(raw);
+  const out = Array.isArray(raw) ? raw.map(String).join("\n") : String(raw);
+  // Legacy corruption guard: some early extractions String()-ified an array of
+  // objects into "[object Object]" lines and persisted that. Treat as empty.
+  return out.includes("[object Object]") ? "" : out;
 }
 
 function normalizeVisualDescription(
   raw: KnowledgeEntry["visual_description"]
 ): string {
   if (!raw) return "";
+  let out: string;
   if (Array.isArray(raw)) {
-    return raw
+    out = raw
       .map((item) => {
         if (typeof item === "object" && item !== null) {
           const ts = item.timestamp ?? "";
@@ -251,8 +254,27 @@ function normalizeVisualDescription(
         return String(item);
       })
       .join("\n");
+  } else {
+    out = String(raw);
   }
-  return String(raw);
+  // Same "[object Object]" corruption guard as transcript.
+  return out.includes("[object Object]") ? "" : out;
+}
+
+/**
+ * Normalize a tool / actionable-item URL for display:
+ *  - keep valid http(s) URLs as-is
+ *  - upgrade bare domains ("notion.so", "calendly.com/x") to https://
+ *  - drop free-text / non-URL strings ("N/A: macOS…", search instructions)
+ */
+function normalizeToolUrl(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  if (!s.includes(" ") && /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/\S*)?$/i.test(s)) {
+    return `https://${s}`;
+  }
+  return "";
 }
 
 /** Sanitize a filename stem for use as an id in URLs and filenames. */
@@ -417,8 +439,13 @@ export async function buildDashboardData(): Promise<void> {
       // file absent
     }
 
-    const verification = verifEntry?.overall_score ?? "unknown";
-    const confidence = verifEntry?.confidence ?? 0;
+    // No verification record: distinguish "analysed but had no actionable items
+    // to verify" (definitive → not_verifiable) from "never analysed" (→ unknown).
+    const analysedNoItems =
+      !!anEntry && (anEntry.actionable_items?.length ?? 0) === 0;
+    const verification =
+      verifEntry?.overall_score ?? (analysedNoItems ? "not_verifiable" : "unknown");
+    const confidence = Math.round(verifEntry?.confidence ?? 0);
     const verificationSummary = verifEntry?.summary ?? "";
     const implementability = anEntry?.implementability_score ?? 0;
     const usefulness = anEntry?.usefulness_prediction ?? "unknown";
@@ -471,7 +498,7 @@ export async function buildDashboardData(): Promise<void> {
         name,
         type: String(rawItem.type ?? ""),
         description: String(rawItem.description ?? ""),
-        url: String(rawItem.url ?? ""),
+        url: normalizeToolUrl(rawItem.url),
         installCommand: String(rawItem.install_command ?? ""),
         code: String(rawItem.code ?? ""),
         urlStatus,

@@ -20,4 +20,5 @@
   }
 </script>
 
-<Chip label={'#' + tag} {size} onclick={handleClick} />
+<!-- Some pipeline tags already include a leading '#'; avoid rendering '##'. -->
+<Chip label={tag.startsWith('#') ? tag : '#' + tag} {size} onclick={handleClick} />

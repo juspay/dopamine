@@ -59,6 +59,7 @@
     { value: 'partially_verified', label: 'Partial' },
     { value: 'not_verified',      label: 'Unverified' },
     { value: 'outdated',          label: 'Outdated' },
+    { value: 'unknown',           label: 'Not analysed' },
   ] as const;
 
   // ── Sort options — shaped for SUI Select (id + label) ───────────────────

@@ -107,14 +107,18 @@ const VERIF_LABEL: Record<string, string> = {
   verified_useful: 'Verified',
   partially_verified: 'Partial',
   not_verified: 'Unverified',
-  outdated: 'Outdated'
+  outdated: 'Outdated',
+  not_verifiable: 'Not verifiable',
+  unknown: 'Not analysed'
 };
 
 const VERIF_COLOR: Record<string, string> = {
   verified_useful: 'var(--ok)',
   partially_verified: 'var(--warn)',
   not_verified: 'var(--neutral)',
-  outdated: 'var(--bad)'
+  outdated: 'var(--bad)',
+  not_verifiable: 'var(--neutral)',
+  unknown: 'var(--neutral)'
 };
 
 export function verifLabel(score: string): string {

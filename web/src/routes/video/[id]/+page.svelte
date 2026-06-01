@@ -168,7 +168,7 @@
         <!-- On-screen / Visual description -->
         <section class="content-section" id="onscreen" aria-labelledby="onscreen-heading">
           <h2 id="onscreen-heading" class="section-heading">On-screen</h2>
-          {#if detail.visualDescription}
+          {#if detail.visualDescription && !detail.visualDescription.includes('[object Object]')}
             <p class="prose">{detail.visualDescription}</p>
           {:else}
             <p class="empty-text">No visual description available.</p>
@@ -245,7 +245,7 @@
                 </div>
               </dd>
             </div>
-            {#if detail.usefulness}
+            {#if detail.usefulness && detail.usefulness !== 'unknown'}
               <div class="stat-row">
                 <dt>Usefulness</dt>
                 <dd class="stat-text">{detail.usefulness}</dd>
