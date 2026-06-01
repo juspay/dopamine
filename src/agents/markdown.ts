@@ -270,13 +270,14 @@ function generateMarkdown(
   if (links.length > 0) {
     lines.push("| Resource | Description | Timestamp |");
     lines.push("|----------|-------------|-----------|");
+    // Escape '|' and strip newlines so cells don't break the Markdown table.
+    // Coerce to string first: timestamps/urls may arrive as numbers or null.
+    const escapeCell = (s: unknown): string =>
+      String(s ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
     for (const link of links) {
-      // Escape '|' and strip newlines so cells don't break the Markdown table.
-      const escapeCell = (s: string): string =>
-        s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
-      const url = escapeCell(link.url ?? "");
-      const desc = escapeCell(link.description ?? "");
-      const ts = escapeCell(link.timestamp ?? "");
+      const url = escapeCell(link.url);
+      const desc = escapeCell(link.description);
+      const ts = escapeCell(link.timestamp);
       lines.push(`| ${url} | ${desc} | ${ts} |`);
     }
   } else {
