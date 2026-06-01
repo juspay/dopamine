@@ -40,8 +40,9 @@ export interface VideoProperties {
 export interface FfprobeStream {
   codec_type?: string;
   codec_name?: string;
-  width?: string;
-  height?: string;
+  /** ffprobe emits width/height as numbers, not strings. */
+  width?: number;
+  height?: number;
   r_frame_rate?: string;
 }
 

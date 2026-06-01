@@ -129,6 +129,9 @@ export async function runCatalogAgent(): Promise<void> {
       ? Math.round((props.file_size / (1024 * 1024)) * 100) / 100
       : 0;
 
+    // Filename carries the username when classification + metadata both lack it.
+    const { username: filenameUsername } = parseFilename(filename);
+
     const record: CatalogRecord = {
       filename,
       category: cls.category ?? "",
@@ -138,7 +141,7 @@ export async function runCatalogAgent(): Promise<void> {
       duration_seconds: props?.duration ?? 0,
       resolution,
       file_size_mb: fileSizeMb,
-      instagram_user: cls.username ?? meta?.username ?? "",
+      instagram_user: cls.username ?? meta?.username ?? filenameUsername ?? "",
       caption,
       hashtags,
       language: cls.language ?? "",

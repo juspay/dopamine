@@ -2,6 +2,8 @@ import { type NeuroLink } from "@juspay/neurolink";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
+import { validateAndNormalizeUrl } from "./link-extractor.js";
+import { checkUrl } from "../utils/url-check.js";
 
 /** Link entry as stored in links_v2.json. */
 interface LinkEntry {
@@ -126,12 +128,13 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
         continue;
       }
 
-      // Try fixing partial URL
+      // Try fixing partial URL, then validate the result
       const fixed = tryFixPartialUrl(link.url);
-      if (fixed) {
-        links[fname].links[idx].url = fixed;
+      const fixedAndValid = fixed !== null ? validateAndNormalizeUrl(fixed) : null;
+      if (fixedAndValid) {
+        links[fname].links[idx].url = fixedAndValid;
         fixedLocally++;
-        console.log(`Fixed locally: ${link.name} -> ${fixed}`);
+        console.log(`Fixed locally: ${link.name} -> ${fixedAndValid}`);
       } else {
         needsApi.push({ fname, idx, link });
       }
@@ -167,7 +170,7 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
       `What is the official website URL for "${link.name}"? ${context}. ` +
       `Return ONLY the full URL starting with https://, nothing else. ` +
       `If it's a GitHub project return the GitHub URL. ` +
-      `If you cannot find an exact URL return your best guess. One URL only.`;
+      `If you do not know the exact URL, return the word NONE — do NOT guess or fabricate a URL. One URL only.`;
 
     console.log(`\n[${i + 1}/${uniqueNames.size}] Resolving: ${link.name}`);
 
@@ -186,11 +189,32 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
         maxTokens: 256,
         timeout: "30s",
       });
-      const match = response.content.match(/https?:\/\/[^\s<>"')]+/);
+      const content = response.content.trim();
+      // Model may return "NONE" when it cannot find a URL — treat as failure
+      if (/^NONE$/i.test(content)) return null;
+      const match = content.match(/https?:\/\/[^\s<>"')]+/);
       return match?.[0]?.replace(/\.$/, "") ?? null;
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
-    if (r1.success && r1.value) resolved = r1.value;
+    if (r1.success && r1.value) {
+      // Validate the resolved URL — the model must not have invented paths
+      const validated = validateAndNormalizeUrl(r1.value);
+      if (validated === null) {
+        console.log(`  -> Resolved URL failed validation (hallucinated?): ${r1.value}`);
+      } else {
+        // Optionally check liveness: only drop definitively-dead (404/410) links.
+        // Protected (403/429), errors (DNS outage), and timeouts are kept — we must
+        // not permanently drop a live URL because of a bot-block or transient failure.
+        const checkResult = await checkUrl(validated, { timeoutMs: 8_000, retries: 0 });
+        if (checkResult.status === "dead") {
+          console.log(`  -> Resolved URL is dead (${checkResult.httpCode}): ${validated}`);
+          // Leave url as null rather than storing a 404 link
+        } else {
+          resolved = validated;
+          console.log(`  Resolved [${checkResult.status}]: ${validated}`);
+        }
+      }
+    }
 
     if (resolved) {
       // Apply immediately to all entries sharing this name
@@ -199,7 +223,6 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
         links[fname].links[idx].url = resolved;
       }
       resolvedCount++;
-      console.log(`  Resolved: ${resolved}`);
     } else {
       failedCount++;
       console.log(`  FAILED to resolve`);

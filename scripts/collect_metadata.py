@@ -1,5 +1,19 @@
 #!/usr/bin/env python3
-"""Collect metadata for all saved Instagram posts and save to videos/metadata.json."""
+"""Collect metadata for all saved Instagram posts and save to videos/metadata.json.
+
+SESSION MANAGEMENT
+------------------
+The session is persisted to ~/.config/instagrapi/session.json so that
+re-logins are avoided on every run.
+
+To create or refresh the session file manually, run:
+
+    python3 scripts/ig_login.py
+
+That helper script performs a fresh interactive login (including 2FA/challenge
+prompts) and writes a valid session.json that both this script and
+download_videos.py will reuse.
+"""
 
 import json
 import os
@@ -8,6 +22,16 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from instagrapi import Client
+from instagrapi.exceptions import (
+    BadPassword,
+    ChallengeRequired,
+    LoginRequired,
+    PleaseWaitFewMinutes,
+    RateLimitError,
+    ReloginAttemptExceeded,
+    SentryBlock,
+    TwoFactorRequired,
+)
 
 load_dotenv()
 sys.stdout.reconfigure(line_buffering=True)
@@ -18,55 +42,157 @@ SESSION_FILE = os.path.expanduser("~/.config/instagrapi/session.json")
 OUTPUT_FILE = Path("./videos/metadata.json")
 
 
-def get_client() -> Client:
-    from instagrapi.exceptions import LoginRequired
-
+def _build_fresh_client() -> Client:
+    """Return a new Client with human-like delays configured."""
     cl = Client()
-    cl.delay_range = [3, 7]
+    # Use human-like delays (2-5 s between requests) to reduce bot-detection.
+    cl.delay_range = [2, 5]
     cl.request_timeout = 30
-    os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
-
-    # Try loading saved session WITHOUT calling login()
-    if os.path.exists(SESSION_FILE):
-        session = cl.load_settings(SESSION_FILE)
-        if session:
-            try:
-                cl.set_settings(session)
-                cl.get_timeline_feed()  # Validate session
-                print(f"Session valid for {USERNAME}", flush=True)
-                return cl
-            except LoginRequired:
-                print("Session expired, re-authenticating with preserved device...", flush=True)
-                old_session = cl.get_settings()
-                cl.set_settings({})
-                cl.set_uuids(old_session["uuids"])  # Keep same device identity
-                cl.login(USERNAME, PASSWORD)
-                cl.dump_settings(SESSION_FILE)
-                print("Re-authenticated and session saved.", flush=True)
-                return cl
-            except Exception as e:
-                print(f"Session validation failed: {e}", flush=True)
-
-    # Try browser cookie import before password login
-    try:
-        import browser_cookie3
-        print("Trying Chrome cookie import...", flush=True)
-        cj = browser_cookie3.chrome(domain_name='.instagram.com')
-        cookies = {c.name: c.value for c in cj}
-        if 'sessionid' in cookies and cookies['sessionid']:
-            cl.login_by_sessionid(cookies['sessionid'])
-            cl.dump_settings(SESSION_FILE)
-            print("Logged in via Chrome cookies.", flush=True)
-            return cl
-    except Exception as e:
-        print(f"Chrome cookie import failed: {e}", flush=True)
-
-    # Last resort: fresh password login
-    print("Performing fresh login...", flush=True)
-    cl.login(USERNAME, PASSWORD)
-    print("Logged in and session saved.", flush=True)
     return cl
 
+
+def get_client() -> Client:  # noqa: C901  (complexity acceptable for login logic)
+    """
+    Return an authenticated instagrapi Client.
+
+    Strategy (in order):
+      1. Load and validate the persisted session file.
+      2. On LoginRequired: attempt ONE re-login using the saved device identity
+         so Instagram does not treat it as a new device (avoids challenge triggers).
+      3. Fall back to browser-cookie import (requires browser_cookie3).
+      4. Last resort: fresh password login.
+
+    On ChallengeRequired / TwoFactorRequired the script exits with a clear
+    actionable message — automated pipelines cannot solve interactive challenges.
+    Run `python3 scripts/ig_login.py` to create a fresh session interactively.
+    """
+    os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # 1. Load the persisted session and validate it.
+    # ------------------------------------------------------------------
+    if os.path.exists(SESSION_FILE):
+        cl = _build_fresh_client()
+        try:
+            # load_settings reads the JSON file and calls set_settings internally;
+            # the return value is the parsed dict (kept for device-identity reuse).
+            saved_settings = cl.load_settings(SESSION_FILE)
+            cl.get_timeline_feed()  # lightweight validation call
+            print(f"[ig] Session valid for @{USERNAME}", flush=True)
+            return cl
+        except LoginRequired:
+            print(
+                "[ig] Session expired — attempting re-login with saved device identity …",
+                flush=True,
+            )
+            # Preserve device UUIDs so Instagram recognises the same device.
+            # set_settings({}) alone would wipe them; restore immediately.
+            device_uuids = saved_settings.get("uuids", {}) if isinstance(saved_settings, dict) else {}
+            cl.set_settings({})
+            if device_uuids:
+                cl.set_uuids(device_uuids)
+            try:
+                cl.login(USERNAME, PASSWORD)
+                cl.dump_settings(SESSION_FILE)
+                print("[ig] Re-authenticated — session saved.", flush=True)
+                return cl
+            except (ChallengeRequired, TwoFactorRequired) as exc:
+                _abort_needs_interactive_login(exc)
+            except (BadPassword, ReloginAttemptExceeded, SentryBlock) as exc:
+                _abort_unrecoverable(exc)
+            except (PleaseWaitFewMinutes, RateLimitError) as exc:
+                _abort_rate_limited(exc)
+        except (ChallengeRequired, TwoFactorRequired) as exc:
+            _abort_needs_interactive_login(exc)
+        except (SentryBlock, ReloginAttemptExceeded) as exc:
+            _abort_unrecoverable(exc)
+        except (PleaseWaitFewMinutes, RateLimitError) as exc:
+            _abort_rate_limited(exc)
+        except Exception as exc:
+            print(f"[ig] Session validation failed ({type(exc).__name__}: {exc})", flush=True)
+            # Fall through to cookie/password methods below.
+
+    # ------------------------------------------------------------------
+    # 2. Try browser cookie import (optional dependency).
+    # ------------------------------------------------------------------
+    try:
+        import browser_cookie3
+
+        print("[ig] Trying Chrome cookie import …", flush=True)
+        cj = browser_cookie3.chrome(domain_name=".instagram.com")
+        cookies = {c.name: c.value for c in cj}
+        if cookies.get("sessionid"):
+            cl = _build_fresh_client()
+            cl.login_by_sessionid(cookies["sessionid"])
+            cl.dump_settings(SESSION_FILE)
+            print("[ig] Logged in via Chrome cookies — session saved.", flush=True)
+            return cl
+    except ImportError:
+        pass  # browser_cookie3 not installed — skip silently
+    except Exception as exc:
+        print(f"[ig] Chrome cookie import failed: {exc}", flush=True)
+
+    # ------------------------------------------------------------------
+    # 3. Fresh password login (last resort).
+    # ------------------------------------------------------------------
+    print("[ig] Performing fresh password login …", flush=True)
+    cl = _build_fresh_client()
+    try:
+        cl.login(USERNAME, PASSWORD)
+        cl.dump_settings(SESSION_FILE)
+        print("[ig] Logged in — session saved.", flush=True)
+        return cl
+    except (ChallengeRequired, TwoFactorRequired) as exc:
+        _abort_needs_interactive_login(exc)
+    except (BadPassword,) as exc:
+        _abort_unrecoverable(exc)
+    except (PleaseWaitFewMinutes, RateLimitError) as exc:
+        _abort_rate_limited(exc)
+
+
+# ---------------------------------------------------------------------------
+# Error helpers — print actionable messages then raise SystemExit so the
+# pipeline step reports a clear failure rather than a silent crash.
+# ---------------------------------------------------------------------------
+
+def _abort_needs_interactive_login(exc: Exception) -> None:
+    print(
+        f"\n[ig] AUTHENTICATION CHALLENGE REQUIRED ({type(exc).__name__})\n"
+        "  Instagram is requesting interactive verification (2FA / checkpoint).\n"
+        "  The pipeline cannot solve this automatically.\n\n"
+        "  ACTION REQUIRED — run this command and follow the prompts:\n"
+        "    python3 scripts/ig_login.py\n\n"
+        "  That script performs a fresh interactive login and writes a valid\n"
+        f"  session to {SESSION_FILE} which subsequent pipeline runs will reuse.\n",
+        flush=True,
+    )
+    raise SystemExit(1)
+
+
+def _abort_unrecoverable(exc: Exception) -> None:
+    print(
+        f"\n[ig] UNRECOVERABLE LOGIN ERROR ({type(exc).__name__}: {exc})\n"
+        "  This is not a transient failure — check your credentials or account status.\n\n"
+        "  ACTION REQUIRED — run this command to start a fresh session:\n"
+        "    python3 scripts/ig_login.py\n",
+        flush=True,
+    )
+    raise SystemExit(1)
+
+
+def _abort_rate_limited(exc: Exception) -> None:
+    print(
+        f"\n[ig] RATE LIMITED ({type(exc).__name__}: {exc})\n"
+        "  Instagram is throttling requests. Wait at least 1 hour before retrying.\n"
+        "  If this persists, run: python3 scripts/ig_login.py\n",
+        flush=True,
+    )
+    raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
+# Data extraction helpers
+# ---------------------------------------------------------------------------
 
 def extract_resource(r):
     """Extract metadata from a carousel resource."""

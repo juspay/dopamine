@@ -23,20 +23,138 @@ interface LinkEntry {
   timestamp: string;
 }
 
+// ---------------------------------------------------------------------------
+// URL validation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Known-good TLDs list is impractical to maintain; instead we reject obvious
+ * non-TLDs: all-digit strings (IP octets, port numbers) and single characters.
+ * Legitimate TLDs are 2+ alpha chars.
+ */
+function isValidTld(tld: string): boolean {
+  return /^[a-zA-Z]{2,}$/.test(tld);
+}
+
+/**
+ * Validate an arxiv URL. Accepts:
+ *   https://arxiv.org/abs/<numeric-id>   e.g. 2401.12345 or 2401.123456
+ *   https://arxiv.org/pdf/<numeric-id>
+ *
+ * Rejects IDs like "Mano-Technical-Report" — those are hallucinated.
+ */
+function isValidArxivUrl(url: URL): boolean {
+  const pathParts = url.pathname.split("/").filter(Boolean);
+  // expect ["abs"|"pdf", "<id>"] or ["abs"|"pdf", "<id>", "<extra>"]
+  if (pathParts.length < 2) return true; // bare arxiv.org — fine
+  const section = pathParts[0];
+  if (section !== "abs" && section !== "pdf") return true; // other arxiv paths — allow
+  const id = pathParts[1];
+  // Valid arxiv ID: YYMM.NNNNN(vN) where YYMM and NNNNN are digits
+  return /^\d{4}\.\d{4,5}(v\d+)?$/.test(id);
+}
+
+/**
+ * Validate a GitHub URL. GitHub paths take one of these forms:
+ *   /owner            — profile
+ *   /owner/repo       — repository
+ *   /owner/repo/...   — sub-path inside a repo
+ *
+ * We reject paths where either owner or repo contains characters GitHub
+ * disallows (e.g. spaces, brackets, underscores at start, etc.).
+ * GitHub usernames: [a-z0-9](?:[a-z0-9-]*[a-z0-9])? (case-insensitive, max 39)
+ * GitHub repo names: [a-z0-9_.-]+ (case-insensitive)
+ */
+function isValidGithubUrl(url: URL): boolean {
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (parts.length === 0) return true; // bare github.com — fine
+  const owner = parts[0];
+  // GitHub username: alphanumeric + hyphens, no leading/trailing hyphen, max 39 chars
+  if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/.test(owner)) return false;
+  if (parts.length === 1) return true; // profile page
+  const repo = parts[1];
+  // GitHub repo name: alphanumeric, hyphens, underscores, dots; max 100 chars
+  if (!/^[a-zA-Z0-9_.-]{1,100}$/.test(repo)) return false;
+  return true;
+}
+
+/**
+ * Validate and normalise a URL string extracted by the LLM.
+ *
+ * Returns the cleaned URL string if valid, or null if the URL is structurally
+ * invalid, malformed, or matches a known hallucination pattern.
+ *
+ * Rules applied:
+ *  1. Must parse as a URL with http(s) scheme.
+ *  2. Host must have a valid TLD (2+ alpha chars, not all-digits).
+ *  3. Host must not be a bare IP address (we trust domain names, not raw IPs
+ *     from LLM output — too many false positives from code snippets).
+ *  4. Domain-specific path validation (arxiv, github).
+ *  5. No whitespace inside the URL.
+ */
+export function validateAndNormalizeUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  // Must start with http(s)://
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+
+  // Must not contain unencoded spaces (LLM sometimes adds explanatory text)
+  if (/\s/.test(trimmed)) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+
+  const host = parsed.hostname.toLowerCase();
+
+  // Reject bare IP addresses — LLMs hallucinate localhost / 192.168.x.x from code
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return null;
+
+  // Require a dot in the hostname (rejects "localhost", single-word hostnames)
+  if (!host.includes(".")) return null;
+
+  // Validate TLD
+  const tld = host.split(".").pop() ?? "";
+  if (!isValidTld(tld)) return null;
+
+  // Domain-specific path validation
+  if (host === "arxiv.org" || host.endsWith(".arxiv.org")) {
+    if (!isValidArxivUrl(parsed)) return null;
+  }
+  if (host === "github.com") {
+    if (!isValidGithubUrl(parsed)) return null;
+  }
+
+  // Return a cleaned version: remove trailing dot from pathname if any
+  return parsed.href.replace(/\.$/, "");
+}
+
 const LINK_EXTRACT_PROMPT = `
 Watch this video carefully and extract EVERY link, URL, website, tool, product, or resource that is:
 1. Shown on screen (URLs in browser bars, slides, code editors, terminal output)
 2. Mentioned verbally (speaker says "go to example.com" or "check out Tool X")
 3. Inferable from context (a known tool/product is being demonstrated)
 
+CRITICAL URL RULES — follow these exactly:
+- For "shown_on_screen": set url only to URLs you can literally READ on screen. Copy the URL character by character from what is visible. Do NOT guess or reconstruct.
+- For "mentioned_verbally": set url only if the speaker explicitly states a full URL or domain (e.g. "go to example.com"). Do NOT invent a URL from the product name.
+- For "inferred_from_context": always set url to null UNLESS the product's homepage URL is universally well-known (e.g. github.com, python.org). Do NOT guess paths or repositories.
+- NEVER fabricate arxiv paper IDs, GitHub repository paths, or any URL path segment that is not visible on screen or explicitly stated.
+- If you are uncertain about any part of the URL, set url to null.
+
 For each link provide:
 - name: The tool/product/resource name
-- url: The full https:// URL if shown or known, null if truly unknown
+- url: The full https:// URL literally seen/stated, or null if uncertain
 - type: "shown_on_screen", "mentioned_verbally", or "inferred_from_context"
 - description: What it is and why it's mentioned
 - timestamp: Approximate timestamp in the video
 
-Be exhaustive. Capture everything. Do not miss any URL that appears on screen even briefly.
+Be exhaustive in finding resources. Be conservative with URLs — a null url is far better than a wrong one.
 Return ONLY valid JSON matching the schema provided. No markdown fences.`;
 
 export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
@@ -126,9 +244,26 @@ export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
     if (result.success) {
-      linksState[filename] = result.value;
+      // Post-extraction URL validation: reject structurally invalid / hallucinated URLs.
+      // A null url is far safer than a wrong one — the resolver fills nulls in later
+      // using text-only prompts that don't hallucinate path segments.
+      let invalidatedCount = 0;
+      const validated: Links = {
+        links: result.value.links.map((link) => {
+          const cleaned = validateAndNormalizeUrl(link.url);
+          if (link.url !== null && cleaned === null) {
+            invalidatedCount++;
+            console.log(`  -> INVALID URL nullified [${link.name}]: ${link.url}`);
+          }
+          return { ...link, url: cleaned };
+        }),
+      };
+      if (invalidatedCount > 0) {
+        console.log(`  -> ${invalidatedCount} URL(s) invalidated (hallucinated/malformed)`);
+      }
+      linksState[filename] = validated;
       extracted++;
-      console.log(`  -> ${result.value.links.length} links found`);
+      console.log(`  -> ${validated.links.length} links found`);
     } else {
       linksState[filename] = { links: [], error: result.error };
       errors++;

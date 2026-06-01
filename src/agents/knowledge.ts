@@ -184,16 +184,40 @@ export async function runKnowledgeAgent(neurolink: NeuroLink): Promise<void> {
       console.log(`  -> ${result.value.links_and_resources.length} links/resources found`);
       if (isEmpty) console.log(`  -> marked as low_content (model returned empty)`);
     } else {
-      knowledgeBase[filename] = {
-        filename,
-        category: cls.category ?? "",
-        transcript: "",
-        visual_description: "",
-        links_and_resources: [],
-        key_takeaways: [],
-        topics: [],
-        error: result.error,
-      };
+      // CRITICAL: Do NOT overwrite previously-good data with an empty error entry.
+      // If the existing entry has any real content (transcript, topics, takeaways,
+      // visual_description), preserve it and only update the error marker so the
+      // next run will retry. This prevents a Vertex AI DNS/auth outage from
+      // permanently wiping knowledge that was successfully extracted in a prior run.
+      const hasPriorContent =
+        existing &&
+        !existing.error &&
+        (
+          (existing.transcript && existing.transcript.length > 0) ||
+          (existing.visual_description && existing.visual_description.length > 0) ||
+          (Array.isArray(existing.key_takeaways) && existing.key_takeaways.length > 0) ||
+          (Array.isArray(existing.topics) && existing.topics.length > 0)
+        );
+
+      if (hasPriorContent) {
+        // Keep all existing fields; only stamp the error so the next run re-attempts.
+        knowledgeBase[filename] = { ...existing!, error: result.error };
+        console.warn(`  -> Preserved prior content; error marked for retry: ${result.error.slice(0, 120)}`);
+      } else {
+        // No prior content — write a minimal retryable error entry.
+        // Use empty arrays/strings rather than omitting fields so downstream
+        // readers that expect the full KnowledgeEntry shape don't crash.
+        knowledgeBase[filename] = {
+          filename,
+          category: cls.category ?? "",
+          transcript: existing?.transcript ?? "",
+          visual_description: existing?.visual_description ?? "",
+          links_and_resources: existing?.links_and_resources ?? [],
+          key_takeaways: existing?.key_takeaways ?? [],
+          topics: existing?.topics ?? [],
+          error: result.error,
+        };
+      }
       errors++;
     }
 

@@ -54,12 +54,32 @@ function computeMaxConfidence(
   const testableItems = actionableItems.filter(i => testableTypes.has(i.type));
   const knowledgeItems = actionableItems.filter(i => !testableTypes.has(i.type));
 
-  // Research signals: live URLs and verified claims
-  const liveUrls = researchItems.filter(
-    r => r.url_status === "live" || r.url_status === "redirect"
-  ).length;
+  // Research signals: live URLs and verified claims.
+  //
+  // The shared url-check.ts util emits "protected" (401/403/429…) and
+  // "server_error" (5xx) in addition to the statuses the researcher previously
+  // produced.  The ResearchItemResult type hasn't been widened yet (owned by
+  // another agent), so we use a Set<string> for forward-compatible matching.
+  //
+  // "protected" means the endpoint exists but blocks bots — treat as live.
+  // "server_error" means the site is up but temporarily erroring — treat as live
+  //   so a transient 5xx spike doesn't tank confidence.
+  // "error"/"timeout" are transient network failures; exclude them from the
+  //   "checked" count so a DNS outage run doesn't incorrectly cap confidence.
+  const LIVE_STATUSES: ReadonlySet<string> = new Set([
+    "live", "redirect", "protected", "server_error",
+  ]);
+  const TRANSIENT_STATUSES: ReadonlySet<string> = new Set([
+    "error", "timeout",
+  ]);
+
+  const liveUrls = researchItems.filter(r => LIVE_STATUSES.has(r.url_status)).length;
   const deadUrls = researchItems.filter(r => r.url_status === "dead").length;
-  const urlsChecked = researchItems.filter(r => r.url_status !== "no_url").length;
+  // Only count URLs where we got a definitive HTTP answer (exclude transient failures
+  // so a DNS outage run doesn't incorrectly cap the confidence score).
+  const urlsChecked = researchItems.filter(
+    r => r.url_status !== "no_url" && !TRANSIENT_STATUSES.has(r.url_status)
+  ).length;
   const verifiedClaims = researchItems.filter(
     r => r.claim_verification === "verified" || r.claim_verification === "partially_verified"
   ).length;
@@ -194,11 +214,19 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
     CONFIG.STATE.VERIFICATIONS, {}
   );
 
+  // Videos with actionable items: full LLM-powered verification.
   const entries = Object.entries(analysisState).filter(
     ([, entry]) => !entry.error && entry.actionable_items.length > 0
   );
 
-  console.log(`Verification: ${entries.length} videos to verify`);
+  // Videos that were successfully analysed but had NO actionable items.
+  // These should get a baseline entry so verifications.json is complete at
+  // source and downstream consumers don't need to infer the status themselves.
+  const zeroItemEntries = Object.entries(analysisState).filter(
+    ([, entry]) => !entry.error && entry.actionable_items.length === 0
+  );
+
+  console.log(`Verification: ${entries.length} videos to verify, ${zeroItemEntries.length} with no actionable items (baseline entries)`);
 
   let verified = 0, skipped = 0, errors = 0;
 
@@ -262,5 +290,31 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
     await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
   }
 
-  console.log(`\nVerification done. Verified: ${verified}, Skipped: ${skipped}, Errors: ${errors}`);
+  // Emit baseline entries for zero-item videos so verifications.json is
+  // complete at source.  The data-builder previously inferred "not_verifiable"
+  // for these; writing an explicit entry here makes the pipeline correct without
+  // relying on that workaround.
+  let baselines = 0;
+  for (const [filename] of zeroItemEntries) {
+    if (filename in verificationState && !verificationState[filename].error) {
+      // Already has a (possibly prior-run) baseline entry — leave it alone.
+      continue;
+    }
+    verificationState[filename] = {
+      filename,
+      verified_at: new Date().toISOString(),
+      overall_score: "not_verifiable",
+      summary: "No actionable items to verify.",
+      item_results: [],
+      confidence: 0,
+    };
+    baselines++;
+  }
+
+  if (baselines > 0) {
+    await saveState(CONFIG.STATE.VERIFICATIONS, verificationState);
+    console.log(`  -> Baseline entries written: ${baselines}`);
+  }
+
+  console.log(`\nVerification done. Verified: ${verified}, Skipped: ${skipped}, Errors: ${errors}, Baselines: ${baselines}`);
 }

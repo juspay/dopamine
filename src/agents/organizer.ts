@@ -41,12 +41,13 @@ export async function runOrganizerAgent(): Promise<void> {
     // Relative target: from videos/classified/{category}/ back to videos/user_saved/
     const target = path.join("..", "..", "user_saved", filename);
 
-    // Remove old symlink if it exists
+    // Remove whatever is at symlinkPath (symlink OR stale regular file).
+    // Checking only for isSymbolicLink() and skipping other types causes
+    // fs.symlink() to throw EEXIST, crashing the entire agent run.
     try {
-      const stat = await fs.lstat(symlinkPath);
-      if (stat.isSymbolicLink()) {
-        await fs.unlink(symlinkPath);
-      }
+      await fs.lstat(symlinkPath);
+      // lstat succeeded — something exists; remove it unconditionally.
+      await fs.unlink(symlinkPath);
     } catch {
       // File doesn't exist — that's fine
     }

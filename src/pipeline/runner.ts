@@ -13,7 +13,7 @@ import { runCatalogAgent }      from "../agents/catalog.js";
 import { runOrganizerAgent }    from "../agents/organizer.js";
 import { runMarkdownAgent }     from "../agents/markdown.js";
 import { runDashboardAgent }    from "../agents/dashboard.js";
-// Steps 12-16: Verification pipeline
+// Verification pipeline agents (steps 10-14 in the 0-indexed run order)
 import { runAnalyzerAgent }     from "../agents/analyzer.js";
 import { runResearchAgent }     from "../agents/researcher.js";
 import { runImplementerAgent }  from "../agents/implementer.js";
@@ -71,24 +71,54 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   const neurolink = new NeuroLink();
   const parallel = options.parallel ?? process.argv.includes("--parallel");
 
+  // ---------------------------------------------------------------------------
+  // STEP ORDERING NOTE
+  //
+  // Dashboard build (step 16, 0-indexed 15) intentionally runs LAST — after
+  // the full verification pipeline — so verification scores, URL statuses,
+  // and confidence data from the current run are all present when the
+  // dashboard JSON is emitted.  The previous ordering (dashboard at index 10)
+  // meant every run produced a dashboard that was one run stale w.r.t.
+  // verification data, because verifications.json was written after the
+  // dashboard had already been built.
+  //
+  // 0-indexed mapping (used by START_STEP / END_STEP / --start / --end):
+  //   0  Metadata collection
+  //   1  Video download
+  //   2  Properties extraction
+  //   3  Classification
+  //   4  Knowledge extraction
+  //   5  Link extraction
+  //   6  Link resolution
+  //   7  Catalog generation       \
+  //   8  Folder organization       > parallel group "post-classify"
+  //   9  Markdown generation      /
+  //  10  Content analysis
+  //  11  Research & verification
+  //  12  Implementation testing
+  //  13  Verification synthesis
+  //  14  Knowledge base enrichment
+  //  15  Dashboard build           ← LAST: reads ALL state including verifications
+  // ---------------------------------------------------------------------------
   const steps: PipelineStep[] = [
-    { name: "Metadata collection",       run: () => runMetadataAgent() },                // 1
-    { name: "Video download",            run: () => runDownloadAgent() },                 // 2
-    { name: "Properties extraction",     run: () => runPropertiesAgent() },               // 3
-    { name: "Classification",            run: () => runClassifierAgent(neurolink) },      // 4
-    { name: "Knowledge extraction",      run: () => runKnowledgeAgent(neurolink) },       // 5
-    { name: "Link extraction",           run: () => runLinkExtractAgent(neurolink) },     // 6
-    { name: "Link resolution",           run: () => runLinkResolverAgent(neurolink) },    // 7
-    { name: "Catalog generation",        run: () => runCatalogAgent(),        parallelGroup: "post-classify" }, // 8
-    { name: "Folder organization",       run: () => runOrganizerAgent(),      parallelGroup: "post-classify" }, // 9
-    { name: "Markdown generation",       run: () => runMarkdownAgent(),       parallelGroup: "post-classify" }, // 10
-    { name: "Dashboard build",           run: () => runDashboardAgent() },                // 11  -- depends on catalog
-    // Verification pipeline (Steps 12-16)
-    { name: "Content analysis",          run: () => runAnalyzerAgent(neurolink) },        // 12
-    { name: "Research & verification",   run: () => runResearchAgent(neurolink) },        // 13
-    { name: "Implementation testing",    run: () => runImplementerAgent() },              // 14
-    { name: "Verification synthesis",    run: () => runVerifierAgent(neurolink) },        // 15
-    { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() },              // 16
+    { name: "Metadata collection",       run: () => runMetadataAgent() },                //  0
+    { name: "Video download",            run: () => runDownloadAgent() },                 //  1
+    { name: "Properties extraction",     run: () => runPropertiesAgent() },               //  2
+    { name: "Classification",            run: () => runClassifierAgent(neurolink) },      //  3
+    { name: "Knowledge extraction",      run: () => runKnowledgeAgent(neurolink) },       //  4
+    { name: "Link extraction",           run: () => runLinkExtractAgent(neurolink) },     //  5
+    { name: "Link resolution",           run: () => runLinkResolverAgent(neurolink) },    //  6
+    { name: "Catalog generation",        run: () => runCatalogAgent(),        parallelGroup: "post-classify" }, //  7
+    { name: "Folder organization",       run: () => runOrganizerAgent(),      parallelGroup: "post-classify" }, //  8
+    { name: "Markdown generation",       run: () => runMarkdownAgent(),       parallelGroup: "post-classify" }, //  9
+    // Verification pipeline
+    { name: "Content analysis",          run: () => runAnalyzerAgent(neurolink) },        // 10
+    { name: "Research & verification",   run: () => runResearchAgent(neurolink) },        // 11
+    { name: "Implementation testing",    run: () => runImplementerAgent() },              // 12
+    { name: "Verification synthesis",    run: () => runVerifierAgent(neurolink) },        // 13
+    { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() },              // 14
+    // Dashboard build runs LAST so verification scores land in the same run
+    { name: "Dashboard build",           run: () => runDashboardAgent() },                // 15  -- reads verifications.json
   ];
 
   const startStep = options.startStep ?? parseInt(process.env.START_STEP ?? "0", 10);
@@ -218,6 +248,14 @@ function buildExecutionPlan(
 
 /**
  * Run a single pipeline step with timing, logging, metrics, and error handling.
+ *
+ * On failure the step is recorded in `errors` and execution continues, but a
+ * prominent console warning is emitted so the operator is not left wondering
+ * why downstream steps produce empty or stale data.  The IG scraper steps
+ * (Metadata collection, Video download) are the canonical example: a
+ * LoginRequired / 403 failure leaves metadata.json and the video directory
+ * unchanged from the previous run, so every subsequent step silently operates
+ * on stale data without any obvious signal that something went wrong.
  */
 async function runSingleStep(
   step: PipelineStep,
@@ -239,11 +277,20 @@ async function runSingleStep(
     stepLog.info(`Step ${index + 1}/${totalSteps}: ${step.name} — completed in ${elapsed}s`);
   } catch (err) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    const msg = `Step ${index + 1} (${step.name}) failed after ${elapsed}s: ${err}`;
+    const errStr = String(err).split("\n")[0];
+    const msg = `Step ${index + 1} (${step.name}) failed after ${elapsed}s: ${errStr}`;
     metrics.endStep("error", String(err));
     stepLog.error(msg);
     errors.push(msg);
-    // Continue to next step instead of crashing
+
+    // Emit a highly visible warning so operators can diagnose why downstream
+    // steps produce empty or stale data without an obvious error trail.
+    console.error(`\n${"!".repeat(60)}`);
+    console.error(`STEP FAILED [${index + 1}/${totalSteps}]: ${step.name}`);
+    console.error(`  Error : ${errStr}`);
+    console.error(`  Impact: downstream steps may produce empty or stale data`);
+    console.error(`          if they depend on this step's output files.`);
+    console.error("!".repeat(60) + "\n");
   }
 }
 
@@ -295,9 +342,32 @@ Usage: node dist/pipeline/runner.js [options]
 
 Options:
   --parallel       Run independent steps concurrently (catalog, organizer, markdown)
-  --start=N        Start from step N (0-indexed)
-  --end=N          End at step N (exclusive, 0-indexed)
+  --start=N        Start from step N (0-indexed, inclusive)
+  --end=N          End before step N (0-indexed, exclusive). Default: run all steps.
   -h, --help       Show this help
+
+Step index map (0-indexed, for use with --start / --end / START_STEP / END_STEP):
+   0  Metadata collection       (IG scraper — requires valid session)
+   1  Video download            (IG scraper — requires valid session)
+   2  Properties extraction
+   3  Classification
+   4  Knowledge extraction
+   5  Link extraction
+   6  Link resolution
+   7  Catalog generation        \
+   8  Folder organization        > parallel group "post-classify" (--parallel)
+   9  Markdown generation       /
+  10  Content analysis
+  11  Research & verification
+  12  Implementation testing
+  13  Verification synthesis
+  14  Knowledge base enrichment
+  15  Dashboard build           (runs LAST — reads verifications.json so scores are current)
+
+NOTE: Dashboard build was previously step 10 (before verification). It is now step 15
+(last) so verification scores, URL statuses, and confidence data from the current run
+are present in the dashboard JSON.  If you previously used END_STEP=11 to stop after
+the dashboard, update it to END_STEP=16 (or omit it to run all steps).
 
 Environment variables:
   START_STEP                 Same as --start

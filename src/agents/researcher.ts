@@ -17,12 +17,25 @@ import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import type { AnalysisEntry } from "./analyzer.js";
+import { checkUrls } from "../utils/url-check.js";
 
 /** Research result for a single actionable item. */
 export interface ResearchItemResult {
   item_name: string;
   item_type: string;
-  url_status: "live" | "dead" | "redirect" | "no_url" | "timeout" | "error";
+  /**
+   * Live-check result from the shared url-check util.
+   *
+   * - "live"         2xx response
+   * - "redirect"     followed one or more 3xx hops, final response was 2xx
+   * - "protected"    401/403/405/429/451 — bot-blocked but endpoint exists; treat as live for display
+   * - "dead"         404/410 — definitively gone
+   * - "server_error" 5xx — site up but erroring; treat as transient
+   * - "error"        DNS/network failure (ENOTFOUND etc.) — NOT dead; may be transient
+   * - "timeout"      request timed out
+   * - "no_url"       empty / non-http input
+   */
+  url_status: "live" | "dead" | "redirect" | "protected" | "server_error" | "no_url" | "timeout" | "error";
   url_checked: string;
   github_info: string;       // stars, last commit, or "not_a_github_repo"
   registry_info: string;     // factual data from npm/PyPI/GitHub APIs
@@ -43,10 +56,7 @@ export interface ResearchEntry {
 const BATCH_SIZE = 5;
 
 /** Configurable URL check timeout — override via URL_TIMEOUT_MS env var. */
-const URL_TIMEOUT_MS = parseInt(process.env.URL_TIMEOUT_MS ?? "10000", 10);
-
-/** Maximum number of redirects to follow before treating as an error. */
-const MAX_REDIRECTS = parseInt(process.env.MAX_REDIRECTS ?? "10", 10);
+const URL_TIMEOUT_MS = parseInt(process.env.URL_TIMEOUT_MS ?? "12000", 10);
 
 /**
  * Detect hallucinated responses from the AI model.
@@ -216,100 +226,6 @@ async function checkPackageRegistry(
   return "";
 }
 
-/**
- * Follow redirects manually so we can enforce a redirect limit and track each hop.
- * `fetch` with `redirect: "follow"` does not expose intermediate URLs on all runtimes,
- * so we follow manually with `redirect: "manual"`.
- */
-async function fetchWithRedirects(
-  url: string,
-  method: "HEAD" | "GET",
-  timeoutMs: number,
-): Promise<{ ok: boolean; status: number; finalUrl: string; redirected: boolean }> {
-  let currentUrl = url;
-  let redirected = false;
-
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const response = await fetch(currentUrl, {
-        method,
-        signal: controller.signal,
-        redirect: "manual",             // handle redirects ourselves
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; DopamineBot/1.0)" },
-      });
-      clearTimeout(timer);
-
-      // 3xx → follow the Location header
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get("location");
-        if (!location) {
-          return { ok: false, status: response.status, finalUrl: currentUrl, redirected };
-        }
-        // Resolve relative redirects
-        currentUrl = new URL(location, currentUrl).href;
-        redirected = true;
-        continue;
-      }
-
-      return {
-        ok: response.ok,
-        status: response.status,
-        finalUrl: currentUrl,
-        redirected,
-      };
-    } catch (err) {
-      clearTimeout(timer);
-      throw err; // let caller handle abort / network errors
-    }
-  }
-
-  // Exceeded max redirects
-  return { ok: false, status: 0, finalUrl: currentUrl, redirected: true };
-}
-
-/**
- * Check if a URL is live by doing a HEAD/GET request with configurable timeout
- * and explicit redirect following.
- */
-async function checkUrl(url: string): Promise<{ status: string; finalUrl: string }> {
-  if (!url || url === "" || !url.startsWith("http")) {
-    return { status: "no_url", finalUrl: "" };
-  }
-  try {
-    const result = await fetchWithRedirects(url, "HEAD", URL_TIMEOUT_MS);
-    if (result.ok) {
-      const status = result.redirected ? "redirect" : "live";
-      if (result.redirected) {
-        console.log(`    URL redirected: ${url} -> ${result.finalUrl}`);
-      }
-      return { status, finalUrl: result.finalUrl };
-    }
-    return { status: "dead", finalUrl: result.finalUrl };
-  } catch (err) {
-    const msg = String(err);
-    if (msg.includes("abort") || msg.includes("timeout") || msg.includes("AbortError")) {
-      console.warn(`    URL timeout (${URL_TIMEOUT_MS}ms): ${url}`);
-      return { status: "timeout", finalUrl: url };
-    }
-    // Try GET as fallback (some servers reject HEAD)
-    try {
-      const result = await fetchWithRedirects(url, "GET", URL_TIMEOUT_MS);
-      if (result.ok) {
-        const status = result.redirected ? "redirect" : "live";
-        if (result.redirected) {
-          console.log(`    URL redirected: ${url} -> ${result.finalUrl}`);
-        }
-        return { status, finalUrl: result.finalUrl };
-      }
-      return { status: "dead", finalUrl: result.finalUrl };
-    } catch {
-      return { status: "error", finalUrl: url };
-    }
-  }
-}
 
 /**
  * Build a research prompt for a batch of items.
@@ -347,10 +263,19 @@ async function processBatch(
   const results: ResearchItemResult[] = [];
   const now = new Date().toISOString();
 
-  // 1. Check all URLs in parallel
-  const urlChecks = await Promise.all(
-    items.map(item => checkUrl(item.url))
+  // 1. Check all URLs via the shared util (correct UA, 403→protected not dead,
+  //    DNS errors→"error" not "dead").  checkUrls deduplicates internally.
+  const urlMap = await checkUrls(
+    items.map(item => item.url),
+    { timeoutMs: URL_TIMEOUT_MS, retries: 1 },
   );
+  const urlChecks = items.map(item => {
+    const r = urlMap.get(item.url);
+    return {
+      status: (r?.status ?? "no_url") satisfies ResearchItemResult["url_status"],
+      finalUrl: r?.finalUrl ?? item.url,
+    };
+  });
 
   // 2. Query package registries in parallel (factual, no AI)
   const registryInfos = await Promise.all(
@@ -431,7 +356,7 @@ async function processBatch(
     results.push({
       item_name: item.name,
       item_type: item.type,
-      url_status: urlCheck.status as ResearchItemResult["url_status"],
+      url_status: urlCheck.status,
       url_checked: urlCheck.finalUrl,
       github_info: githubInfo,
       registry_info: registryInfo,

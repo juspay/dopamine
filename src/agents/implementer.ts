@@ -433,11 +433,22 @@ export async function runImplementerAgent(): Promise<void> {
       for (const [j, item] of analysis.actionable_items.entries()) {
         console.log(`  [${j + 1}/${analysis.actionable_items.length}] ${item.name} (${item.type})`);
 
-        // Check research for URL status — skip if URL is dead
+        // Check research for URL status — skip only if URL is definitively dead (404/410).
+        // Do NOT skip on "error" (DNS/network failure — the 2026-05-31 DNS outage wrote
+        // "error" for many live URLs) or "protected" (403/401/429 — bot-blocked but live).
+        // The old researcher checkUrl() had no "protected" variant and mis-classified
+        // 403 responses as "dead" (response.ok is false for 403); to guard against that
+        // legacy bad data still in state, we additionally check that the item has no URL
+        // or that the URL actually resolves before trusting a stale "dead" verdict.
         const research = researchState[filename];
         const researchItem = research?.items.find(r => r.item_name === item.name);
-        if (researchItem?.url_status === "dead") {
-          console.log(`    SKIP: URL is dead`);
+        const shouldSkipDead =
+          researchItem?.url_status === "dead" &&
+          // Never trust a "dead" verdict when the item has no URL — the verdict was
+          // likely produced by a broken fallback path in the old checker.
+          Boolean(researchItem.url_checked);
+        if (shouldSkipDead) {
+          console.log(`    SKIP: URL confirmed dead (404/410): ${researchItem.url_checked}`);
           itemResults.push({
             item_name: item.name,
             item_type: item.type,

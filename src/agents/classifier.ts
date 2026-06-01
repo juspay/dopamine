@@ -27,19 +27,25 @@ Instagram metadata:
 CATEGORY RULES — pick exactly one from this closed list:
 ${CATEGORIES.map(c => `  - ${c}`).join("\n")}
 
-Guidance:
-- Programming, dev tools, hardware → "Tech & Coding"
-- LLMs, prompts, AI agents, ML tools → "AI & Machine Learning"
-- Figma, design systems, UX → "UI/UX Design"
+Guidance (pick the BEST fit based on primary subject matter):
+- Programming, dev tools, hardware, software tutorials → "Tech & Coding"
+- LLMs, prompts, AI agents, ML tools, model demos → "AI & Machine Learning"
+- Figma, design systems, UX, visual design → "UI/UX Design"
 - Entrepreneurship, marketing, sales, ads → "Business & Marketing"
-- Courses, study tips, learning techniques → "Education"
+- Courses, study tips, learning techniques (non-tech) → "Education"
 - Investing, personal finance, money → "Finance"
 - Decor, renovation, home setup, gardening → "Interior Design & Home"
-- Recipes, restaurants, drinks → "Food & Cooking"
+- Recipes, restaurants, drinks, food preparation → "Food & Cooking"
 - Travel, fashion, day-in-the-life → "Travel & Lifestyle"
 - Workout, nutrition, wellness → "Fitness & Health"
-- Anime, comedy, memes, pop culture, music → "Entertainment & Comedy"
+- Anime, comedy, memes, pop culture, music, animals, pets → "Entertainment & Comedy"
 - Use "Other" ONLY when truly nothing else fits.
+
+CRITICAL GUARDRAILS — these common errors must be avoided:
+- A video featuring animals or pets (dogs, cats, etc.) is "Entertainment & Comedy", NOT "Tech & Coding" even if the caption uses words like "code", "app", or "algorithm".
+- A lifestyle/aesthetic video with a tech-sounding caption is still "Travel & Lifestyle" or "Entertainment & Comedy".
+- Only classify as "Tech & Coding" or "AI & Machine Learning" when the video PRIMARY SUBJECT is the technical content itself (a person screen-sharing, explaining code, demoing a tool, etc.).
+- The category must match what the viewer WATCHES, not incidental words in the caption.
 
 Return ONLY valid JSON matching the schema provided. No markdown fences.`;
 

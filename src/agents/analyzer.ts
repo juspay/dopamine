@@ -104,9 +104,20 @@ export async function runAnalyzerAgent(neurolink: NeuroLink): Promise<void> {
     CONFIG.STATE.ANALYSIS, {}
   );
 
-  const entries = Object.entries(knowledgeBase).filter(
-    ([, entry]) => !entry.error && entry.transcript
-  );
+  // Include entries that have ANY analysable content — transcript, visual_description,
+  // key_takeaways, or topics. Videos with no speech (silent demos, screen recordings,
+  // aesthetic content) have an empty transcript but carry rich visual_description +
+  // key_takeaways that yield actionable items. Filtering on `entry.transcript` alone
+  // permanently excluded these, so analysis was silently skipped for them.
+  const entries = Object.entries(knowledgeBase).filter(([, entry]) => {
+    if (entry.error) return false;
+    return (
+      Boolean(entry.transcript) ||
+      Boolean(entry.visual_description) ||
+      (Array.isArray(entry.key_takeaways) && entry.key_takeaways.length > 0) ||
+      (Array.isArray(entry.topics) && entry.topics.length > 0)
+    );
+  });
 
   console.log(`Analysis: ${entries.length} knowledge base entries to analyze`);
 

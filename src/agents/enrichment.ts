@@ -8,6 +8,12 @@
  * - Rebuilds dashboard with new data
  *
  * State: Modifies knowledge_base.json, markdown files, and dashboard
+ *
+ * DNS-outage guard: enrichment never overwrites previously-good verification
+ * data with lower-quality data. If a prior run produced "verified_useful" but
+ * the current run produces "not_verified" (e.g. because researcher.ts ran
+ * during a DNS outage and wrongly marked all URLs dead), the existing KB value
+ * is preserved. Only equal-or-better quality data is written.
  */
 
 import fs from "node:fs/promises";
@@ -111,6 +117,40 @@ function generateVerificationMarkdown(
   return lines.join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Quality ordering — prevents DNS-outage-corrupted runs from overwriting good data
+// ---------------------------------------------------------------------------
+
+/**
+ * Numeric quality rank for each verification overall_score.
+ * Higher = better quality. A run that produced "verified_useful" must never be
+ * overwritten by a later run that produced "not_verified" because researcher.ts
+ * ran during a DNS outage and wrongly marked all URLs as dead.
+ *
+ * "outdated" is a definitive finding (the content is stale) and ranks above
+ * "not_verified" to protect it from being silently replaced by a later bad run.
+ */
+const VERIFICATION_QUALITY: Readonly<Record<string, number>> = {
+  verified_useful:     4,
+  partially_verified:  3,
+  outdated:            2,
+  not_verified:        1,
+};
+
+/** Returns the quality rank for a score string (unknown/missing scores → 0). */
+function qualityOf(score: string | undefined): number {
+  return VERIFICATION_QUALITY[score ?? ""] ?? 0;
+}
+
+/**
+ * Returns true when the new verification score is at least as good as the
+ * score already stored in the KB entry. Equal quality is allowed (idempotent
+ * re-runs of the same data must not be blocked).
+ */
+function isQualityImprovement(existingScore: string | undefined, newScore: string): boolean {
+  return qualityOf(newScore) >= qualityOf(existingScore);
+}
+
 /**
  * Sanitize a category name to a directory name (matches markdown.ts).
  */
@@ -139,15 +179,30 @@ export async function runEnrichmentAgent(): Promise<void> {
 
   // 1. Enrich knowledge base entries with verification data
   console.log("Enriching knowledge base entries...");
+  let skippedDowngrade = 0;
   for (const [filename, verification] of Object.entries(verificationState)) {
+    // Skip entries that failed with a hard error (DNS outage, LLM error, etc.)
     if (verification.error) continue;
 
     const kbEntry = knowledgeBase[filename];
     if (!kbEntry) continue;
 
+    // DNS-outage guard: never overwrite a previously-good verification score
+    // with a lower-quality score from the current run. If researcher.ts ran
+    // during a DNS outage it would have marked all URLs "dead", causing the
+    // verifier to produce "not_verified" — we must not let that corrupt a prior
+    // "verified_useful" or "partially_verified" result.
+    if (!isQualityImprovement(kbEntry.verification_status, verification.overall_score)) {
+      skippedDowngrade++;
+      console.log(
+        `  SKIP downgrade: ${filename} (existing=${kbEntry.verification_status ?? "none"}, new=${verification.overall_score})`,
+      );
+      continue;
+    }
+
     const analysis = analysisState[filename];
 
-    // Add verification fields to KB entry
+    // Write verification fields to KB entry
     kbEntry.verification_status = verification.overall_score;
     kbEntry.verification_score = verification.confidence;
     kbEntry.verification_summary = verification.summary;
@@ -156,6 +211,9 @@ export async function runEnrichmentAgent(): Promise<void> {
     kbEntry.implementability_score = analysis?.implementability_score ?? 0;
 
     enriched++;
+  }
+  if (skippedDowngrade > 0) {
+    console.log(`  Skipped ${skippedDowngrade} downgrades (DNS-outage guard preserved better prior data)`);
   }
 
   // Save enriched knowledge base
@@ -167,10 +225,21 @@ export async function runEnrichmentAgent(): Promise<void> {
   const kbOutputDir = CONFIG.OUTPUT.KNOWLEDGE_BASE;
 
   for (const [filename, verification] of Object.entries(verificationState)) {
+    // Skip hard errors
     if (verification.error) continue;
 
     const analysis = analysisState[filename];
     if (!analysis) continue;
+
+    // Same DNS-outage guard as the KB enrichment loop: check whether the
+    // markdown already has a better verification section before overwriting.
+    // We use the KB entry's stored score as the ground truth for "existing
+    // quality", since parsing the markdown badge is fragile.
+    const kbEntry = knowledgeBase[filename];
+    if (kbEntry && !isQualityImprovement(kbEntry.verification_status, verification.overall_score)) {
+      // The KB was already guarded above — skip markdown update too.
+      continue;
+    }
 
     const category = analysis.category || "Uncategorized";
     const catDir = path.join(kbOutputDir, sanitizeDirname(category));

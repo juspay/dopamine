@@ -48,7 +48,7 @@ export async function runPropertiesAgent(): Promise<void> {
     CONFIG.STATE.PROPERTIES, {}
   );
   const videoFiles = await getVideoFiles(CONFIG.VIDEOS_DIR);
-  let processed = 0, skipped = 0;
+  let processed = 0, skipped = 0, failed = 0;
 
   // Separate files that need processing from those already done
   const toProcess: Array<{ index: number; videoPath: string }> = [];
@@ -84,6 +84,12 @@ export async function runPropertiesAgent(): Promise<void> {
         properties[result.filename] = result.props;
         processed++;
         console.log(`[${index + 1}/${videoFiles.length}] OK: ${filename}`);
+      } else {
+        // ffprobe failed for this video — counted but not stored.
+        // The video stays unrecorded so it will be retried next run.
+        // Repeated failures here indicate a corrupt/unsupported file.
+        failed++;
+        console.warn(`[${index + 1}/${videoFiles.length}] FAIL (ffprobe error, will retry): ${filename}`);
       }
     }
 
@@ -91,7 +97,7 @@ export async function runPropertiesAgent(): Promise<void> {
     await saveState(CONFIG.STATE.PROPERTIES, properties);
   }
 
-  console.log(`\nProperties done. Processed: ${processed}, Skipped: ${skipped}`);
+  console.log(`\nProperties done. Processed: ${processed}, Skipped: ${skipped}, Failed: ${failed}`);
 }
 
 function extractProperties(probe: FfprobeOutput): VideoProperties {
@@ -102,10 +108,12 @@ function extractProperties(probe: FfprobeOutput): VideoProperties {
     const [num, den] = videoStream.r_frame_rate.split("/").map(Number);
     fps = den !== 0 ? Math.round((num / den) * 100) / 100 : 0;
   }
+  // ffprobe emits width/height as numbers; String() handles both number and
+  // undefined safely before parseInt so the parse always has a valid input.
   return {
     duration:  parseFloat(fmt.duration ?? "0"),
-    width:     parseInt(videoStream?.width  ?? "0", 10),
-    height:    parseInt(videoStream?.height ?? "0", 10),
+    width:     typeof videoStream?.width  === "number" ? videoStream.width  : parseInt(String(videoStream?.width  ?? "0"), 10),
+    height:    typeof videoStream?.height === "number" ? videoStream.height : parseInt(String(videoStream?.height ?? "0"), 10),
     codec:     videoStream?.codec_name ?? "",
     file_size: parseInt(fmt.size ?? "0", 10),
     bitrate:   parseInt(fmt.bit_rate ?? "0", 10),

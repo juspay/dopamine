@@ -271,9 +271,12 @@ function generateMarkdown(
     lines.push("| Resource | Description | Timestamp |");
     lines.push("|----------|-------------|-----------|");
     for (const link of links) {
-      const url = link.url ?? "";
-      const desc = link.description ?? "";
-      const ts = link.timestamp ?? "";
+      // Escape '|' and strip newlines so cells don't break the Markdown table.
+      const escapeCell = (s: string): string =>
+        s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+      const url = escapeCell(link.url ?? "");
+      const desc = escapeCell(link.description ?? "");
+      const ts = escapeCell(link.timestamp ?? "");
       lines.push(`| ${url} | ${desc} | ${ts} |`);
     }
   } else {
@@ -344,12 +347,15 @@ function generateIndex(allEntries: IndexEntry[]): string {
   const sortedCategories = [...byCategory.keys()].sort();
   for (const cat of sortedCategories) {
     const count = byCategory.get(cat)!.length;
+    // Match the GitHub anchor algorithm: lowercase, strip chars that are not
+    // word-chars/spaces/hyphens (including literal '/' in e.g. "UI/UX Design"),
+    // convert spaces to hyphens, collapse runs of hyphens.
     const anchor = cat
       .toLowerCase()
-      .replace(/ /g, "-")
-      .replace(/&/g, "")
-      .replace(/--/g, "-")
-      .replace(/^-|-$/g, "");
+      .replace(/[^\w\s\-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/-{2,}/g, "-");
     lines.push(`- [${cat}](#${anchor}) (${count})`);
   }
   lines.push("");
@@ -439,8 +445,10 @@ export async function runMarkdownAgent(): Promise<void> {
     const catDir = path.join(outputDir, sanitizeDirname(category));
     await fs.mkdir(catDir, { recursive: true });
 
-    // Determine markdown filename — use video filename stem for uniqueness
-    const stem = filename.replace(".mp4", "");
+    // Determine markdown filename — use video filename stem for uniqueness.
+    // Use a regex anchored to the end to avoid removing a '.mp4' that appears
+    // inside a username (e.g. 'the.mp4.user_12345.mp4').
+    const stem = filename.replace(/\.mp4$/, "");
     const mdFilename = `${stem}.md`;
 
     // Write file
