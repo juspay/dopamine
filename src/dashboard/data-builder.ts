@@ -263,15 +263,27 @@ function normalizeVisualDescription(
 
 /**
  * Normalize a tool / actionable-item URL for display:
+ *  - take the first URL when several are packed into one field
+ *    ("https://a, https://b" / "https://a | https://b")
+ *  - drop ephemeral Google grounding-redirect links (search artifacts that
+ *    expire by design — the research agent should resolve the target, not
+ *    store the redirect)
  *  - keep valid http(s) URLs as-is
  *  - upgrade bare domains ("notion.so", "calendly.com/x") to https://
  *  - drop free-text / non-URL strings ("N/A: macOS…", search instructions)
  */
-function normalizeToolUrl(raw: unknown): string {
-  const s = String(raw ?? "").trim();
-  if (!s) return "";
+export function normalizeToolUrl(raw: unknown): string {
+  const s0 = String(raw ?? "").trim();
+  if (!s0) return "";
+  // First whitespace/pipe-delimited token, trailing comma stripped. URLs never
+  // contain raw whitespace, so this won't corrupt a single valid URL (including
+  // one with commas in its query string).
+  const s = s0.split(/[\s|]+/)[0].replace(/,+$/, "");
+  if (/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect/i.test(s)) {
+    return "";
+  }
   if (/^https?:\/\//i.test(s)) return s;
-  if (!s.includes(" ") && /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/\S*)?$/i.test(s)) {
+  if (/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/\S*)?$/i.test(s)) {
     return `https://${s}`;
   }
   return "";

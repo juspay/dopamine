@@ -7,6 +7,7 @@ import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { getThumbnailPath, extractVideoFrames } from "../utils/video.js";
+import { isKnowledgeComplete, mergeKnowledge } from "./knowledge-merge.js";
 
 /** Classification entry shape -- only fields we need for filtering. */
 interface ClassificationEntry {
@@ -47,6 +48,14 @@ You MUST provide:
 Be extremely thorough. Do not summarize — capture everything.
 Return ONLY valid JSON matching the schema provided. No markdown fences.`;
 
+/** Minimum visual_description length (chars) for an extraction to count as
+ *  "complete". Every video has visuals, so a near-empty visual_description means
+ *  the frame analysis silently failed (the old skip check ignored this field, so
+ *  entries with a transcript but empty visual were frozen forever). Entries below
+ *  this are re-extracted; if they stay below it they're marked low_content so they
+ *  don't re-extract on every run. Override via MIN_VISUAL_CHARS env var. */
+const MIN_VISUAL_CHARS = parseInt(process.env.MIN_VISUAL_CHARS ?? "200", 10);
+
 export async function runKnowledgeAgent(neurolink: NeuroLink): Promise<void> {
   // Load classifications to determine which videos need KB extraction
   const classifications = await loadState<Record<string, ClassificationEntry>>(
@@ -75,8 +84,16 @@ export async function runKnowledgeAgent(neurolink: NeuroLink): Promise<void> {
     // Avoids infinite retries on videos the model can't process (entertainment/
     // lifestyle reels where it returns empty JSON or prose).
     const existing = knowledgeBase[filename];
-    const hasContent = existing && !existing.error && existing.transcript &&
-      Array.isArray(existing.key_takeaways) && existing.key_takeaways.length > 0;
+    // "Complete" requires a substantive VISUAL description AND >=3 takeaways
+    // (see knowledge-merge.ts). visual_description is the reliable completeness
+    // signal: every video has visuals, so an empty/near-empty one means frame
+    // analysis silently failed. The old check only looked at transcript +
+    // takeaways, so entries with a good transcript but empty visual were frozen.
+    const visualLen = String(existing?.visual_description ?? "").trim().length;
+    const takeawayCount = Array.isArray(existing?.key_takeaways)
+      ? existing!.key_takeaways.length
+      : 0;
+    const hasContent = isKnowledgeComplete(existing, MIN_VISUAL_CHARS);
     if (hasContent) {
       skipped++;
       console.log(`${logPrefix} SKIP (already extracted): ${filename}`);
@@ -90,7 +107,7 @@ export async function runKnowledgeAgent(neurolink: NeuroLink): Promise<void> {
     if (existing?.error) {
       console.log(`${logPrefix} RETRY (previous error): ${filename}`);
     } else if (existing) {
-      console.log(`${logPrefix} RETRY (empty takeaways): ${filename}`);
+      console.log(`${logPrefix} RE-EXTRACT (thin: visual=${visualLen}c, takeaways=${takeawayCount}): ${filename}`);
     }
 
     const videoPath = path.join(CONFIG.VIDEOS_DIR, filename);
@@ -165,24 +182,29 @@ export async function runKnowledgeAgent(neurolink: NeuroLink): Promise<void> {
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
     if (result.success) {
-      // Detect totally-empty extractions — model either returned {} or prose that
-      // normalized to nothing. Mark as low_content so we don't retry indefinitely.
-      const isEmpty =
-        !result.value.transcript &&
-        !result.value.visual_description &&
-        result.value.key_takeaways.length === 0 &&
-        result.value.topics.length === 0 &&
-        result.value.links_and_resources.length === 0;
+      // Merge, never downgrade: a frames re-extraction can legitimately return an
+      // empty transcript (no audio track, no on-screen text), so keep the prior
+      // transcript in that case. Same for any field the new extraction omitted.
+      // This lets us recover an empty visual_description without clobbering a good
+      // transcript that an earlier full-video extraction produced.
+      // Merge so a re-extraction never REGRESSES a field (see knowledge-merge.ts):
+      // text fields keep the longer non-empty value (protects a rich audio
+      // transcript from being overwritten by a shorter frames-only one), list
+      // fields keep whichever extraction captured more items.
+      const merged = mergeKnowledge(result.value, existing);
+      // If, even after this extraction, the entry still isn't "complete"
+      // (substantive visual + >=3 takeaways), mark it low_content so future runs
+      // don't re-extract it forever. Genuinely sparse videos settle after one try.
+      const isComplete = isKnowledgeComplete(merged, MIN_VISUAL_CHARS);
       knowledgeBase[filename] = {
         filename,
         category: cls.category ?? "",
-        ...result.value,
-        ...(isEmpty ? { low_content: true } : {}),
+        ...merged,
+        ...(isComplete ? {} : { low_content: true }),
       };
       extracted++;
-      console.log(`  -> ${result.value.topics.length} topics, ${result.value.key_takeaways.length} takeaways`);
-      console.log(`  -> ${result.value.links_and_resources.length} links/resources found`);
-      if (isEmpty) console.log(`  -> marked as low_content (model returned empty)`);
+      console.log(`  -> visual ${String(merged.visual_description).length}c, transcript ${merged.transcript.length}c, ${merged.topics.length} topics, ${merged.key_takeaways.length} takeaways, ${merged.links_and_resources.length} links`);
+      if (!isComplete) console.log(`  -> marked low_content (still thin after extraction)`);
     } else {
       // CRITICAL: Do NOT overwrite previously-good data with an empty error entry.
       // If the existing entry has any real content (transcript, topics, takeaways,
