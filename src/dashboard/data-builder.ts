@@ -275,10 +275,14 @@ function normalizeVisualDescription(
 export function normalizeToolUrl(raw: unknown): string {
   const s0 = String(raw ?? "").trim();
   if (!s0) return "";
-  // First whitespace/pipe-delimited token, trailing comma stripped. URLs never
-  // contain raw whitespace, so this won't corrupt a single valid URL (including
-  // one with commas in its query string).
-  const s = s0.split(/[\s|]+/)[0].replace(/,+$/, "");
+  // First whitespace/pipe-delimited token, trailing punctuation stripped
+  // (commas, quotes, backticks, brackets left over from markdown/prose). URLs
+  // never contain raw whitespace, so this won't corrupt a single valid URL
+  // (including one with commas in its query string).
+  const s = s0
+    .split(/[\s|]+/)[0]
+    .replace(/^[`'"([]+/, "")
+    .replace(/[,'"`)\]]+$/, "");
   if (/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect/i.test(s)) {
     return "";
   }
@@ -469,13 +473,19 @@ export async function buildDashboardData(): Promise<void> {
     const keyTakeaways = kbEntry?.key_takeaways ?? [];
     const topics = kbEntry?.topics ?? [];
 
-    const links: LinkItem[] = (linksEntry?.links ?? []).map((l) => ({
-      name: l.name,
-      url: l.url ?? "",
-      type: l.type,
-      description: l.description,
-      timestamp: l.timestamp,
-    }));
+    // Clean each link URL through the same normalizer used for tools: strips
+    // grounding-redirects and multi-URL/trailing-punctuation artifacts. Links
+    // whose URL cleans to nothing (e.g. an ephemeral grounding redirect) are
+    // dropped — without a usable URL they're not a link.
+    const links: LinkItem[] = (linksEntry?.links ?? [])
+      .map((l) => ({
+        name: l.name,
+        url: normalizeToolUrl(l.url),
+        type: l.type,
+        description: l.description,
+        timestamp: l.timestamp,
+      }))
+      .filter((l) => l.url !== "");
 
     // Merge analysis actionable items with research url_status + verif item_results
     const researchByItemName = new Map<string, ResearchItemRaw>();

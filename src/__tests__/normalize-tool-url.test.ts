@@ -41,4 +41,21 @@ describe("normalizeToolUrl", () => {
       "https://maps.example.com/?q=12.9,77.5",
     );
   });
+
+  it("strips trailing markdown/prose punctuation (backtick, quote, comma, paren)", () => {
+    expect(normalizeToolUrl("https://github.com/bangaloregrubhub`,")).toBe(
+      "https://github.com/bangaloregrubhub",
+    );
+    expect(normalizeToolUrl("https://empiricaltraining.com,")).toBe(
+      "https://empiricaltraining.com",
+    );
+    expect(normalizeToolUrl('"https://example.com/x")')).toBe("https://example.com/x");
+  });
+
+  it("takes the first token when a space splits a single mangled URL", () => {
+    // "github.com/pinoki Factory/flux-webui" -> first token (best-effort)
+    expect(normalizeToolUrl("https://github.com/pinoki Factory/flux-webui")).toBe(
+      "https://github.com/pinoki",
+    );
+  });
 });
