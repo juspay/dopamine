@@ -23,6 +23,13 @@ import type { RelInput } from "./related.js";
 import type { CatalogRecord } from "../agents/catalog.js";
 import type { MetadataEntry, VideoProperties } from "../types/index.js";
 
+/** Dashboard author: prefer catalog author, then instagram_user, then the username fallback. */
+export function resolveDashboardAuthor(author: string, instagramUser: string, fallbackUsername: string): string {
+  if (author !== "") return author;
+  if (instagramUser !== "") return instagramUser;
+  return fallbackUsername;
+}
+
 // ---------------------------------------------------------------------------
 // Output types (mirrors web/src/lib/types.ts — update both files together)
 // ---------------------------------------------------------------------------
@@ -32,6 +39,9 @@ interface IndexRecord {
   title: string;
   username: string;
   fullName: string;
+  source: string;
+  contentType: string;
+  author: string;
   category: string;
   subcategory: string;
   tags: string[];
@@ -546,12 +556,19 @@ export async function buildDashboardData(): Promise<void> {
     const fileSizeMb =
       catEntry?.file_size_mb ?? (props ? props.file_size / (1024 * 1024) : 0);
 
+    const source = catEntry?.source ?? "instagram";
+    const contentType = catEntry?.content_type ?? "short_video";
+    const author = resolveDashboardAuthor(catEntry?.author ?? "", catEntry?.instagram_user ?? "", username);
+
     normalized.push({
       _filename: filename,
       id,
       title,
       username,
       fullName,
+      source,
+      contentType,
+      author,
       category,
       subcategory,
       tags,
@@ -630,6 +647,9 @@ export async function buildDashboardData(): Promise<void> {
     title: v.title,
     username: v.username,
     fullName: v.fullName,
+    source: v.source,
+    contentType: v.contentType,
+    author: v.author,
     category: v.category,
     subcategory: v.subcategory,
     tags: v.tags,
@@ -664,6 +684,9 @@ export async function buildDashboardData(): Promise<void> {
       title: v.title,
       username: v.username,
       fullName: v.fullName,
+      source: v.source,
+      contentType: v.contentType,
+      author: v.author,
       category: v.category,
       subcategory: v.subcategory,
       tags: v.tags,
