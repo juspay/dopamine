@@ -7,7 +7,7 @@ import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { getVideoFiles, extractPkFromFilename, getThumbnailPath, extractVideoFrames } from "../utils/video.js";
-import type { MetadataEntry } from "../types/index.js";
+import type { MetadataEntry, AcquiredAssets } from "../types/index.js";
 
 interface ClassificationEntry extends Classification {
   pk: string | null;
@@ -49,6 +49,23 @@ CRITICAL GUARDRAILS — these common errors must be avoided:
 
 Return ONLY valid JSON matching the schema provided. No markdown fences.`;
 
+export interface ClassifyRequest {
+  input: { text: string; images?: Buffer[]; files?: string[] };
+}
+
+/** frames → images; else transcript → text-only; else thumbnail/video → files; else text-only. */
+export function buildClassifyRequest(
+  promptText: string,
+  assets: AcquiredAssets,
+  frames: Buffer[] | null,
+): ClassifyRequest {
+  if (frames !== null && frames.length > 0) return { input: { text: promptText, images: frames } };
+  if (assets.transcriptText !== null) return { input: { text: promptText + "\n\nTranscript:\n" + assets.transcriptText } };
+  const filePath = assets.thumbnailPath ?? assets.videoPath;
+  if (filePath === null) return { input: { text: promptText } };
+  return { input: { text: promptText, files: [path.resolve(filePath)] } };
+}
+
 export async function runClassifierAgent(neurolink: NeuroLink): Promise<void> {
   const classifications = await loadState<Record<string, ClassificationEntry>>(
     CONFIG.STATE.CLASSIFICATIONS, {}
@@ -85,23 +102,22 @@ export async function runClassifierAgent(neurolink: NeuroLink): Promise<void> {
     // Extract ≤3 evenly-spaced frames via ffmpeg. Category classification doesn't
     // need 10 frames — caption + 3 keyframes is sufficient and 3x faster.
     const CLASSIFY_FRAMES = parseInt(process.env.CLASSIFY_FRAMES ?? "3", 10);
-    let inputImages: Buffer[] | null = null;
+    let frames: Buffer[] | null = null;
     if (useThumbnail) {
       console.log(`${logPrefix} Large file (${(size / 1024 / 1024).toFixed(1)}MB), using thumbnail`);
     } else {
-      inputImages = await extractVideoFrames(videoPath, CLASSIFY_FRAMES);
-      if (inputImages.length === 0) {
+      const extracted = await extractVideoFrames(videoPath, CLASSIFY_FRAMES);
+      if (extracted.length === 0) {
         console.log(`${logPrefix} Frame extraction failed, using thumbnail`);
       } else {
-        console.log(`${logPrefix} Extracted ${inputImages.length} frames (${(size / 1024 / 1024).toFixed(1)}MB)`);
+        console.log(`${logPrefix} Extracted ${extracted.length} frames (${(size / 1024 / 1024).toFixed(1)}MB)`);
+        frames = extracted;
       }
     }
 
     // Fall back to thumbnail if large or ffmpeg failed
-    let thumbnailInput: string | null = null;
-    if (!inputImages || inputImages.length === 0) {
-      thumbnailInput = await getThumbnailPath(filename) ?? videoPath;
-    }
+    const thumbnailPath = frames === null ? (await getThumbnailPath(filename) ?? videoPath) : null;
+    const assets: AcquiredAssets = { videoPath, thumbnailPath, transcriptText: null };
 
     const username  = meta?.username ?? "unknown";
     const caption   = meta?.caption_text ?? "";
@@ -110,11 +126,10 @@ export async function runClassifierAgent(neurolink: NeuroLink): Promise<void> {
     console.log(`${logPrefix} Classifying: ${filename}`);
     console.log(`  User: ${username} | Caption: ${caption.slice(0, 60)}...`);
 
+    const req = buildClassifyRequest(CLASSIFY_PROMPT(username, caption, hashtags), assets, frames);
     const result = await exponentialBackoff(async () => {
       const response = await neurolink.generate({
-        input: inputImages
-          ? { text: CLASSIFY_PROMPT(username, caption, hashtags), images: inputImages }
-          : { text: CLASSIFY_PROMPT(username, caption, hashtags), images: [thumbnailInput!] },
+        input: req.input,
         provider: "vertex",
         model:    CONFIG.MODEL,
         schema:   ClassificationSchema,

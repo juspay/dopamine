@@ -7,6 +7,7 @@ import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { getThumbnailPath, extractVideoFrames } from "../utils/video.js";
+import type { AcquiredAssets } from "../types/index.js";
 
 /** Knowledge base entry shape -- only fields we need. */
 interface KnowledgeEntry {
@@ -157,6 +158,23 @@ For each link provide:
 Be exhaustive in finding resources. Be conservative with URLs — a null url is far better than a wrong one.
 Return ONLY valid JSON matching the schema provided. No markdown fences.`;
 
+export interface LinkRequest {
+  input: { text: string; images?: Buffer[]; files?: string[] };
+}
+
+/** frames → images; else transcript → text-only; else thumbnail/video → files; else text-only. */
+export function buildLinkRequest(
+  promptText: string,
+  assets: AcquiredAssets,
+  frames: Buffer[] | null,
+): LinkRequest {
+  if (frames !== null && frames.length > 0) return { input: { text: promptText, images: frames } };
+  if (assets.transcriptText !== null) return { input: { text: promptText + "\n\nTranscript:\n" + assets.transcriptText } };
+  const filePath = assets.thumbnailPath ?? assets.videoPath;
+  if (filePath === null) return { input: { text: promptText } };
+  return { input: { text: promptText, files: [path.resolve(filePath)] } };
+}
+
 export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
   // Load knowledge base to know which videos to process
   const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(
@@ -205,33 +223,31 @@ export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
     const { size } = await fs.stat(videoPath);
     const useThumbnail = size > CONFIG.VIDEO_SIZE_THRESHOLD_BYTES;
 
-    let inputImages: Buffer[] | null = null;
+    let frames: Buffer[] | null = null;
     if (useThumbnail) {
       console.log(`${logPrefix} Large file (${(size / 1024 / 1024).toFixed(1)}MB), using thumbnail`);
     } else {
-      inputImages = await extractVideoFrames(videoPath, 10);
-      if (inputImages.length === 0) {
+      const extracted = await extractVideoFrames(videoPath, 10);
+      if (extracted.length === 0) {
         console.log(`${logPrefix} Frame extraction failed, using thumbnail`);
       } else {
-        console.log(`${logPrefix} Extracted ${inputImages.length} frames (${(size / 1024 / 1024).toFixed(1)}MB)`);
+        console.log(`${logPrefix} Extracted ${extracted.length} frames (${(size / 1024 / 1024).toFixed(1)}MB)`);
+        frames = extracted;
       }
     }
 
-    let thumbnailInput: string | null = null;
-    if (!inputImages || inputImages.length === 0) {
-      thumbnailInput = await getThumbnailPath(filename) ?? videoPath;
-    }
+    const thumbnailPath = frames === null ? (await getThumbnailPath(filename) ?? videoPath) : null;
+    const assets: AcquiredAssets = { videoPath, thumbnailPath, transcriptText: null };
 
     console.log(`${logPrefix} Extracting links: ${filename}`);
 
+    const req = buildLinkRequest(LINK_EXTRACT_PROMPT, assets, frames);
     const result = await exponentialBackoff(async () => {
       // Fresh NeuroLink instance per video — shared instances accumulate keyframes
       // across calls, overflowing Vertex's 16-image limit.
       const nl = new NeuroLinkClass();
       const response = await nl.generate({
-        input: inputImages
-          ? { text: LINK_EXTRACT_PROMPT, images: inputImages }
-          : { text: LINK_EXTRACT_PROMPT, files: [path.resolve(thumbnailInput!)] },
+        input: req.input,
         provider: "vertex",
         model:    CONFIG.MODEL,
         schema:   LinksSchema,
