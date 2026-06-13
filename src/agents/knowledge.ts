@@ -1,3 +1,4 @@
+// src/agents/knowledge.ts
 import { type NeuroLink, NeuroLink as NeuroLinkClass } from "@juspay/neurolink";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -8,27 +9,19 @@ import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { getThumbnailPath, extractVideoFrames } from "../utils/video.js";
 import { isKnowledgeComplete, mergeKnowledge } from "./knowledge-merge.js";
+import type { AcquiredAssets } from "../types/index.js";
+import type { LaneItem } from "../pipeline/lanes.js";
 
-/** Classification entry shape -- only fields we need for filtering. */
-interface ClassificationEntry {
-  pk?: string | null;
-  category?: string;
-  error?: string;
-}
+interface ClassificationEntry { pk?: string | null; category?: string; error?: string; }
 
-/** Knowledge base entry stored in knowledge_base.json. */
 interface KnowledgeEntry extends Knowledge {
   filename: string;
   category: string;
   error?: string;
-  /** Set when the model returned entirely empty content after retries.
-   *  Prevents infinite retry loops on videos the model can't extract anything from
-   *  (typically entertainment/lifestyle content, or content that triggers the
-   *  model to return prose instead of JSON). */
   low_content?: boolean;
 }
 
-const KNOWLEDGE_PROMPT = `
+export const KNOWLEDGE_PROMPT = `
 Analyze this video in extreme detail. Extract all knowledge content.
 
 You MUST provide:
@@ -48,125 +41,120 @@ You MUST provide:
 Be extremely thorough. Do not summarize — capture everything.
 Return ONLY valid JSON matching the schema provided. No markdown fences.`;
 
-/** Minimum visual_description length (chars) for an extraction to count as
- *  "complete". Every video has visuals, so a near-empty visual_description means
- *  the frame analysis silently failed (the old skip check ignored this field, so
- *  entries with a transcript but empty visual were frozen forever). Entries below
- *  this are re-extracted; if they stay below it they're marked low_content so they
- *  don't re-extract on every run. Override via MIN_VISUAL_CHARS env var. */
+const FRAMES_ONLY_NOTE =
+  "\n\nNote: You are analyzing video frames (images), not the full video file. " +
+  "Audio/speech is not available. For the transcript field, describe any visible text, captions, " +
+  "speech bubbles, or on-screen text you can read. If none is visible, set it to an empty string.";
+
+const TRANSCRIPT_WITH_FRAMES_NOTE =
+  "\n\nOfficial transcript provided — use it verbatim for the transcript field. " +
+  "Analyze the video frames for visual_description, topics, key_takeaways, and links_and_resources.";
+
 const MIN_VISUAL_CHARS = parseInt(process.env.MIN_VISUAL_CHARS ?? "200", 10);
 
-export async function runKnowledgeAgent(neurolink: NeuroLink): Promise<void> {
-  // Load classifications to determine which videos need KB extraction
-  const classifications = await loadState<Record<string, ClassificationEntry>>(
-    CONFIG.STATE.CLASSIFICATIONS, {}
-  );
+export interface KnowledgeRequest {
+  input: { text: string; images?: Buffer[]; files?: string[] };
+  transcriptOverride: string | null;
+}
 
-  // Load existing knowledge base (single file for all categories)
-  const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(
-    CONFIG.STATE.KNOWLEDGE_BASE, {}
-  );
+/** Build the NeuroLink input from resolved assets + pre-extracted frames.
+ *  Priority: frames (+optional transcript) → transcript-only → thumbnail/video file → text-only. */
+export function buildKnowledgeRequest(assets: AcquiredAssets, frames: Buffer[] | null): KnowledgeRequest {
+  if (frames !== null && frames.length > 0) {
+    if (assets.transcriptText !== null) {
+      return {
+        input: { text: KNOWLEDGE_PROMPT + TRANSCRIPT_WITH_FRAMES_NOTE, images: frames },
+        transcriptOverride: assets.transcriptText,
+      };
+    }
+    return {
+      input: { text: KNOWLEDGE_PROMPT + FRAMES_ONLY_NOTE, images: frames },
+      transcriptOverride: null,
+    };
+  }
 
-  // Process all classified videos (skip only if error or no category)
-  const targetVideos = Object.entries(classifications).filter(
-    ([, cls]) => cls.category && !cls.error
-  );
+  if (assets.transcriptText !== null) {
+    return {
+      input: { text: KNOWLEDGE_PROMPT + "\n\nOfficial transcript:\n" + assets.transcriptText },
+      transcriptOverride: assets.transcriptText,
+    };
+  }
 
+  // File fallback — guard against both null (never path.resolve("")).
+  const filePath = assets.thumbnailPath ?? assets.videoPath;
+  if (filePath === null) {
+    return { input: { text: KNOWLEDGE_PROMPT }, transcriptOverride: null };
+  }
+  return { input: { text: KNOWLEDGE_PROMPT, files: [path.resolve(filePath)] }, transcriptOverride: null };
+}
+
+export async function runKnowledgeAgent(neurolink: NeuroLink, laneItems?: LaneItem[]): Promise<void> {
+  const classifications = await loadState<Record<string, ClassificationEntry>>(CONFIG.STATE.CLASSIFICATIONS, {});
+  const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(CONFIG.STATE.KNOWLEDGE_BASE, {});
+  const laneMap = new Map<string, LaneItem>((laneItems ?? []).map((l) => [l.item.id, l]));
+
+  const targetVideos = Object.entries(classifications).filter(([, cls]) => cls.category && !cls.error);
   console.log(`Knowledge extraction: ${targetVideos.length} classified videos`);
 
   let extracted = 0, skipped = 0, errors = 0;
 
   for (const [i, [filename, cls]] of targetVideos.entries()) {
     const logPrefix = `[${i + 1}/${targetVideos.length}]`;
-
-    // Resume mode -- skip if we have real content OR if we've already
-    // determined the video has no extractable content (low_content flag).
-    // Avoids infinite retries on videos the model can't process (entertainment/
-    // lifestyle reels where it returns empty JSON or prose).
     const existing = knowledgeBase[filename];
-    // "Complete" requires a substantive VISUAL description AND >=3 takeaways
-    // (see knowledge-merge.ts). visual_description is the reliable completeness
-    // signal: every video has visuals, so an empty/near-empty one means frame
-    // analysis silently failed. The old check only looked at transcript +
-    // takeaways, so entries with a good transcript but empty visual were frozen.
     const visualLen = String(existing?.visual_description ?? "").trim().length;
-    const takeawayCount = Array.isArray(existing?.key_takeaways)
-      ? existing!.key_takeaways.length
-      : 0;
-    const hasContent = isKnowledgeComplete(existing, MIN_VISUAL_CHARS);
-    if (hasContent) {
-      skipped++;
-      console.log(`${logPrefix} SKIP (already extracted): ${filename}`);
-      continue;
-    }
-    if (existing?.low_content) {
-      skipped++;
-      console.log(`${logPrefix} SKIP (known low-content video): ${filename}`);
-      continue;
-    }
-    if (existing?.error) {
-      console.log(`${logPrefix} RETRY (previous error): ${filename}`);
-    } else if (existing) {
-      console.log(`${logPrefix} RE-EXTRACT (thin: visual=${visualLen}c, takeaways=${takeawayCount}): ${filename}`);
-    }
+    const takeawayCount = Array.isArray(existing?.key_takeaways) ? existing!.key_takeaways.length : 0;
 
-    const videoPath = path.join(CONFIG.VIDEOS_DIR, filename);
+    if (isKnowledgeComplete(existing, MIN_VISUAL_CHARS)) { skipped++; console.log(`${logPrefix} SKIP (already extracted): ${filename}`); continue; }
+    if (existing?.low_content) { skipped++; console.log(`${logPrefix} SKIP (known low-content): ${filename}`); continue; }
+    if (existing?.error) console.log(`${logPrefix} RETRY (previous error): ${filename}`);
+    else if (existing) console.log(`${logPrefix} RE-EXTRACT (thin: visual=${visualLen}c, takeaways=${takeawayCount}): ${filename}`);
 
-    // Check file exists
-    try {
-      await fs.access(videoPath);
-    } catch {
-      console.warn(`${logPrefix} SKIP (file not found): ${videoPath}`);
-      continue;
-    }
-
-    const { size } = await fs.stat(videoPath);
-    const useThumbnail = size > CONFIG.VIDEO_SIZE_THRESHOLD_BYTES;
-
-    // Extract ≤10 evenly-spaced frames via ffmpeg. Bypasses NeuroLink's
-    // VideoProcessor (no frame limit) and the AI SDK's image-only validation.
-    let inputImages: Buffer[] | null = null;
-    let inputFile: string | null = null;
-
-    if (useThumbnail) {
-      inputFile = await getThumbnailPath(filename) ?? videoPath;
-      console.log(`${logPrefix} Large file (${(size / 1024 / 1024).toFixed(1)}MB), using thumbnail`);
+    // Resolve assets: prefer pre-acquired lane assets; else legacy IG file resolution.
+    let resolvedAssets: AcquiredAssets;
+    const lane = laneMap.get(filename);
+    if (lane) {
+      resolvedAssets = lane.assets;
     } else {
-      inputImages = await extractVideoFrames(videoPath, 10);
-      if (inputImages.length === 0) {
-        inputFile = await getThumbnailPath(filename) ?? videoPath;
-        console.log(`${logPrefix} Frame extraction failed, using thumbnail`);
-      } else {
-        console.log(`${logPrefix} Extracted ${inputImages.length} frames from ${(size / 1024 / 1024).toFixed(1)}MB video`);
-      }
+      const videoPath = path.join(CONFIG.VIDEOS_DIR, filename);
+      try { await fs.access(videoPath); } catch { console.warn(`${logPrefix} SKIP (file not found): ${videoPath}`); continue; }
+      const { size } = await fs.stat(videoPath);
+      resolvedAssets = size > CONFIG.VIDEO_SIZE_THRESHOLD_BYTES
+        ? { videoPath, thumbnailPath: (await getThumbnailPath(filename)) ?? videoPath, transcriptText: null }
+        : { videoPath, thumbnailPath: null, transcriptText: null };
     }
 
-    console.log(`${logPrefix} Extracting knowledge: ${filename}`);
-    console.log(`  Category: ${cls.category}`);
+    // Extract frames when a usable mp4 is present (and not forced to thumbnail).
+    let frames: Buffer[] | null = null;
+    if (resolvedAssets.videoPath !== null && resolvedAssets.thumbnailPath === null) {
+      try {
+        const { size } = await fs.stat(resolvedAssets.videoPath);
+        if (size <= CONFIG.VIDEO_SIZE_THRESHOLD_BYTES) {
+          const f = await extractVideoFrames(resolvedAssets.videoPath, 10);
+          frames = f.length > 0 ? f : null;
+          // If frame extraction failed for a legacy IG item, fall back to thumbnail.
+          if (frames === null && lane === undefined) {
+            resolvedAssets = { ...resolvedAssets, thumbnailPath: (await getThumbnailPath(filename)) ?? resolvedAssets.videoPath };
+          }
+        }
+      } catch { frames = null; }
+    }
+
+    console.log(`${logPrefix} Extracting knowledge: ${filename} (category: ${cls.category})`);
+    const req = buildKnowledgeRequest(resolvedAssets, frames);
 
     const result = await exponentialBackoff(async () => {
-      // Use a fresh NeuroLink instance per video — shared instances accumulate
-      // video keyframes in internal state across calls, overflowing Vertex's 16-image limit.
       const nl = new NeuroLinkClass();
-      const prompt = inputImages
-        ? KNOWLEDGE_PROMPT + "\n\nNote: You are analyzing video frames (images), not the full video file. " +
-          "Audio/speech is not available. For the transcript field, describe any visible text, captions, " +
-          "speech bubbles, or on-screen text you can read. If none is visible, set it to an empty string."
-        : KNOWLEDGE_PROMPT;
       const response = await nl.generate({
-        input: inputImages
-          ? { text: prompt, images: inputImages }
-          : { text: prompt, files: [path.resolve(inputFile!)] },
+        input: req.input,
         provider: "vertex",
-        model:    CONFIG.MODEL,
-        schema:   KnowledgeSchema,
-        output:   { format: "json" },
-        disableTools: true,  // REQUIRED: Gemini rejects tools + JSON schema together
+        model: CONFIG.MODEL,
+        schema: KnowledgeSchema,
+        output: { format: "json" },
+        disableTools: true,
         maxTokens: 8192,
         timeout: "180s",
       });
       const raw = safeJsonParse(response.content) as Record<string, unknown>;
-      // Normalize all fields: model may return nulls/wrong types when given only frames
       if (raw && typeof raw === "object") {
         for (const f of ["transcript", "visual_description"]) {
           if (raw[f] === null || raw[f] === undefined) raw[f] = "";
@@ -182,68 +170,34 @@ export async function runKnowledgeAgent(neurolink: NeuroLink): Promise<void> {
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 
     if (result.success) {
-      // Merge, never downgrade: a frames re-extraction can legitimately return an
-      // empty transcript (no audio track, no on-screen text), so keep the prior
-      // transcript in that case. Same for any field the new extraction omitted.
-      // This lets us recover an empty visual_description without clobbering a good
-      // transcript that an earlier full-video extraction produced.
-      // Merge so a re-extraction never REGRESSES a field (see knowledge-merge.ts):
-      // text fields keep the longer non-empty value (protects a rich audio
-      // transcript from being overwritten by a shorter frames-only one), list
-      // fields keep whichever extraction captured more items.
       const merged = mergeKnowledge(result.value, existing);
-      // If, even after this extraction, the entry still isn't "complete"
-      // (substantive visual + >=3 takeaways), mark it low_content so future runs
-      // don't re-extract it forever. Genuinely sparse videos settle after one try.
+      if (req.transcriptOverride !== null) merged.transcript = req.transcriptOverride; // authoritative captions
       const isComplete = isKnowledgeComplete(merged, MIN_VISUAL_CHARS);
-      knowledgeBase[filename] = {
-        filename,
-        category: cls.category ?? "",
-        ...merged,
-        ...(isComplete ? {} : { low_content: true }),
-      };
+      knowledgeBase[filename] = { filename, category: cls.category ?? "", ...merged, ...(isComplete ? {} : { low_content: true }) };
       extracted++;
       console.log(`  -> visual ${String(merged.visual_description).length}c, transcript ${merged.transcript.length}c, ${merged.topics.length} topics, ${merged.key_takeaways.length} takeaways, ${merged.links_and_resources.length} links`);
       if (!isComplete) console.log(`  -> marked low_content (still thin after extraction)`);
     } else {
-      // CRITICAL: Do NOT overwrite previously-good data with an empty error entry.
-      // If the existing entry has any real content (transcript, topics, takeaways,
-      // visual_description), preserve it and only update the error marker so the
-      // next run will retry. This prevents a Vertex AI DNS/auth outage from
-      // permanently wiping knowledge that was successfully extracted in a prior run.
-      const hasPriorContent =
-        existing &&
-        !existing.error &&
-        (
-          (existing.transcript && existing.transcript.length > 0) ||
-          (existing.visual_description && existing.visual_description.length > 0) ||
-          (Array.isArray(existing.key_takeaways) && existing.key_takeaways.length > 0) ||
-          (Array.isArray(existing.topics) && existing.topics.length > 0)
-        );
-
+      const hasPriorContent = existing && !existing.error && (
+        (existing.transcript && existing.transcript.length > 0) ||
+        (existing.visual_description && existing.visual_description.length > 0) ||
+        (Array.isArray(existing.key_takeaways) && existing.key_takeaways.length > 0) ||
+        (Array.isArray(existing.topics) && existing.topics.length > 0)
+      );
       if (hasPriorContent) {
-        // Keep all existing fields; only stamp the error so the next run re-attempts.
         knowledgeBase[filename] = { ...existing!, error: result.error };
         console.warn(`  -> Preserved prior content; error marked for retry: ${result.error.slice(0, 120)}`);
       } else {
-        // No prior content — write a minimal retryable error entry.
-        // Use empty arrays/strings rather than omitting fields so downstream
-        // readers that expect the full KnowledgeEntry shape don't crash.
         knowledgeBase[filename] = {
-          filename,
-          category: cls.category ?? "",
-          transcript: existing?.transcript ?? "",
-          visual_description: existing?.visual_description ?? "",
-          links_and_resources: existing?.links_and_resources ?? [],
-          key_takeaways: existing?.key_takeaways ?? [],
-          topics: existing?.topics ?? [],
-          error: result.error,
+          filename, category: cls.category ?? "",
+          transcript: existing?.transcript ?? "", visual_description: existing?.visual_description ?? "",
+          links_and_resources: existing?.links_and_resources ?? [], key_takeaways: existing?.key_takeaways ?? [],
+          topics: existing?.topics ?? [], error: result.error,
         };
       }
       errors++;
     }
 
-    // Write after every item -- resume mode guarantee
     await saveState(CONFIG.STATE.KNOWLEDGE_BASE, knowledgeBase);
     await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
   }
