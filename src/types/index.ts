@@ -56,3 +56,48 @@ export interface FfprobeOutput {
   streams?: FfprobeStream[];
   format?: FfprobeFormat;
 }
+
+// ---------------------------------------------------------------------------
+// Multi-provider source model
+// ---------------------------------------------------------------------------
+
+/** Supported content-source providers. (Reserved future: "twitter" | "article".) */
+export type SourceKind = "instagram" | "youtube";
+
+/** Supported content formats. (Reserved future: "text_post" | "image_post" | "article_link".) */
+export type ContentType = "short_video" | "long_video";
+
+/**
+ * Local assets resolved for a SourceItem before AI processing. Each agent builds
+ * its own model input from whatever is present, so a real transcript is an
+ * additional signal that can coexist with frames.
+ */
+export interface AcquiredAssets {
+  /** Local mp4 → frames; null for transcript-only items (long YouTube videos). */
+  videoPath: string | null;
+  /** Fallback image when no/over-threshold video. */
+  thumbnailPath: string | null;
+  /** Authoritative caption text (YouTube); null for Instagram (frames-only). */
+  transcriptText: string | null;
+}
+
+/**
+ * Source-agnostic item record (the unified entry written to metadata.json).
+ * id is the knowledge_base key — IG: "{username}_{pk}.mp4" (legacy); YT: "youtube_{videoId}".
+ */
+export interface SourceItem {
+  id: string;
+  source: SourceKind;
+  content_type: ContentType;
+  title: string | null;
+  author: string | null;
+  caption_text: string | null;
+  url: string | null;
+  thumbnail_url: string | null;
+  published_at: string | null;
+  duration_seconds: number | null;
+  /** Present for Instagram items; the full legacy record, nested for downstream compat. */
+  ig?: MetadataEntry;
+  /** Present for YouTube items. */
+  yt?: { videoId: string; channelId: string | null; caption_file: string | null };
+}
