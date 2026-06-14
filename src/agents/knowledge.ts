@@ -123,16 +123,18 @@ export async function runKnowledgeAgent(neurolink: NeuroLink, laneItems?: LaneIt
         : { videoPath, thumbnailPath: null, transcriptText: null };
     }
 
-    // Extract frames when a usable mp4 is present (and not forced to thumbnail).
+    // Extract frames whenever an in-threshold mp4 is present. A thumbnail being set
+    // (the IG lane always provides one) must NOT suppress frame extraction — frames are
+    // preferred; the thumbnail is only a fallback when frames are unavailable.
     let frames: Buffer[] | null = null;
-    if (resolvedAssets.videoPath !== null && resolvedAssets.thumbnailPath === null) {
+    if (resolvedAssets.videoPath !== null) {
       try {
         const { size } = await fs.stat(resolvedAssets.videoPath);
         if (size <= CONFIG.VIDEO_SIZE_THRESHOLD_BYTES) {
           const f = await extractVideoFrames(resolvedAssets.videoPath, 10);
           frames = f.length > 0 ? f : null;
-          // If frame extraction failed for a legacy IG item, fall back to thumbnail.
-          if (frames === null && lane === undefined) {
+          // If frame extraction failed and no thumbnail is set yet, fall back to one.
+          if (frames === null && resolvedAssets.thumbnailPath === null) {
             resolvedAssets = { ...resolvedAssets, thumbnailPath: (await getThumbnailPath(filename)) ?? resolvedAssets.videoPath };
           }
         }
