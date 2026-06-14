@@ -8,6 +8,7 @@ import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { getVideoFiles, extractPkFromFilename, getThumbnailPath, extractVideoFrames } from "../utils/video.js";
 import type { MetadataEntry, AcquiredAssets } from "../types/index.js";
+import type { LaneItem } from "../pipeline/lanes.js";
 
 interface ClassificationEntry extends Classification {
   pk: string | null;
@@ -66,10 +67,48 @@ export function buildClassifyRequest(
   return { input: { text: promptText, files: [path.resolve(filePath)] } };
 }
 
-export async function runClassifierAgent(neurolink: NeuroLink): Promise<void> {
+export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneItem[]): Promise<void> {
   const classifications = await loadState<Record<string, ClassificationEntry>>(
     CONFIG.STATE.CLASSIFICATIONS, {}
   );
+
+  // Multi-source path: classify items straight from acquired lanes (covers YouTube + IG).
+  if (laneItems && laneItems.length > 0) {
+    const CLASSIFY_FRAMES = parseInt(process.env.CLASSIFY_FRAMES ?? "3", 10);
+    for (const [i, lane] of laneItems.entries()) {
+      const filename = lane.item.id;
+      const existing = classifications[filename];
+      if (existing && existing.category && !existing.error) continue;
+      const assets = lane.assets;
+      let frames: Buffer[] | null = null;
+      if (assets.videoPath) {
+        const f = await extractVideoFrames(assets.videoPath, CLASSIFY_FRAMES);
+        frames = f.length > 0 ? f : null;
+      }
+      const ig = lane.item.ig;
+      const username = ig?.username ?? lane.item.author ?? "unknown";
+      const caption = ig?.caption_text ?? lane.item.caption_text ?? lane.item.title ?? "";
+      const hashtags = (caption.match(/#\w+/g) ?? []).join(", ");
+      console.log(`[${i + 1}/${laneItems.length}] Classifying ${filename}`);
+      const req = buildClassifyRequest(CLASSIFY_PROMPT(username, caption, hashtags), assets, frames);
+      const result = await exponentialBackoff(async () => {
+        const response = await neurolink.generate({
+          input: req.input, provider: "vertex", model: CONFIG.MODEL,
+          schema: ClassificationSchema, output: { format: "json" },
+          disableTools: true, maxTokens: 1024, timeout: "120s",
+        });
+        return ClassificationSchema.parse(safeJsonParse(response.content));
+      }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
+      classifications[filename] = result.success
+        ? { pk: ig?.pk ?? null, code: ig?.code ?? null, username: ig?.username ?? null, ...result.value }
+        : { pk: ig?.pk ?? null, code: ig?.code ?? null, username: ig?.username ?? null,
+            category: "Other", subcategory: "", tags: [], description: "", language: "", mood: "", error: result.error };
+      await saveState(CONFIG.STATE.CLASSIFICATIONS, classifications);
+      await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
+    }
+    return;
+  }
+
   const metadata = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
 
   // Build pk -> metadata lookup (mirrors classify_videos.py:load_metadata)

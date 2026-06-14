@@ -2,8 +2,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import { NeuroLink } from "@juspay/neurolink";
-import { runMetadataAgent }     from "../agents/metadata.js";
-import { runDownloadAgent }     from "../agents/download.js";
 import { runPropertiesAgent }   from "../agents/properties.js";
 import { runClassifierAgent }   from "../agents/classifier.js";
 import { runKnowledgeAgent }    from "../agents/knowledge.js";
@@ -22,6 +20,11 @@ import { runEnrichmentAgent }   from "../agents/enrichment.js";
 
 import { getLogger }            from "../utils/logger.js";
 import { resetMetrics }         from "../utils/metrics.js";
+import { getEnabledCollectors } from "../sources/registry.js";
+import { acquireAll, type LaneItem } from "../pipeline/lanes.js";
+import { loadState, saveState } from "../pipeline/state.js";
+import { CONFIG }               from "../pipeline/config.js";
+import type { SourceItem }      from "../types/index.js";
 
 // ---------------------------------------------------------------------------
 // Pipeline step definition
@@ -83,8 +86,8 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   // dashboard had already been built.
   //
   // 0-indexed mapping (used by START_STEP / END_STEP / --start / --end):
-  //   0  Metadata collection
-  //   1  Video download
+  //   0  Source-agnostic collection (enabled SOURCES collectors)
+  //   1  Asset acquisition          (per-item frames/captions via lanes)
   //   2  Properties extraction
   //   3  Classification
   //   4  Knowledge extraction
@@ -100,13 +103,32 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   //  14  Knowledge base enrichment
   //  15  Dashboard build           ← LAST: reads ALL state including verifications
   // ---------------------------------------------------------------------------
+  // Lane assets acquired in step 1, consumed by steps 3-5 (read at call time).
+  let laneItems: LaneItem[] = [];
+
+  const runCollectionStep = async (): Promise<void> => {
+    const collectors = getEnabledCollectors(CONFIG.SOURCES);
+    console.log(`\n=== Collection — ${collectors.map((c) => c.source).join(", ")} ===`);
+    const collected = await Promise.all(collectors.map((c) => c.collect()));
+    const items = collected.flat();
+    await saveState(CONFIG.STATE.METADATA, items);
+    console.log(`  Collected ${items.length} item(s) → ${CONFIG.STATE.METADATA}`);
+  };
+
+  const runAcquisitionStep = async (): Promise<void> => {
+    const items = await loadState<SourceItem[]>(CONFIG.STATE.METADATA, []);
+    const registry = new Map(getEnabledCollectors(CONFIG.SOURCES).map((c) => [c.source, c] as const));
+    laneItems = await acquireAll(items, registry);
+    console.log(`\n=== Acquisition — ${laneItems.length}/${items.length} item(s) acquired ===`);
+  };
+
   const steps: PipelineStep[] = [
-    { name: "Metadata collection",       run: () => runMetadataAgent() },                //  0
-    { name: "Video download",            run: () => runDownloadAgent() },                 //  1
-    { name: "Properties extraction",     run: () => runPropertiesAgent() },               //  2
-    { name: "Classification",            run: () => runClassifierAgent(neurolink) },      //  3
-    { name: "Knowledge extraction",      run: () => runKnowledgeAgent(neurolink) },       //  4
-    { name: "Link extraction",           run: () => runLinkExtractAgent(neurolink) },     //  5
+    { name: "Source-agnostic collection", run: () => runCollectionStep() },                       //  0
+    { name: "Asset acquisition",          run: () => runAcquisitionStep() },                       //  1
+    { name: "Properties extraction",      run: () => runPropertiesAgent() },                       //  2
+    { name: "Classification",             run: () => runClassifierAgent(neurolink, laneItems) },   //  3
+    { name: "Knowledge extraction",       run: () => runKnowledgeAgent(neurolink, laneItems) },    //  4
+    { name: "Link extraction",            run: () => runLinkExtractAgent(neurolink, laneItems) },  //  5
     { name: "Link resolution",           run: () => runLinkResolverAgent(neurolink) },    //  6
     { name: "Catalog generation",        run: () => runCatalogAgent(),        parallelGroup: "post-classify" }, //  7
     { name: "Folder organization",       run: () => runOrganizerAgent(),      parallelGroup: "post-classify" }, //  8

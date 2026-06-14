@@ -8,6 +8,7 @@ import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { getThumbnailPath, extractVideoFrames } from "../utils/video.js";
 import type { AcquiredAssets } from "../types/index.js";
+import type { LaneItem } from "../pipeline/lanes.js";
 
 /** Knowledge base entry shape -- only fields we need. */
 interface KnowledgeEntry {
@@ -175,7 +176,7 @@ export function buildLinkRequest(
   return { input: { text: promptText, files: [path.resolve(filePath)] } };
 }
 
-export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
+export async function runLinkExtractAgent(neurolink: NeuroLink, laneItems?: LaneItem[]): Promise<void> {
   // Load knowledge base to know which videos to process
   const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(
     CONFIG.STATE.KNOWLEDGE_BASE, {}
@@ -186,6 +187,9 @@ export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
   const linksState = await loadState<Record<string, LinksWithError>>(
     CONFIG.STATE.LINKS_V2, {}
   );
+
+  // Lane assets (covers transcript-only YouTube items not present in VIDEOS_DIR).
+  const assetsById = new Map<string, AcquiredAssets>((laneItems ?? []).map((l) => [l.item.id, l.assets]));
 
   // Process all videos in the knowledge base (that don't have errors)
   const kbVideos = Object.entries(knowledgeBase).filter(
@@ -210,34 +214,32 @@ export async function runLinkExtractAgent(neurolink: NeuroLink): Promise<void> {
       console.log(`${logPrefix} RETRY (previous error): ${filename}`);
     }
 
-    const videoPath = path.join(CONFIG.VIDEOS_DIR, filename);
-
-    // Check file exists
-    try {
-      await fs.access(videoPath);
-    } catch {
-      console.warn(`${logPrefix} SKIP (file not found): ${videoPath}`);
-      continue;
-    }
-
-    const { size } = await fs.stat(videoPath);
-    const useThumbnail = size > CONFIG.VIDEO_SIZE_THRESHOLD_BYTES;
-
+    // Resolve assets: prefer the lane (covers transcript-only YouTube), else legacy IG file.
+    let assets: AcquiredAssets;
     let frames: Buffer[] | null = null;
-    if (useThumbnail) {
-      console.log(`${logPrefix} Large file (${(size / 1024 / 1024).toFixed(1)}MB), using thumbnail`);
-    } else {
-      const extracted = await extractVideoFrames(videoPath, 10);
-      if (extracted.length === 0) {
-        console.log(`${logPrefix} Frame extraction failed, using thumbnail`);
-      } else {
-        console.log(`${logPrefix} Extracted ${extracted.length} frames (${(size / 1024 / 1024).toFixed(1)}MB)`);
-        frames = extracted;
+    const laneAssets = assetsById.get(filename);
+    if (laneAssets) {
+      assets = laneAssets;
+      if (assets.videoPath) {
+        const f = await extractVideoFrames(assets.videoPath, 10);
+        frames = f.length > 0 ? f : null;
       }
+    } else {
+      const videoPath = path.join(CONFIG.VIDEOS_DIR, filename);
+      try {
+        await fs.access(videoPath);
+      } catch {
+        console.warn(`${logPrefix} SKIP (file not found): ${videoPath}`);
+        continue;
+      }
+      const { size } = await fs.stat(videoPath);
+      if (size <= CONFIG.VIDEO_SIZE_THRESHOLD_BYTES) {
+        const f = await extractVideoFrames(videoPath, 10);
+        frames = f.length > 0 ? f : null;
+      }
+      const thumbnailPath = frames === null ? (await getThumbnailPath(filename) ?? videoPath) : null;
+      assets = { videoPath, thumbnailPath, transcriptText: null };
     }
-
-    const thumbnailPath = frames === null ? (await getThumbnailPath(filename) ?? videoPath) : null;
-    const assets: AcquiredAssets = { videoPath, thumbnailPath, transcriptText: null };
 
     console.log(`${logPrefix} Extracting links: ${filename}`);
 

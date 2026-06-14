@@ -38,10 +38,16 @@ function isoDurationToSeconds(d: string): number {
   return (parseInt(m?.[1] ?? "0", 10) * 3600) + (parseInt(m?.[2] ?? "0", 10) * 60) + parseInt(m?.[3] ?? "0", 10);
 }
 
+// googleapis bundles its own google-auth-library copy; its OAuth2Client type differs
+// by a private field from the top-level one buildOAuthClient returns. The runtime object
+// is identical, so cast to the exact auth type googleapis expects (derived, not hardcoded).
+type YoutubeOptionsAuth = Exclude<Parameters<typeof import("googleapis").google.youtube>[0], string>["auth"];
+
 function makeRealListFn(): YtListFn {
   return async (pageToken) => {
     const { google } = await import("googleapis");
-    const youtube = google.youtube({ version: "v3", auth: buildOAuthClient(CONFIG.YOUTUBE) });
+    const auth = buildOAuthClient(CONFIG.YOUTUBE) as unknown as YoutubeOptionsAuth;
+    const youtube = google.youtube({ version: "v3", auth });
     const res = await youtube.videos.list({
       part: ["snippet", "contentDetails"],
       myRating: "like",
