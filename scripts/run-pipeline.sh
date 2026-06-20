@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-DIR="/Users/sachinsharma/Developer/temp/dopamine"
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOGFILE="${DIR}/logs/pipeline-$(date +%Y-%m-%d).log"
 
 exec >> "$LOGFILE" 2>&1

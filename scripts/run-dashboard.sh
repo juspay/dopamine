@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-DIR="/Users/sachinsharma/Developer/temp/dopamine"
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOGDIR="${DIR}/logs"
 LOGFILE="${LOGDIR}/dashboard-launcher.log"
 

@@ -2,6 +2,7 @@
 import path from "node:path";
 
 export const CONFIG = {
+  // Set INSTAGRAM_USERNAME in .env for real runs; "user" is only a placeholder default.
   INSTAGRAM_USERNAME: process.env.INSTAGRAM_USERNAME ?? "user",
 
   VIDEOS_DIR: path.resolve("videos", `${process.env.INSTAGRAM_USERNAME ?? "user"}_saved`),

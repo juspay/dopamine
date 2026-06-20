@@ -62,7 +62,7 @@ describe("organizer symlink logic", () => {
       await fs.mkdir(categoryDir, { recursive: true });
 
       const symlinkPath = path.join(categoryDir, filename);
-      const target = path.join("..", "..", "user_saved", filename);
+      const target = path.join("..", "..", "creator_saved", filename);
       await fs.symlink(target, symlinkPath);
     }
 
@@ -80,7 +80,7 @@ describe("organizer symlink logic", () => {
     const linkTarget = await fs.readlink(
       path.join(classifiedDir, "Tech & Coding", "user_1.mp4")
     );
-    expect(linkTarget).toBe(path.join("..", "..", "user_saved", "user_1.mp4"));
+    expect(linkTarget).toBe(path.join("..", "..", "creator_saved", "user_1.mp4"));
   });
 
   it("creates multiple category directories", async () => {
@@ -99,7 +99,7 @@ describe("organizer symlink logic", () => {
       await fs.mkdir(categoryDir, { recursive: true });
 
       const symlinkPath = path.join(categoryDir, filename);
-      const target = path.join("..", "..", "user_saved", filename);
+      const target = path.join("..", "..", "creator_saved", filename);
       await fs.symlink(target, symlinkPath);
       categoryCounts.set(safeCategory, (categoryCounts.get(safeCategory) ?? 0) + 1);
     }
@@ -124,7 +124,7 @@ describe("organizer symlink logic", () => {
       await fs.mkdir(categoryDir, { recursive: true });
 
       const symlinkPath = path.join(categoryDir, filename);
-      const target = path.join("..", "..", "user_saved", filename);
+      const target = path.join("..", "..", "creator_saved", filename);
       await fs.symlink(target, symlinkPath);
     }
 

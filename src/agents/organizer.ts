@@ -2,7 +2,7 @@
  * OrganizerAgent — port of organize_folders.py
  *
  * Reads classifications.json, creates videos/classified/{category}/ directories,
- * and creates relative symlinks pointing to ../../user_saved/{filename}.
+ * and creates relative symlinks pointing to ../../{username}_saved/{filename}.
  * Removes old symlinks before creating new ones.
  */
 
@@ -27,6 +27,9 @@ export async function runOrganizerAgent(): Promise<void> {
   console.log(`  classifications.json: ${Object.keys(classifications).length} entries`);
 
   const classifiedDir = CONFIG.OUTPUT.CLASSIFIED;
+  // Derive the saved-videos dir name from config (e.g. "{username}_saved") rather
+  // than hardcoding it — keeps the symlink target correct for any account.
+  const savedDirName = path.basename(CONFIG.VIDEOS_DIR);
   const categoryCounts = new Map<string, number>();
 
   for (const [filename, info] of Object.entries(classifications)) {
@@ -38,8 +41,8 @@ export async function runOrganizerAgent(): Promise<void> {
     await fs.mkdir(categoryDir, { recursive: true });
 
     const symlinkPath = path.join(categoryDir, filename);
-    // Relative target: from videos/classified/{category}/ back to videos/user_saved/
-    const target = path.join("..", "..", "user_saved", filename);
+    // Relative target: from videos/classified/{category}/ back to videos/{username}_saved/
+    const target = path.join("..", "..", savedDirName, filename);
 
     // Remove whatever is at symlinkPath (symlink OR stale regular file).
     // Checking only for isSymbolicLink() and skipping other types causes
