@@ -57,7 +57,7 @@ app.use(
 // SPA fallback — serve index.html for all unknown client-side routes.
 // Real static files (app bundle, /data/*, /videos/*) are served by the static
 // middleware above. Only genuine asset requests (identified by a known file
-// extension) 404 here — so client routes like /videos or /creator/testuser
+// extension) 404 here — so client routes like /videos or /creator/example
 // (note the dot) correctly resolve to the SPA shell instead of 404ing.
 // ---------------------------------------------------------------------------
 const ASSET_RE =
