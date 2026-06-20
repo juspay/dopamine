@@ -1,0 +1,5 @@
+# Python dependencies for the Instagram collection scripts (scripts/*.py).
+# Install with: pip install -r scripts/requirements.txt
+instagrapi>=2.0
+python-dotenv>=1.0
+browser-cookie3>=0.19

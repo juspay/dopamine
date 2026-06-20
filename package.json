@@ -1,7 +1,30 @@
 {
   "name": "dopamine",
   "version": "2.0.0",
+  "private": true,
+  "description": "AI video retrieval and processing pipeline powered by Gemini — collects saved Instagram/YouTube content and extracts structured knowledge.",
+  "license": "MIT",
+  "author": "Sachin Sharma",
   "type": "module",
+  "keywords": [
+    "ai",
+    "video",
+    "pipeline",
+    "gemini",
+    "vertex-ai",
+    "instagram",
+    "youtube",
+    "knowledge-extraction"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@10.9.0",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "build:run": "npm run build && node dist/pipeline/runner.js",
@@ -35,7 +58,6 @@
     "google-auth-library": "^10.7.0",
     "googleapis": "^173.0.0",
     "node-cron": "^3.0.3",
-    "react": "^19.2.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -5,7 +5,8 @@
 [![semantic-release](https://img.shields.io/badge/semantic--release-angular-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green?logo=node.js)](https://nodejs.org/)
-[![NeuroLink](https://img.shields.io/badge/NeuroLink-9.30-purple)](https://github.com/juspay/neurolink)
+[![NeuroLink](https://img.shields.io/badge/NeuroLink-9.x-purple)](https://www.npmjs.com/package/@juspay/neurolink)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
@@ -323,4 +324,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions, how to add pipeli
 
 ## License
 
-Private project. All rights reserved.
+Released under the [MIT License](LICENSE).
+
+The MIT License covers the **source code only**. It does not grant any rights to
+media, transcripts, captions, or other content this pipeline retrieves from
+third-party platforms (Instagram, YouTube, etc.) — that content belongs to its
+respective creators. Do not commit or redistribute retrieved third-party content.
