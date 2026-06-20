@@ -25,6 +25,17 @@ node_modules_broken/
 # Use a single lockfile (npm). Do not commit the pnpm lockfile.
 pnpm-lock.yaml
 
+# ──────────────────────────────────────────────
+# Retrieved third-party content & pipeline state — NEVER commit.
+# Regenerated locally by the pipeline. Only the synthetic demo dataset is
+# tracked (the demo_*.json files); see dashboard/data/README.md.
+# ──────────────────────────────────────────────
+knowledge_base/
+videos/*.json
+videos/*.csv
+/dashboard/data/video/*
+!/dashboard/data/video/demo_*.json
+
 # Debug artifacts
 dashboard-*.png
 videos/*.backup.*
