@@ -2,7 +2,7 @@
 
 **A personal knowledge management system that turns Instagram saved videos into a searchable, organized knowledge base.**
 
-Built by **Sachin Sharma** ([@user](https://instagram.com/user)) at **Juspay**
+Built by **Sachin Sharma** at **Juspay**
 
 ---
 
@@ -170,7 +170,7 @@ curl http://localhost:3000/status
 ### Environment Variables
 
 ```bash
-INSTAGRAM_USERNAME=user          # Instagram account
+INSTAGRAM_USERNAME=your_instagram_username          # Instagram account
 VERTEX_PROJECT=your-gcp-project-id           # Google Cloud project
 VERTEX_LOCATION=us-central1          # Vertex AI region
 GOOGLE_APPLICATION_CREDENTIALS=...   # Service account JSON path
@@ -265,7 +265,7 @@ dopamine/
 |   |-- catalog.csv                  # CSV export of catalog
 |   |-- thumbnails/                  # ffmpeg-generated thumbnails
 |   |-- classified/                  # Symlink folders by category
-|   +-- user_saved/              # Downloaded MP4 files
+|   +-- <username>_saved/              # Downloaded MP4 files
 |
 |-- knowledge_base/
 |   |-- INDEX.md                     # Master index with all entries

@@ -1,7 +1,7 @@
 # NeuroLink Pipeline Design: Instagram Saved Videos Knowledge Engine
 
 **Document status:** Architecture blueprint  
-**Author:** Sachin Sharma (you@example.com)  
+**Author:** Sachin Sharma  
 **NeuroLink:** @juspay/neurolink (release branch, Q1 2026, github.com/juspay/neurolink)  
 **Date:** March 2026  
 
@@ -859,7 +859,7 @@ const app = express();
 
 // Serve entire project root so relative paths in dashboard/index.html resolve:
 // ../videos/thumbnails/*.jpg → /videos/thumbnails/*.jpg
-// ../videos/user_saved/*.mp4 → /videos/user_saved/*.mp4
+// ../videos/<username>_saved/*.mp4 → /videos/<username>_saved/*.mp4
 app.use(express.static(path.resolve(".")));
 
 const PORT = parseInt(process.env.DASHBOARD_PORT ?? "3001", 10);
@@ -888,7 +888,7 @@ TRIGGER
          │
          ├─ Step 2: DownloadAgent
          │     execa → python3 scripts/download_videos.py
-         │     output: videos/user_saved/*.mp4
+         │     output: videos/<username>_saved/*.mp4
          │             videos/known_pks.json
          │
          ├─ Step 3: PropertiesAgent
@@ -957,7 +957,7 @@ videos/metadata.json
 videos/known_pks.json
 videos/video_properties.json
 videos/thumbnails/
-videos/user_saved/
+videos/<username>_saved/
 videos/classifications.json
 videos/knowledge_base.json
 videos/links_v2.json
@@ -1183,7 +1183,7 @@ Subsequent runs process only new videos (resume mode skips existing) — typical
 ### Dashboard serving note
 
 `dashboard/index.html` references thumbnails and videos via relative paths:
-`../videos/thumbnails/*.jpg` and `../videos/user_saved/*.mp4`.
+`../videos/thumbnails/*.jpg` and `../videos/<username>_saved/*.mp4`.
 The static server must serve from the project root (not just `dashboard/`) so these paths resolve.
 Using `express.static(path.resolve("."))` from `dashboard-server.ts` handles this correctly.
 The dashboard is then at `http://localhost:3001/dashboard/`.
@@ -1245,7 +1245,7 @@ The dashboard is then at `http://localhost:3001/dashboard/`.
 
 ```bash
 # Instagram (used by Python scripts in scripts/)
-INSTAGRAM_USERNAME=user
+INSTAGRAM_USERNAME=your_instagram_username
 INSTAGRAM_PASSWORD=
 
 # Google Vertex AI (used by NeuroLink — standard Google Cloud auth)

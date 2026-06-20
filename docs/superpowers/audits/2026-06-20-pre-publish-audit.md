@@ -27,7 +27,7 @@ scraped-data/`.env` entries**.
 ### B1 — 795 tracked files of scraped third-party Instagram PII/content
 - `dashboard/data/video/*.json` — 390 files. Each: `username`, `author` (full name), verbatim
   `caption`, `likes`, `date`, `pk`/`code`, Gemini `transcript`, `visualDescription`,
-  `videoPath=/videos/user_saved/<username>_<pk>.mp4` (embeds owner handle).
+  `videoPath=/videos/<username>_saved/<username>_<pk>.mp4` (embeds owner handle).
 - `knowledge_base/**/*.md` — 391 files, creator-attributed transcripts + descriptions.
 - `videos/metadata.json` — 366 raw IG API records (`full_name`, signed CDN `video_url`, captions, counts).
 - 13 more `videos/*.json` + `videos/catalog.csv` — full pipeline state, all scraped fields.
@@ -95,7 +95,7 @@ No `LICENSE`, no `license` field; `README.md:326` says "Private project. All rig
 replace README line 326. If data isn't removed first, no OSS license can legitimately cover it.
 
 ### B4 — `.env.example` commits real personal/internal values
-`INSTAGRAM_USERNAME=user`, `VERTEX_PROJECT=your-gcp-project-id`, `GOOGLE_CLOUD_PROJECT_ID=your-gcp-project-id`,
+`INSTAGRAM_USERNAME=your_instagram_username`, `VERTEX_PROJECT=your-gcp-project-id`, `GOOGLE_CLOUD_PROJECT_ID=your-gcp-project-id`,
 `MODEL=gemini-3.1-flash-image-preview` (non-GA id).
 **Fix:** replace with `your_instagram_username` / `your-gcp-project-id` / `gemini-2.0-flash`.
 
@@ -103,8 +103,8 @@ replace README line 326. If data isn't removed first, no OSS license can legitim
 
 ## High Severity
 
-- **H1 — `user` hardcoded as source default.** `src/pipeline/config.ts:5,7`; also `organizer.ts`,
-  tests, `.gitignore:6 (videos/user_saved/)`. Make `INSTAGRAM_USERNAME` required (throw if absent);
+- **H1 — `<username>` hardcoded as source default.** `src/pipeline/config.ts:5,7`; also `organizer.ts`,
+  tests, `.gitignore:6 (videos/<username>_saved/)`. Make `INSTAGRAM_USERNAME` required (throw if absent);
   change `.gitignore` to `videos/*_saved/`.
 - **H2 — `your-gcp-project-id` hardcoded as default.** `config.ts:49`; also `docs/PROJECT-OVERVIEW.md`,
   `docs/overview.html:797`, `docs/neurolink-pipeline-design.md`. Require `VERTEX_PROJECT`; scrub docs.
@@ -127,7 +127,7 @@ replace README line 326. If data isn't removed first, no OSS license can legitim
 
 ## Medium Severity
 
-- **M1 — Owner name + `@user` IG link in `docs/overview.html:569`, `docs/PROJECT-OVERVIEW.md:5`.** Needs a deliberate attribution decision.
+- **M1 — Owner name + `` IG link in `docs/overview.html:569`, `docs/PROJECT-OVERVIEW.md:5`.** Needs a deliberate attribution decision.
 - **M2 — Work email `you@example.com` in `docs/neurolink-pipeline-design.md:4,1106`.**
 - **M3 — `gemini-3.1-flash-image-preview` (non-GA) hardcoded in 10+ files.** Default `config.ts:48` + many `scripts/test-*.ts`. Use `CONFIG.MODEL`.
 - **M4 — `VIDEO_SIZE_THRESHOLD` default disagrees:** code `config.ts:64` = 20 MB; `.env.example` + README = 0. Align them.

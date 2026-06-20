@@ -72,7 +72,7 @@ verifications = load_json("verifications.json")
 catalog = load_json("catalog.json")
 links_v2 = load_json("links_v2.json")
 
-disk_files = set(os.listdir(VIDEOS / "user_saved"))
+disk_files = set(os.listdir(VIDEOS / "<username>_saved"))
 classified_dir = VIDEOS / "classified"
 classified_files = {}  # filename -> directory category
 for cat in os.listdir(classified_dir):

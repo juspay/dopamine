@@ -122,7 +122,7 @@ For each video, score every other video:
 Store as `relatedIds` in the detail JSON. No external calls.
 
 ### Video file path
-Resolve actual media dir at build time (do NOT hardcode `user_saved/`). Emit `videoPath`
+Resolve actual media dir at build time (do NOT hardcode `<username>_saved/`). Emit `videoPath`
 per entry relative to the server media root; gracefully omit if the file is missing.
 
 ## 8. Visual System — Refined Dark Control-Room

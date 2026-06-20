@@ -10,16 +10,31 @@
 
 ---
 
+## Prerequisites
+
+Install these before running the pipeline:
+
+- **Node.js** ≥ 20
+- **Python** ≥ 3.10 — Instagram collection scripts (`scripts/*.py`)
+- **ffmpeg + ffprobe** — frame extraction and video properties → `brew install ffmpeg`
+- **yt-dlp** — YouTube downloads (only if you enable the YouTube source) → `brew install yt-dlp`
+- A **Google Cloud project** with Vertex AI enabled, plus either a service-account JSON
+  (`GOOGLE_APPLICATION_CREDENTIALS`) or `gcloud auth application-default login`
+
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
+# 1. Install dependencies (Node + Python)
 npm install
+pip install -r scripts/requirements.txt
 
 # 2. Configure environment
 cp .env.example .env   # then fill in your credentials
 
-# 3. Build and run
+# 3. One-time Instagram login (creates a reusable instagrapi session)
+python3 scripts/ig_login.py
+
+# 4. Build and run
 npm run build && npm run pipeline
 ```
 
@@ -144,18 +159,45 @@ npm run release:dry  # Preview what semantic-release would do
 
 ---
 
+## YouTube source
+
+By default the pipeline only processes Instagram. To also ingest your **YouTube
+liked videos**, enable the `youtube` source and authorize once via OAuth:
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+   enable the **YouTube Data API v3** and create an **OAuth client ID** of type
+   **Desktop app**.
+2. Put the credentials in `.env`:
+   ```bash
+   YOUTUBE_CLIENT_ID=...
+   YOUTUBE_CLIENT_SECRET=...
+   ```
+3. Authorize once — this opens a browser and writes `YOUTUBE_REFRESH_TOKEN` back to `.env`:
+   ```bash
+   npm run build && npm run youtube:auth
+   ```
+4. Run the pipeline with both sources:
+   ```bash
+   SOURCES=instagram,youtube npm run pipeline
+   ```
+
+Videos at/under `YT_DOWNLOAD_MAX_SECONDS` (default 300s) are downloaded as mp4;
+longer videos are processed transcript-only using their captions.
+
+---
+
 ## Environment Variables
 
 Copy `.env.example` to `.env` and fill in the values:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `INSTAGRAM_USERNAME` | Yes | `user` | Instagram account to scrape saved videos from |
+| `INSTAGRAM_USERNAME` | Yes | — | Instagram account whose saved/liked videos are processed |
 | `INSTAGRAM_PASSWORD` | Yes | -- | Instagram password (used by Python scripts) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Yes | -- | Path to GCP service account JSON for Vertex AI |
 | `GOOGLE_CLOUD_PROJECT_ID` | No | -- | GCP project ID (used by `run-pipeline.sh`) |
 | `GOOGLE_CLOUD_LOCATION` | No | -- | GCP region (used by `run-pipeline.sh`) |
-| `VERTEX_PROJECT` | No | `your-gcp-project-id` | Vertex AI project ID (used by NeuroLink) |
+| `VERTEX_PROJECT` | Yes | `your-gcp-project-id` | Vertex AI project ID (used by NeuroLink) |
 | `VERTEX_LOCATION` | No | `global` | Vertex AI location (`global` for 3.x models, `us-central1` for 2.x) |
 | `MODEL` | No | `gemini-3.1-flash-image-preview` | Gemini model ID for all AI agents |
 | `KB_CATEGORIES` | No | `AI & Machine Learning,Tech & Coding,Business & Marketing,UI/UX Design` | Comma-separated categories for knowledge extraction |
@@ -163,10 +205,20 @@ Copy `.env.example` to `.env` and fill in the values:
 | `END_STEP` | No | `16` | Pipeline end step (exclusive, 0-indexed) |
 | `PORT` | No | `3000` | Webhook + cron server port |
 | `DASHBOARD_PORT` | No | `3001` | Dashboard static server port |
-| `VIDEO_SIZE_THRESHOLD` | No | `0` | Bytes; videos larger than this use thumbnail instead. `0` = always use thumbnails |
+| `VIDEO_SIZE_THRESHOLD` | No | `20971520` (code); `.env.example` sets `0` | Bytes; videos larger than this use a thumbnail. `0` = always use thumbnails (recommended) |
 | `LANGFUSE_PUBLIC_KEY` | No | -- | Langfuse observability public key |
 | `LANGFUSE_SECRET_KEY` | No | -- | Langfuse observability secret key |
 | `LANGFUSE_HOST` | No | `https://cloud.langfuse.com` | Langfuse server URL |
+| `SOURCES` | No | `instagram` | Comma-separated content sources to run (`instagram`, `youtube`) |
+| `YT_DOWNLOAD_MAX_SECONDS` | No | `300` | Download the YouTube mp4 only for videos at/under this length; longer = transcript-only |
+| `YOUTUBE_CLIENT_ID` | If `youtube` | -- | YouTube Data API OAuth2 client id (see [YouTube source](#youtube-source)) |
+| `YOUTUBE_CLIENT_SECRET` | If `youtube` | -- | YouTube Data API OAuth2 client secret |
+| `YOUTUBE_REFRESH_TOKEN` | If `youtube` | -- | Written automatically by `npm run youtube:auth` |
+
+> **Advanced tuning:** additional optional knobs (`CLASSIFY_FRAMES`, `MIN_VISUAL_CHARS`,
+> `PROPERTIES_CONCURRENCY`, `DELAY_MS`, `COMMAND_TIMEOUT_MS`, `URL_TIMEOUT_MS`,
+> `SANDBOX_MAX_AGE_DAYS`, `LOG_LEVEL`, `DASHBOARD_HOST`, `IG_SESSION_ID`) are documented
+> with their defaults in [`.env.example`](.env.example).
 
 ---
 
