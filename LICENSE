@@ -19,11 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-NOTE ON DATA: This license covers the source code only. It does NOT grant any
-rights to media, transcripts, captions, or other content that this pipeline
-retrieves from third-party platforms (Instagram, YouTube, etc.). Such content
-remains the property of its respective rights holders. Do not commit, publish,
-or redistribute scraped third-party content via this repository.
