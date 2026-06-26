@@ -1,0 +1,5 @@
+# CODEOWNERS for dopamine
+# Single-maintainer repo — all files owned by @murdore.
+# This is required for 'require_code_owner_reviews' in branch protection to work.
+
+* @murdore

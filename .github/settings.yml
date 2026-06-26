@@ -1,0 +1,167 @@
+# Repository settings for Dopamine
+# Managed via https://github.com/repository-settings/app
+# Apply manually with the gh commands in the repo setup runbook.
+
+repository:
+  name: dopamine
+  description: "AI video retrieval and processing pipeline powered by Gemini — collects saved Instagram/YouTube content and extracts structured knowledge."
+  # No hosted docs site — use the repo URL itself.
+  homepage: https://github.com/juspay/dopamine
+  topics:
+    - ai
+    - video
+    - pipeline
+    - gemini
+    - vertex-ai
+    - instagram
+    - youtube
+    - knowledge-extraction
+    - typescript
+    - automation
+    - juspay
+    - ai-agents
+
+  private: false
+  has_issues: true
+  has_projects: true
+  has_wiki: false
+  has_downloads: true
+  has_discussions: false
+  default_branch: main
+
+  # Merge strategy: rebase-only (mirrors neurolink live settings)
+  allow_squash_merge: false
+  allow_merge_commit: false
+  allow_rebase_merge: true
+  delete_branch_on_merge: true
+
+  # Security
+  enable_automated_security_fixes: true
+  enable_vulnerability_alerts: true
+
+labels:
+  - name: "type: bug"
+    color: "d73a4a"
+    description: "Something isn't working"
+
+  - name: "type: feature"
+    color: "0075ca"
+    description: "New feature or request"
+
+  - name: "type: enhancement"
+    color: "a2eeef"
+    description: "Enhancement to existing functionality"
+
+  - name: "type: documentation"
+    color: "0052cc"
+    description: "Improvements or additions to documentation"
+
+  - name: "type: refactor"
+    color: "5319e7"
+    description: "Code refactoring with no behaviour change"
+
+  - name: "type: performance"
+    color: "fbca04"
+    description: "Performance improvements"
+
+  - name: "type: chore"
+    color: "ededed"
+    description: "Maintenance, deps, tooling"
+
+  - name: "priority: critical"
+    color: "b60205"
+    description: "Critical priority — pipeline broken"
+
+  - name: "priority: high"
+    color: "d93f0b"
+    description: "High priority"
+
+  - name: "priority: medium"
+    color: "fbca04"
+    description: "Medium priority"
+
+  - name: "priority: low"
+    color: "0e8a16"
+    description: "Low priority"
+
+  - name: "status: triage"
+    color: "ededed"
+    description: "Needs triage"
+
+  - name: "status: in-progress"
+    color: "c5def5"
+    description: "Currently being worked on"
+
+  - name: "status: blocked"
+    color: "b60205"
+    description: "Blocked by external dependency"
+
+  - name: "status: needs-review"
+    color: "fbca04"
+    description: "Needs code review"
+
+  - name: "component: collector"
+    color: "1d76db"
+    description: "Collection lane — source scraping and ingestion"
+
+  - name: "component: downloader"
+    color: "1d76db"
+    description: "Asset download and acquisition"
+
+  - name: "component: classifier"
+    color: "1d76db"
+    description: "Gemini classification and tagging"
+
+  - name: "component: knowledge"
+    color: "1d76db"
+    description: "Knowledge extraction and frame analysis"
+
+  - name: "component: links"
+    color: "1d76db"
+    description: "Link resolution and metadata enrichment"
+
+  - name: "component: dashboard"
+    color: "1d76db"
+    description: "Dashboard server, web UI, and data builder"
+
+  - name: "component: pipeline"
+    color: "1d76db"
+    description: "Runner, orchestration, and scheduling"
+
+  - name: "component: youtube"
+    color: "1d76db"
+    description: "YouTube source and OAuth flow"
+
+  - name: "component: instagram"
+    color: "1d76db"
+    description: "Instagram source and saved-posts lane"
+
+  - name: "component: config"
+    color: "1d76db"
+    description: "Configuration, env, and secrets"
+
+  - name: "good first issue"
+    color: "7057ff"
+    description: "Good for newcomers"
+
+  - name: "help wanted"
+    color: "008672"
+    description: "Extra attention is needed"
+
+branches:
+  - name: main
+    protection:
+      required_status_checks:
+        strict: true
+        contexts:
+          - "Build & Test (Node 20)"
+          - "Build & Test (Node 22)"
+          - "TypeScript Strict Check"
+      enforce_admins: false
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: true
+      restrictions: null
+      allow_force_pushes: false
+      allow_deletions: false

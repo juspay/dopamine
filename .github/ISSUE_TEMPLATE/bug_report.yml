@@ -1,0 +1,98 @@
+name: Bug Report
+description: File a bug report to help us improve Dopamine
+title: "[Bug]: "
+labels: ["type: bug", "status: triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen.
+      placeholder: Tell us what you see!
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Content source
+      description: Which content source were you using when the bug occurred?
+      options:
+        - Instagram
+        - YouTube
+        - Both / multiple sources
+        - Not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the pipeline is affected?
+      options:
+        - Collector (source scraping / ingestion)
+        - Downloader (asset acquisition)
+        - Properties (ffprobe / metadata)
+        - Classifier (Gemini categorisation)
+        - Knowledge extraction
+        - Link extractor / resolver
+        - Catalog / data builder
+        - Dashboard (server / web UI)
+        - Pipeline runner / scheduling
+        - YouTube source / OAuth
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Please provide detailed steps to reproduce the issue.
+      placeholder: |
+        1. Run `npm run pipeline` with SOURCES=...
+        2. At step N ...
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: What environment are you running Dopamine in?
+      value: |
+        - OS:
+        - Node.js version:
+        - Dopamine commit/version:
+        - ffmpeg / yt-dlp version (if relevant):
+        - Model (MODEL env):
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Copy and paste any relevant log output. This is automatically formatted into code — no backticks needed. Do NOT paste secrets or scraped personal data.
+      render: shell
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/juspay/dopamine/blob/main/CODE_OF_CONDUCT.md).
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true
+        - label: I have not included any secrets, credentials, or scraped third-party personal data in this report
+          required: true
