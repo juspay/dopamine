@@ -1,6 +1,6 @@
 {
   "name": "dopamine",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "AI video retrieval and processing pipeline powered by Gemini — collects saved Instagram/YouTube content and extracts structured knowledge.",
   "license": "MIT",
@@ -14,12 +14,25 @@
     "url": "https://github.com/juspay/dopamine/issues"
   },
   "homepage": "https://github.com/juspay/dopamine#readme",
-  "keywords": ["ai", "video", "pipeline", "gemini", "vertex-ai", "instagram", "youtube", "knowledge-extraction"],
+  "keywords": [
+    "ai",
+    "video",
+    "pipeline",
+    "gemini",
+    "vertex-ai",
+    "instagram",
+    "youtube",
+    "knowledge-extraction"
+  ],
   "engines": {
     "node": ">=20"
   },
   "packageManager": "npm@10.9.0",
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "build:run": "npm run build && node dist/pipeline/runner.js",
@@ -49,8 +62,12 @@
     }
   },
   "lint-staged": {
-    "*.{ts,js,mjs,cjs}": ["biome format --write --no-errors-on-unmatched"],
-    "*.json": ["biome format --write --no-errors-on-unmatched"]
+    "*.{ts,js,mjs,cjs}": [
+      "biome format --write --no-errors-on-unmatched"
+    ],
+    "*.json": [
+      "biome format --write --no-errors-on-unmatched"
+    ]
   },
   "dependencies": {
     "@juspay/neurolink": "^9.59.5",
