@@ -2,7 +2,8 @@ name: Release
 
 on:
   push:
-    branches: [main, release]
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -10,29 +11,62 @@ permissions:
   pull-requests: write
 
 jobs:
-  release:
+  build:
+    name: Build & verify before release
     runs-on: ubuntu-latest
-    # Skip the automated release commit to avoid loops.
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+  release:
+    name: Semantic release
+    runs-on: ubuntu-latest
+    needs: [build]
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      - run: npm run build
+      - name: Build
+        run: npm run build
 
-      # semantic-release is configured with npmPublish:false and package.json
-      # has "private": true — this publishes GitHub releases + CHANGELOG only,
-      # never to the npm registry.
+      # dopamine is a private app — npmPublish is false in .releaserc.json.
+      # This step creates a GitHub Release + CHANGELOG only; nothing is
+      # published to the npm registry.
       - name: Release
+        run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+          HUSKY: "0"

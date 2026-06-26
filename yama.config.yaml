@@ -1,0 +1,169 @@
+# =============================================================================
+# Yama PR Review configuration for dopamine
+# =============================================================================
+# Consumed by the @juspay/yama GitHub Action (see
+# .github/workflows/yama-review.yml). Auto-discovered from the repo root by
+# Yama's ConfigLoader (search order: yama.config.yaml -> config/yama.config.yaml
+# -> .yama/config.yaml); also passed explicitly via the action `config-path`.
+#
+# Yama's RulesContextLoader automatically loads CLAUDE.md and CONTRIBUTING.md
+# from the repo root and injects them into the reviewer as <project-rules>.
+# This file tunes WHAT the reviewer focuses on and WHAT blocks a merge.
+#
+# Provider/model are intentionally NOT set here — they are controlled by the
+# workflow inputs (ai-provider / ai-model / litellm-*).
+# =============================================================================
+
+version: 2
+configType: "yama"
+
+display:
+  showBanner: false
+  streamingMode: false
+  verboseToolCalls: false
+  showAIThinking: false
+
+ai:
+  temperature: 0.2
+  maxTokens: 16000
+  timeout: "15m"
+  retryAttempts: 3
+  enableAnalytics: true
+  enableEvaluation: false
+
+  conversationMemory:
+    enabled: true
+    store: "memory"
+    maxSessions: 50
+    maxTurnsPerSession: 300
+    enableSummarization: false
+
+  explore:
+    enabled: true
+    timeout: "5m"
+    cacheResults: true
+
+mcpServers:
+  github:
+    enabled: true
+  jira:
+    enabled: false
+
+review:
+  enabled: true
+
+  workflowInstructions: |
+    You are reviewing a pull request for dopamine — an AI video retrieval and
+    processing pipeline (TypeScript ESM + Python scripts, Gemini/Vertex AI,
+    Instagram + YouTube sources). Treat CLAUDE.md and CONTRIBUTING.md as the
+    AUTHORITATIVE ruleset for this repo.
+
+    Division of labour with existing CI — do NOT duplicate it:
+      - TypeScript compilation errors are already caught by `tsc --noEmit` in CI.
+      - Focus on what static analysis CANNOT catch: logic/correctness bugs,
+        security issues, broken pipeline contracts, missing error handling,
+        missing tests for new behaviour, and risky data-handling changes.
+
+    Be specific and constructive: every comment should reference the exact
+    file+line, explain the concrete risk, and suggest a fix where useful.
+    Only request changes or block per <blocking-criteria>; otherwise leave
+    the issue as an advisory inline comment.
+
+  focusAreas:
+    - name: "Security"
+      priority: "CRITICAL"
+      description: |
+        - Hardcoded API keys, tokens, credentials (Google/Vertex/YouTube/Instagram)
+        - Secrets leaking into logs or pipeline outputs
+        - Path traversal or unsafe file I/O (video/thumbnail/KB writes)
+        - Unsafe use of exec/eval, injection in shell commands (execa usage)
+        - Exposure of PII from video metadata or knowledge-base content
+
+    - name: "Pipeline Correctness"
+      priority: "MAJOR"
+      description: |
+        - Data loss in collection or acquisition steps (items silently dropped)
+        - Incorrect content-type / source routing in lane processing
+        - Frame extraction or thumbnail logic that corrupts knowledge-base entries
+        - Zod schema changes that break existing KB data compatibility
+        - Runner wiring changes that could leave lanes disconnected
+
+    - name: "Type Safety & Correctness"
+      priority: "MAJOR"
+      description: |
+        - No `any` / `as any` / `@ts-ignore` papering over real type problems
+        - Unhandled promise rejections, races in async pipeline steps
+        - Null/undefined edge cases in external API responses (YouTube / Instagram)
+        - Error handling — errors must propagate or be logged, never swallowed
+
+    - name: "Performance & Resource Usage"
+      priority: "MINOR"
+      description: |
+        - Unnecessary re-downloads or re-processing of already-acquired content
+        - Unbounded concurrency or missing rate-limit handling for Vertex/Gemini
+        - Large file handling — memory streams vs. in-memory buffers for videos
+
+    - name: "Testing"
+      priority: "MINOR"
+      description: |
+        - New pipeline steps or agents have vitest tests in src/__tests__/
+        - Schema changes are covered by existing or new schema tests
+
+  blockingCriteria:
+    - condition: "Any hardcoded secret, API key, token, credential, or service-account JSON committed in source"
+      action: "BLOCK"
+      reason: "Security: secrets must never be committed"
+    - condition: "Any CRITICAL severity security vulnerability (injection, credential leak, path traversal, PII exposure)"
+      action: "BLOCK"
+      reason: "Critical security risk"
+    - condition: "A change that silently drops pipeline items (data loss) without an explicit skip/error log"
+      action: "BLOCK"
+      reason: "Pipeline data integrity: silent data loss is unacceptable"
+    - condition: "3 or more MAJOR severity issues in the same pull request"
+      action: "BLOCK"
+      reason: "Too many significant issues to merge safely"
+
+  excludePatterns:
+    - "*.lock"
+    - "package-lock.json"
+    - "*.min.js"
+    - "*.map"
+    - "*.svg"
+    - "dist/**"
+    - "knowledge_base/**"
+    - "videos/**"
+    - "logs/**"
+    - "sandbox/**"
+    - "web/dist/**"
+    - "web/node_modules/**"
+
+  contextLines: 3
+  maxFilesPerReview: 80
+  fileAnalysisTimeout: "2m"
+
+  toolPreferences:
+    lazyLoading: true
+    cacheToolResults: true
+    parallelToolCalls: false
+    maxToolCallsPerFile: 20
+    enableCodeSearch: true
+    enableDirectoryListing: true
+
+descriptionEnhancement:
+  enabled: false
+
+memoryBank:
+  enabled: false
+
+knowledgeBase:
+  enabled: false
+
+memory:
+  enabled: false
+  autoCommit: false
+
+performance:
+  maxReviewDuration: "15m"
+  tokenBudget:
+    maxTokensPerReview: 800000
+    warningThreshold: 600000

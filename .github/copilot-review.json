@@ -1,0 +1,148 @@
+{
+  "version": "1.0",
+  "name": "Dopamine Copilot PR Review Configuration",
+  "description": "GitHub Copilot PR review settings for the dopamine AI video pipeline",
+
+  "review_settings": {
+    "auto_review": true,
+    "review_on_push": true,
+    "review_on_pr_open": true,
+    "comment_on_changes_only": true,
+    "max_files_per_review": 50,
+    "max_lines_per_file": 1000,
+    "timeout_minutes": 10
+  },
+
+  "focus_areas": [
+    {
+      "name": "Security",
+      "priority": "critical",
+      "description": "API key leaks, credential exposure, unsafe patterns",
+      "patterns": [
+        "process.env.*_KEY",
+        "api.*key",
+        "secret",
+        "token",
+        "password",
+        "eval(",
+        "innerHTML",
+        "dangerouslySetInnerHTML"
+      ]
+    },
+    {
+      "name": "TypeScript Type Safety",
+      "priority": "high",
+      "description": "Proper typing, avoid any types, null safety",
+      "patterns": [": any", "as any", "// @ts-ignore", "// @ts-nocheck", "undefined!", "null!"]
+    },
+    {
+      "name": "Pipeline Correctness",
+      "priority": "high",
+      "description": "Data integrity across collection, acquisition, and knowledge-extraction lanes",
+      "file_patterns": ["src/pipeline/**", "src/sources/**", "src/agents/**"]
+    },
+    {
+      "name": "Code Quality",
+      "priority": "medium",
+      "description": "Best practices, patterns, maintainability",
+      "patterns": ["console.log", "console.debug", "TODO:", "FIXME:", "hack", "temporary"]
+    },
+    {
+      "name": "Testing",
+      "priority": "high",
+      "description": "Test coverage for pipeline stages and schema changes",
+      "file_patterns": ["src/__tests__/**/*.test.ts", "src/dashboard/**/*.test.ts"]
+    }
+  ],
+
+  "code_standards": {
+    "typescript": {
+      "strict_mode": true,
+      "no_any_types": true,
+      "explicit_return_types": false,
+      "no_unused_vars": true,
+      "prefer_const": true
+    },
+    "security": {
+      "no_hardcoded_secrets": true,
+      "no_eval": true,
+      "no_dangerous_html": true,
+      "validate_input": true
+    },
+    "performance": {
+      "avoid_blocking_operations": true,
+      "efficient_algorithms": true,
+      "memory_usage": true
+    },
+    "documentation": {
+      "jsdoc_required": false,
+      "inline_comments": true,
+      "readme_updates": true
+    }
+  },
+
+  "file_patterns": {
+    "include": [
+      "src/**/*.ts",
+      "scripts/**/*.ts",
+      "scripts/**/*.py",
+      ".github/workflows/*.yml",
+      "*.md",
+      "package.json",
+      "tsconfig.json"
+    ],
+    "exclude": [
+      "node_modules/**",
+      "dist/**",
+      "knowledge_base/**",
+      "videos/**",
+      "logs/**",
+      "sandbox/**",
+      "web/dist/**",
+      "web/node_modules/**",
+      "*.min.js",
+      "*.map",
+      ".git/**"
+    ]
+  },
+
+  "ai_instructions": {
+    "persona": "You are a senior software engineer reviewing code for dopamine, an AI video retrieval and processing pipeline that values data integrity, security, and correctness.",
+
+    "context": "Dopamine collects Instagram/YouTube content, processes videos with Gemini/Vertex AI, and extracts structured knowledge. It uses TypeScript (ESM, strict), Node >=20, vitest for tests, and semantic-release for GitHub-only releases.",
+
+    "review_style": "Be constructive and specific. Provide code examples where helpful. Focus on security, type safety, pipeline data integrity, and maintainability.",
+
+    "priorities": [
+      "Security vulnerabilities and API/credential leaks (CRITICAL)",
+      "Pipeline data loss — items silently dropped (CRITICAL)",
+      "TypeScript type safety and null safety (HIGH)",
+      "Correct async error handling in pipeline steps (HIGH)",
+      "Test coverage for new pipeline behaviour (MEDIUM)",
+      "Code quality and maintainability (MEDIUM)"
+    ],
+
+    "custom_rules": [
+      "Flag any console.log statements in production src/ code",
+      "Ensure all environment variables are documented in .env.example",
+      "Check that commit messages follow conventional commits: type(scope): description",
+      "Verify proper error handling for Vertex AI / Gemini API calls",
+      "Flag large in-memory video buffers — prefer streaming or temp-file patterns"
+    ]
+  },
+
+  "integration": {
+    "github_actions": true,
+    "pre_commit_hooks": false,
+    "status_checks": true,
+    "auto_merge_prevention": true,
+    "comment_resolution": true
+  },
+
+  "notifications": {
+    "review_completed": true,
+    "critical_issues_found": true,
+    "all_checks_passed": true,
+    "mention_maintainers": ["@murdore"]
+  }
+}

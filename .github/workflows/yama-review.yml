@@ -1,0 +1,105 @@
+# Yama PR Review — AI code review on every PR targeting `main`.
+#
+# Powered by the published @juspay/yama action (https://github.com/juspay/yama).
+# Review rules come from this repo: Yama auto-loads CLAUDE.md and CONTRIBUTING.md,
+# plus the focus areas and blocking criteria in ./yama.config.yaml.
+#
+# This is a required status check (context "Yama PR Review"). It FAILS — and
+# blocks merge — only when Yama returns a BLOCKED verdict per yama.config.yaml
+# `blockingCriteria`, or when the review cannot complete. Ordinary comments /
+# CHANGES_REQUESTED do not fail the check.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   YAMA_GITHUB_TOKEN : fine-grained GitHub PAT with "Pull requests: Read & write"
+#                       + "Contents: Read" scoped to this repo, OR a classic PAT
+#                       with `repo`. The hosted GitHub MCP endpoint rejects the
+#                       ephemeral Actions GITHUB_TOKEN, so this is mandatory.
+#   LITELLM_BASE_URL  : LiteLLM proxy base URL reachable from GitHub-hosted runners.
+#   LITELLM_API_KEY   : LiteLLM proxy API key.
+#
+# Fork PRs (which cannot read secrets) and runs with missing secrets are skipped
+# cleanly — the check passes so it never deadlocks merges.
+
+name: Yama PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+concurrency:
+  group: yama-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  yama-review:
+    # This job name IS the required status-check context — keep it in sync with
+    # any branch protection ruleset that references it.
+    name: Yama PR Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Preflight (fork + secrets)
+        id: gate
+        env:
+          PAT: ${{ secrets.YAMA_GITHUB_TOKEN }}
+          LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+          IS_SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if [ "$IS_SAME_REPO" != "true" ]; then
+            echo "::notice::Fork PR — secrets unavailable; skipping Yama review (check passes)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$PAT" ] || [ -z "$LITELLM_BASE_URL" ] || [ -z "$LITELLM_API_KEY" ]; then
+            echo "::notice::Missing YAMA_GITHUB_TOKEN / LITELLM_BASE_URL / LITELLM_API_KEY; skipping Yama review (check passes)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Yama Review
+        if: steps.gate.outputs.run == 'true'
+        id: yama
+        continue-on-error: true
+        uses: juspay/yama@v2.6.0
+        with:
+          github-token: ${{ secrets.YAMA_GITHUB_TOKEN }}
+          ai-provider: litellm
+          ai-model: private-large
+          litellm-base-url: ${{ secrets.LITELLM_BASE_URL }}
+          litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
+          config-path: yama.config.yaml
+          skip-description-enhance: "true"
+
+      - name: Enforce verdict
+        if: steps.gate.outputs.run == 'true'
+        env:
+          DECISION: ${{ steps.yama.outputs.decision }}
+          OUTCOME: ${{ steps.yama.outcome }}
+        run: |
+          echo "Yama decision: ${DECISION:-<none>} (action outcome: ${OUTCOME})"
+          if [ "$OUTCOME" != "success" ] && [ -z "$DECISION" ]; then
+            echo "::error::Yama could not complete the review (infrastructure error). Re-run this job to retry."
+            exit 1
+          fi
+          if [ "$DECISION" = "BLOCKED" ]; then
+            echo "::error::Yama BLOCKED this PR. Resolve the blocking issues flagged in the review, then push an update."
+            exit 1
+          fi
+          echo "Yama review passed (decision=${DECISION:-APPROVED})."
