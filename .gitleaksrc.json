@@ -1,0 +1,94 @@
+{
+  "description": "Dopamine Gitleaks Configuration — AI pipeline credential detection",
+  "extend": {
+    "useDefault": true
+  },
+  "rules": [
+    {
+      "id": "vertex-service-account",
+      "description": "Google service-account JSON credential file content",
+      "regex": "\"private_key\"\\s*:\\s*\"-----BEGIN [A-Z ]+ PRIVATE KEY-----",
+      "keywords": ["private_key"]
+    },
+    {
+      "id": "youtube-oauth-token",
+      "description": "YouTube / Google OAuth refresh token",
+      "regex": "YOUTUBE_REFRESH_TOKEN[\"'\\s]*[=:][\"'\\s]*[a-zA-Z0-9\\-._~+/]{20,}",
+      "keywords": ["YOUTUBE_REFRESH_TOKEN"]
+    },
+    {
+      "id": "instagram-password",
+      "description": "Instagram plain-text password in env",
+      "regex": "INSTAGRAM_PASSWORD[\"'\\s]*[=:][\"'\\s]*.{6,}",
+      "keywords": ["INSTAGRAM_PASSWORD"]
+    },
+    {
+      "id": "langfuse-secret",
+      "description": "Langfuse secret key",
+      "regex": "LANGFUSE_SECRET_KEY[\"'\\s]*[=:][\"'\\s]*sk-lf-[a-zA-Z0-9\\-]{20,}",
+      "keywords": ["LANGFUSE_SECRET_KEY"]
+    },
+    {
+      "id": "database-url",
+      "description": "Database connection string",
+      "regex": "(postgres|mysql|mongodb)://[a-zA-Z0-9_:@.\\-]+/[a-zA-Z0-9_\\-]+",
+      "keywords": ["postgres://", "mysql://", "mongodb://"]
+    },
+    {
+      "id": "private-key",
+      "description": "PEM private key block",
+      "regex": "-----BEGIN [A-Z ]+ PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]+ PRIVATE KEY-----",
+      "keywords": ["PRIVATE KEY"]
+    }
+  ],
+  "allowlist": {
+    "description": "Global allowlist for documentation examples and test fixtures",
+    "regexes": [
+      "your[-_]api[-_]key[-_]here",
+      "replace[-_]with[-_]your",
+      "your[-_]instagram[-_]username",
+      "your[-_]gcp[-_]project[-_]id",
+      "/path/to/service-account\\.json",
+      "example[-_]key",
+      "test[-_]key",
+      "dummy[-_]key",
+      "placeholder",
+      "sample[-_]token",
+      "[Xx]{20,}",
+      "123456789",
+      "abcdefgh",
+      "sk-[Xx]{48}",
+      "AIza[Xx]{35}"
+    ],
+    "paths": [
+      ".gitleaksrc.json",
+      "node_modules/**",
+      "dist/**",
+      "coverage/**",
+      "*.min.js",
+      ".git/**",
+      ".env.example",
+      "knowledge_base/**",
+      "videos/**",
+      "sandbox/**",
+      "dashboard/data/**",
+      "logs/**",
+      "README.md",
+      "CONTRIBUTING.md"
+    ],
+    "stopwords": ["example", "test", "dummy", "placeholder", "sample", "demo", "fake", "mock", "template"]
+  },
+  "severity": {
+    "rules": {
+      "aws-access-token": "high",
+      "gcp-api-key": "high",
+      "github-token": "high",
+      "vertex-service-account": "critical",
+      "youtube-oauth-token": "high",
+      "instagram-password": "high",
+      "langfuse-secret": "high",
+      "private-key": "critical",
+      "database-url": "medium"
+    }
+  }
+}

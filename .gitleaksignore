@@ -1,0 +1,10 @@
+# .gitleaksignore — false-positive suppressions for dopamine
+#
+# Format: <file>:<value-that-triggered>
+# Add entries here when gitleaks flags a known-good placeholder or test fixture.
+# Never add entries for real credential files — fix the leak instead.
+
+# .env.example contains only placeholder values by design
+.env.example:INSTAGRAM_PASSWORD=
+.env.example:YOUTUBE_REFRESH_TOKEN=
+.env.example:LANGFUSE_SECRET_KEY=
