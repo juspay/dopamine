@@ -42,3 +42,6 @@ videos/*.backup.*
 videos/*.bak
 videos/*.bak.*
 videos/smoke-test-*.json
+
+# Claude Code harness artifacts (worktrees, etc.)
+.claude/
