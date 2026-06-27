@@ -20,9 +20,6 @@
   },
   "packageManager": "npm@10.9.0",
   "files": ["dist", "README.md", "LICENSE"],
-  "overrides": {
-    "undici": "8.5.0"
-  },
   "scripts": {
     "build": "tsc",
     "build:run": "npm run build && node dist/pipeline/runner.js",
