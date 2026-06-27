@@ -20,6 +20,11 @@
   },
   "packageManager": "npm@10.9.0",
   "files": ["dist", "README.md", "LICENSE"],
+  "overrides": {
+    "protobufjs": "^7.6.3",
+    "@grpc/grpc-js": "^1.14.4",
+    "@xmldom/xmldom": "^0.8.13"
+  },
   "scripts": {
     "build": "tsc",
     "build:run": "npm run build && node dist/pipeline/runner.js",
