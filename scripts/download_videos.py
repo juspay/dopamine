@@ -220,6 +220,55 @@ def _abort_rate_limited(exc: Exception) -> None:
 # Download logic
 # ---------------------------------------------------------------------------
 
+def _fetch_all_saved_media(cl):
+    """Return every saved post, de-duplicated by pk.
+
+    instagrapi's ``collection_medias("saved")`` hits ``feed/saved/posts/``, which
+    returns only *uncategorized* saves — posts organised into a named collection
+    are silently omitted. So union the uncategorized feed with each named
+    collection (``feed/collection/{id}/``). The numeric-id check skips the
+    ``ALL_MEDIA_AUTO_COLLECTION`` pseudo-collection, which maps back to the feed
+    already fetched. Rate-limit errors propagate so the caller can abort cleanly.
+    """
+    by_pk = {}
+    for media in cl.collection_medias("saved", amount=0):
+        by_pk[str(media.pk)] = media
+    uncategorized = len(by_pk)
+
+    try:
+        collections = cl.collections()
+    except (PleaseWaitFewMinutes, RateLimitError):
+        raise
+    except Exception as exc:
+        print(
+            f"[ig] Could not list collections ({type(exc).__name__}: {exc}); "
+            "continuing with uncategorized saves only.",
+            flush=True,
+        )
+        collections = []
+
+    for col in collections:
+        cid = str(col.id)
+        if not cid.isdigit():
+            continue  # ALL_MEDIA_AUTO_COLLECTION etc. — already covered above
+        try:
+            for media in cl.collection_medias(cid, amount=0):
+                by_pk.setdefault(str(media.pk), media)
+        except (PleaseWaitFewMinutes, RateLimitError):
+            raise
+        except Exception as exc:
+            print(
+                f"[ig] Collection {col.name!r} fetch failed "
+                f"({type(exc).__name__}: {exc}); skipping.",
+                flush=True,
+            )
+
+    extra = len(by_pk) - uncategorized
+    if extra:
+        print(f"  (+{extra} additional from named collections)", flush=True)
+    return list(by_pk.values())
+
+
 def download_saved_videos():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     # Guard the saved-feed fetch (the soft-block hang point) at IG_FETCH_TIMEOUT_SEC
@@ -231,9 +280,9 @@ def download_saved_videos():
     print(f"\nOutput: {OUTPUT_DIR}", flush=True)
     print("Fetching all saved posts (this may take a moment)...\n", flush=True)
 
-    # Fetch ALL saved media at once (amount=0 means no limit)
+    # Fetch ALL saved media — uncategorized feed unioned with named collections.
     try:
-        medias = cl.collection_medias("saved", amount=0)
+        medias = _fetch_all_saved_media(cl)
     except (PleaseWaitFewMinutes, RateLimitError) as exc:
         _abort_rate_limited(exc)
     print(f"Found {len(medias)} total saved posts.\n", flush=True)
