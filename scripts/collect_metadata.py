@@ -17,8 +17,11 @@ download_videos.py will reuse.
 
 import json
 import os
+import random
 import signal
 import sys
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -41,6 +44,43 @@ USERNAME = os.environ["INSTAGRAM_USERNAME"]
 PASSWORD = os.environ["INSTAGRAM_PASSWORD"]
 SESSION_FILE = os.path.expanduser("~/.config/instagrapi/session.json")
 OUTPUT_FILE = Path("./videos/metadata.json")
+COOLDOWN_FILE = Path("./videos/ig_cooldown.json")
+
+
+def _check_cooldown() -> None:
+    """Skip (exit 0) if a prior run hit a rate-limit and the cooldown is active."""
+    if not COOLDOWN_FILE.exists():
+        return
+    try:
+        until = datetime.fromisoformat(json.loads(COOLDOWN_FILE.read_text())["until"])
+    except (OSError, ValueError, KeyError, json.JSONDecodeError):
+        return
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) < until:
+        print(
+            f"[ig] Post-rate-limit cooldown active until {until.isoformat()} — "
+            "skipping this run.\n  (delete videos/ig_cooldown.json to override.)",
+            flush=True,
+        )
+        sys.exit(0)
+
+
+def _write_cooldown() -> None:
+    hours = float(os.environ.get("IG_COOLDOWN_HOURS", "12"))
+    until = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+    try:
+        COOLDOWN_FILE.write_text(json.dumps({"until": until}))
+        print(f"[ig] Cooldown set until {until} (IG_COOLDOWN_HOURS={hours}).", flush=True)
+    except OSError:
+        pass
+
+
+def _clear_cooldown() -> None:
+    try:
+        COOLDOWN_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _build_fresh_client() -> Client:
@@ -208,6 +248,7 @@ def _abort_unrecoverable(exc: Exception) -> None:
 
 
 def _abort_rate_limited(exc: Exception) -> None:
+    _write_cooldown()  # make subsequent runs back off automatically
     print(
         f"\n[ig] RATE LIMITED ({type(exc).__name__}: {exc})\n"
         "  Instagram is throttling requests. Wait at least 1 hour before retrying.\n"
@@ -290,6 +331,7 @@ def _fetch_all_saved_media(cl):
         cid = str(col.id)
         if not cid.isdigit():
             continue  # ALL_MEDIA_AUTO_COLLECTION etc. — already covered above
+        time.sleep(random.uniform(2, 6))  # jitter between collections to look less bot-like
         try:
             for media in cl.collection_medias(cid, amount=0):
                 by_pk.setdefault(str(media.pk), media)
@@ -310,6 +352,7 @@ def _fetch_all_saved_media(cl):
 
 def collect_metadata():
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _check_cooldown()  # back off automatically if a recent run was rate-limited
     # Cap the whole collection at IG_FETCH_TIMEOUT_SEC (default 600s) so a
     # throttled/stalled saved-feed fetch aborts cleanly instead of hanging.
     _install_fetch_watchdog(int(os.environ.get("IG_FETCH_TIMEOUT_SEC", "600")))
@@ -337,6 +380,7 @@ def collect_metadata():
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
 
+    _clear_cooldown()  # collection succeeded — clear any stale cooldown
     print(f"Saved metadata to {OUTPUT_FILE}", flush=True)
 
 
