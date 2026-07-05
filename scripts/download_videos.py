@@ -17,6 +17,7 @@ collect_metadata.py will reuse.
 
 import json
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -45,10 +46,36 @@ OUTPUT_DIR = Path("./videos") / f"{USERNAME}_saved"
 def _build_fresh_client() -> Client:
     """Return a new Client with human-like delays configured."""
     cl = Client()
-    # Use human-like delays (2-5 s between requests) to reduce bot-detection.
-    cl.delay_range = [2, 5]
-    cl.request_timeout = 30
+    # Human-like delays between requests to reduce bot-detection. Slightly
+    # gentler defaults (3-7 s) than before; override via IG_DELAY_MIN/MAX.
+    cl.delay_range = [
+        float(os.environ.get("IG_DELAY_MIN", "3")),
+        float(os.environ.get("IG_DELAY_MAX", "7")),
+    ]
+    cl.request_timeout = int(os.environ.get("IG_REQUEST_TIMEOUT_SEC", "30"))
     return cl
+
+
+def _install_fetch_watchdog(seconds: int) -> None:
+    """Abort the whole process if the saved-feed fetch stalls.
+
+    On an Instagram soft-block the private API hangs instead of erroring, so
+    per-request timeouts alone don't help. This SIGALRM watchdog guarantees the
+    script exits (non-zero) with an actionable message instead of hanging for
+    hours and blocking the next scheduled run.
+    """
+    def _fire(_signum, _frame):
+        print(
+            f"\n[ig] WATCHDOG: aborted after {seconds}s without completing.\n"
+            "  Instagram is most likely throttling/soft-blocking this account —\n"
+            "  the private API stalls instead of returning. Pause the pipeline for\n"
+            "  24-48h, then refresh the session: python3 scripts/ig_login.py\n",
+            flush=True,
+        )
+        os._exit(1)
+
+    signal.signal(signal.SIGALRM, _fire)
+    signal.alarm(seconds)
 
 
 def get_client() -> Client:  # noqa: C901  (complexity acceptable for login logic)
@@ -195,14 +222,22 @@ def _abort_rate_limited(exc: Exception) -> None:
 
 def download_saved_videos():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # Guard the saved-feed fetch (the soft-block hang point) at IG_FETCH_TIMEOUT_SEC
+    # (default 600s), then release it before the legitimately-long download phase,
+    # which the caller's execa wall-clock cap (DOWNLOAD_TIMEOUT_MS) backstops.
+    _install_fetch_watchdog(int(os.environ.get("IG_FETCH_TIMEOUT_SEC", "600")))
     cl = get_client()
 
     print(f"\nOutput: {OUTPUT_DIR}", flush=True)
     print("Fetching all saved posts (this may take a moment)...\n", flush=True)
 
     # Fetch ALL saved media at once (amount=0 means no limit)
-    medias = cl.collection_medias("saved", amount=0)
+    try:
+        medias = cl.collection_medias("saved", amount=0)
+    except (PleaseWaitFewMinutes, RateLimitError) as exc:
+        _abort_rate_limited(exc)
     print(f"Found {len(medias)} total saved posts.\n", flush=True)
+    signal.alarm(0)  # saved-feed fetch done — cancel the watchdog before downloads
 
     # Check already downloaded files
     existing_files = {f.stem for f in OUTPUT_DIR.iterdir() if f.suffix == ".mp4"}

@@ -21,4 +21,10 @@ describe("CONFIG — multi-provider additions", () => {
     expect(CONFIG.YOUTUBE).toBeDefined();
     expect("clientId" in CONFIG.YOUTUBE).toBe(true);
   });
+  it("COLLECTOR_TIMEOUT_MS defaults to 11 minutes", () => {
+    expect(CONFIG.COLLECTOR_TIMEOUT_MS).toBe(11 * 60 * 1000);
+  });
+  it("DOWNLOAD_TIMEOUT_MS defaults to 45 minutes", () => {
+    expect(CONFIG.DOWNLOAD_TIMEOUT_MS).toBe(45 * 60 * 1000);
+  });
 });

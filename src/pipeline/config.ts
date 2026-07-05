@@ -61,6 +61,13 @@ export const CONFIG = {
   MAX_RETRIES: 5,
   RETRY_BASE_DELAY_MS: 10_000,
 
+  // Wall-clock caps (ms) for the Python scrapers. On an Instagram soft-block the
+  // private API stalls instead of erroring, so without a cap one run can hang for
+  // hours and block the next scheduled run. Metadata collection is quick;
+  // downloading a backlog can legitimately take much longer.
+  COLLECTOR_TIMEOUT_MS: parseInt(process.env.COLLECTOR_TIMEOUT_MS ?? String(11 * 60 * 1000), 10),
+  DOWNLOAD_TIMEOUT_MS: parseInt(process.env.DOWNLOAD_TIMEOUT_MS ?? String(45 * 60 * 1000), 10),
+
   // Gemini inline limit is ~20MB; most Instagram Reels are 5-15MB.
   VIDEO_SIZE_THRESHOLD_BYTES: parseInt(process.env.VIDEO_SIZE_THRESHOLD ?? String(20 * 1024 * 1024), 10),
 } as const;
