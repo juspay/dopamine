@@ -10,6 +10,9 @@ describe("CONFIG — multi-provider additions", () => {
   it("SOURCES defaults to 'instagram'", () => {
     expect(CONFIG.SOURCES).toBe("instagram");
   });
+  it("IG_COLLECTOR defaults to 'instagrapi'", () => {
+    expect(CONFIG.IG_COLLECTOR).toBe("instagrapi");
+  });
   it("YOUTUBE_VIDEOS_DIR is absolute and ends with videos/youtube", () => {
     expect(path.isAbsolute(CONFIG.YOUTUBE_VIDEOS_DIR)).toBe(true);
     expect(CONFIG.YOUTUBE_VIDEOS_DIR).toMatch(/videos[/\\]youtube$/);

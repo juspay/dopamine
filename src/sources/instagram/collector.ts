@@ -59,9 +59,16 @@ export function makeInstagramCollector(): SourceCollector {
     source: "instagram",
 
     async collect(): Promise<SourceItem[]> {
-      // Bulk metadata + download via the existing battle-tested Python scrapers.
-      await runScript("scripts/collect_metadata.py", CONFIG.COLLECTOR_TIMEOUT_MS);
-      await runScript("scripts/download_videos.py", CONFIG.DOWNLOAD_TIMEOUT_MS);
+      if (CONFIG.IG_COLLECTOR === "gallerydl") {
+        // Fallback path: gallery-dl (cookie auth, web endpoints) — a different
+        // request signature that may survive when instagrapi is soft-blocked.
+        // It writes metadata.json AND downloads the videos in one pass.
+        await runScript("scripts/collect_saved_gallerydl.py", CONFIG.DOWNLOAD_TIMEOUT_MS);
+      } else {
+        // Default: the instagrapi private-API scrapers (metadata then download).
+        await runScript("scripts/collect_metadata.py", CONFIG.COLLECTOR_TIMEOUT_MS);
+        await runScript("scripts/download_videos.py", CONFIG.DOWNLOAD_TIMEOUT_MS);
+      }
       const entries = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
       return entries.filter((e) => e.media_type === 2).map(igMetadataToSourceItem);
     },

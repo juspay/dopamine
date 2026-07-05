@@ -3,3 +3,5 @@
 instagrapi>=2.0
 python-dotenv>=1.0
 browser-cookie3>=0.19
+# Fallback saved-posts backend (IG_COLLECTOR=gallerydl) — cookie-auth web scraper.
+gallery-dl>=1.32
