@@ -11,6 +11,10 @@ export const CONFIG = {
   // Which source providers to enable (comma-separated). Default: instagram only.
   SOURCES: process.env.SOURCES ?? "instagram",
 
+  // Instagram saved-posts backend: "instagrapi" (default, private API) or
+  // "gallerydl" (cookie-auth fallback, used when instagrapi is soft-blocked).
+  IG_COLLECTOR: process.env.IG_COLLECTOR ?? "instagrapi",
+
   // YouTube downloaded assets land here (separate dir to avoid id collisions).
   YOUTUBE_VIDEOS_DIR: path.resolve("videos", "youtube"),
 
