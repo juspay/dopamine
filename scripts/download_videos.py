@@ -17,9 +17,10 @@ collect_metadata.py will reuse.
 
 import json
 import os
-import signal
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from dotenv import load_dotenv
 from instagrapi import Client
@@ -43,6 +44,61 @@ SESSION_FILE = os.path.expanduser("~/.config/instagrapi/session.json")
 OUTPUT_DIR = Path("./videos") / f"{USERNAME}_saved"
 
 
+COOLDOWN_FILE = Path("./videos/ig_cooldown.json")
+
+
+def _check_cooldown() -> None:
+    """Skip (exit 0) if a prior run hit a rate-limit and the cooldown is active."""
+    if not COOLDOWN_FILE.exists():
+        return
+    try:
+        until = datetime.fromisoformat(json.loads(COOLDOWN_FILE.read_text())["until"])
+    except (OSError, ValueError, KeyError, json.JSONDecodeError):
+        return
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) < until:
+        print(
+            f"[ig] Post-rate-limit cooldown active until {until.isoformat()} — "
+            "skipping this run.\n  (delete videos/ig_cooldown.json to override.)",
+            flush=True,
+        )
+        sys.exit(0)
+
+
+def _write_cooldown() -> None:
+    hours = float(os.environ.get("IG_COOLDOWN_HOURS", "12"))
+    until = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+    try:
+        COOLDOWN_FILE.write_text(json.dumps({"until": until}))
+        print(f"[ig] Cooldown set until {until} (IG_COOLDOWN_HOURS={hours}).", flush=True)
+    except OSError:
+        pass
+
+
+def _clear_cooldown() -> None:
+    try:
+        COOLDOWN_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _entry_to_media(entry: dict) -> SimpleNamespace:
+    """Wrap a metadata.json entry so the download loop can use attribute access
+    identical to an instagrapi Media object (no code change to the loop)."""
+    return SimpleNamespace(
+        code=entry.get("code", ""),
+        pk=entry.get("pk"),
+        media_type=entry.get("media_type"),
+        taken_at=entry.get("taken_at"),
+        user=SimpleNamespace(username=entry.get("username")),
+        resources=[
+            SimpleNamespace(media_type=r.get("media_type"), video_url=r.get("video_url"))
+            for r in (entry.get("resources") or [])
+        ],
+    )
+
+
 def _build_fresh_client() -> Client:
     """Return a new Client with human-like delays configured."""
     cl = Client()
@@ -54,28 +110,6 @@ def _build_fresh_client() -> Client:
     ]
     cl.request_timeout = int(os.environ.get("IG_REQUEST_TIMEOUT_SEC", "30"))
     return cl
-
-
-def _install_fetch_watchdog(seconds: int) -> None:
-    """Abort the whole process if the saved-feed fetch stalls.
-
-    On an Instagram soft-block the private API hangs instead of erroring, so
-    per-request timeouts alone don't help. This SIGALRM watchdog guarantees the
-    script exits (non-zero) with an actionable message instead of hanging for
-    hours and blocking the next scheduled run.
-    """
-    def _fire(_signum, _frame):
-        print(
-            f"\n[ig] WATCHDOG: aborted after {seconds}s without completing.\n"
-            "  Instagram is most likely throttling/soft-blocking this account —\n"
-            "  the private API stalls instead of returning. Pause the pipeline for\n"
-            "  24-48h, then refresh the session: python3 scripts/ig_login.py\n",
-            flush=True,
-        )
-        os._exit(1)
-
-    signal.signal(signal.SIGALRM, _fire)
-    signal.alarm(seconds)
 
 
 def get_client() -> Client:  # noqa: C901  (complexity acceptable for login logic)
@@ -207,6 +241,7 @@ def _abort_unrecoverable(exc: Exception) -> None:
 
 
 def _abort_rate_limited(exc: Exception) -> None:
+    _write_cooldown()  # make subsequent runs back off automatically
     print(
         f"\n[ig] RATE LIMITED ({type(exc).__name__}: {exc})\n"
         "  Instagram is throttling requests. Wait at least 1 hour before retrying.\n"
@@ -220,73 +255,34 @@ def _abort_rate_limited(exc: Exception) -> None:
 # Download logic
 # ---------------------------------------------------------------------------
 
-def _fetch_all_saved_media(cl):
-    """Return every saved post, de-duplicated by pk.
-
-    instagrapi's ``collection_medias("saved")`` hits ``feed/saved/posts/``, which
-    returns only *uncategorized* saves — posts organised into a named collection
-    are silently omitted. So union the uncategorized feed with each named
-    collection (``feed/collection/{id}/``). The numeric-id check skips the
-    ``ALL_MEDIA_AUTO_COLLECTION`` pseudo-collection, which maps back to the feed
-    already fetched. Rate-limit errors propagate so the caller can abort cleanly.
-    """
-    by_pk = {}
-    for media in cl.collection_medias("saved", amount=0):
-        by_pk[str(media.pk)] = media
-    uncategorized = len(by_pk)
-
-    try:
-        collections = cl.collections()
-    except (PleaseWaitFewMinutes, RateLimitError):
-        raise
-    except Exception as exc:
-        print(
-            f"[ig] Could not list collections ({type(exc).__name__}: {exc}); "
-            "continuing with uncategorized saves only.",
-            flush=True,
-        )
-        collections = []
-
-    for col in collections:
-        cid = str(col.id)
-        if not cid.isdigit():
-            continue  # ALL_MEDIA_AUTO_COLLECTION etc. — already covered above
-        try:
-            for media in cl.collection_medias(cid, amount=0):
-                by_pk.setdefault(str(media.pk), media)
-        except (PleaseWaitFewMinutes, RateLimitError):
-            raise
-        except Exception as exc:
-            print(
-                f"[ig] Collection {col.name!r} fetch failed "
-                f"({type(exc).__name__}: {exc}); skipping.",
-                flush=True,
-            )
-
-    extra = len(by_pk) - uncategorized
-    if extra:
-        print(f"  (+{extra} additional from named collections)", flush=True)
-    return list(by_pk.values())
-
-
 def download_saved_videos():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    # Guard the saved-feed fetch (the soft-block hang point) at IG_FETCH_TIMEOUT_SEC
-    # (default 600s), then release it before the legitimately-long download phase,
-    # which the caller's execa wall-clock cap (DOWNLOAD_TIMEOUT_MS) backstops.
-    _install_fetch_watchdog(int(os.environ.get("IG_FETCH_TIMEOUT_SEC", "600")))
-    cl = get_client()
+    _check_cooldown()
+
+    # Load the metadata collect_metadata.py just wrote, instead of re-paginating
+    # the saved feed a SECOND time. That duplicate full fetch doubled the load on
+    # the exact endpoint Instagram throttles; the list is already on disk.
+    metadata_file = Path("./videos/metadata.json")
+    if not metadata_file.exists():
+        print(
+            "[ig] videos/metadata.json not found — run collect_metadata.py first "
+            "(the pipeline runs it immediately before this step).",
+            flush=True,
+        )
+        raise SystemExit(1)
+    try:
+        entries = json.loads(metadata_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[ig] Could not read videos/metadata.json: {exc}", flush=True)
+        raise SystemExit(1)
+    medias = [_entry_to_media(e) for e in entries if isinstance(e, dict)]
 
     print(f"\nOutput: {OUTPUT_DIR}", flush=True)
-    print("Fetching all saved posts (this may take a moment)...\n", flush=True)
+    print(f"Found {len(medias)} saved post(s) from metadata.json (no re-fetch).\n", flush=True)
 
-    # Fetch ALL saved media — uncategorized feed unioned with named collections.
-    try:
-        medias = _fetch_all_saved_media(cl)
-    except (PleaseWaitFewMinutes, RateLimitError) as exc:
-        _abort_rate_limited(exc)
-    print(f"Found {len(medias)} total saved posts.\n", flush=True)
-    signal.alarm(0)  # saved-feed fetch done — cancel the watchdog before downloads
+    # A client is still needed to stream the media bytes (session validation only —
+    # no saved-feed pagination).
+    cl = get_client()
 
     # Check already downloaded files
     existing_files = {f.stem for f in OUTPUT_DIR.iterdir() if f.suffix == ".mp4"}
@@ -325,7 +321,7 @@ def download_saved_videos():
                 cl.video_download(media.pk, folder=OUTPUT_DIR)
                 known_pks.add(pk_str)  # Only mark as known AFTER successful download
                 video_count += 1
-                print(f"  [{video_count}] {media.taken_at:%Y-%m-%d} by @{media.user.username} - {media.code}", flush=True)
+                print(f"  [{video_count}] {str(media.taken_at or '')[:10]} by @{media.user.username} - {media.code}", flush=True)
             except Exception as e:
                 print(f"  [!] Failed {media.code}: {e}", flush=True)
         elif media.media_type == 8:
@@ -339,7 +335,7 @@ def download_saved_videos():
                         cl.video_download_by_url(resource.video_url, folder=OUTPUT_DIR)
                         downloaded_any = True
                         video_count += 1
-                        print(f"  [{video_count}] {media.taken_at:%Y-%m-%d} by @{media.user.username} - {media.code} (slide {i+1})", flush=True)
+                        print(f"  [{video_count}] {str(media.taken_at or '')[:10]} by @{media.user.username} - {media.code} (slide {i+1})", flush=True)
                     except Exception as e:
                         print(f"  [!] Failed {media.code} slide {i+1}: {e}", flush=True)
             if downloaded_any:
@@ -351,6 +347,7 @@ def download_saved_videos():
     with open(known_pks_file, "w") as fh:
         json.dump(sorted(known_pks), fh)
 
+    _clear_cooldown()  # reached the end without a rate-limit — clear any stale cooldown
     print(f"\nDone! Downloaded {video_count} new videos ({already_have} already had, {skipped} non-video skipped)", flush=True)
     print(f"Saved to: {OUTPUT_DIR}", flush=True)
 
