@@ -13,6 +13,7 @@
 
 import { type NeuroLink } from "@juspay/neurolink";
 import { VerificationReportSchema, type VerificationReport } from "../schemas/verification.js";
+import { tolerantOutput } from "../schemas/tolerant.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
@@ -51,8 +52,8 @@ function computeMaxConfidence(
 
   // Categorize items by testability
   const testableTypes = new Set(["tool_install", "code_snippet", "api_setup"]);
-  const testableItems = actionableItems.filter(i => testableTypes.has(i.type));
-  const knowledgeItems = actionableItems.filter(i => !testableTypes.has(i.type));
+  const testableItems = actionableItems.filter((i) => testableTypes.has(i.type));
+  const knowledgeItems = actionableItems.filter((i) => !testableTypes.has(i.type));
 
   // Research signals: live URLs and verified claims.
   //
@@ -66,31 +67,23 @@ function computeMaxConfidence(
   //   so a transient 5xx spike doesn't tank confidence.
   // "error"/"timeout" are transient network failures; exclude them from the
   //   "checked" count so a DNS outage run doesn't incorrectly cap confidence.
-  const LIVE_STATUSES: ReadonlySet<string> = new Set([
-    "live", "redirect", "protected", "server_error",
-  ]);
-  const TRANSIENT_STATUSES: ReadonlySet<string> = new Set([
-    "error", "timeout",
-  ]);
+  const LIVE_STATUSES: ReadonlySet<string> = new Set(["live", "redirect", "protected", "server_error"]);
+  const TRANSIENT_STATUSES: ReadonlySet<string> = new Set(["error", "timeout"]);
 
-  const liveUrls = researchItems.filter(r => LIVE_STATUSES.has(r.url_status)).length;
-  const deadUrls = researchItems.filter(r => r.url_status === "dead").length;
+  const liveUrls = researchItems.filter((r) => LIVE_STATUSES.has(r.url_status)).length;
+  const deadUrls = researchItems.filter((r) => r.url_status === "dead").length;
   // Only count URLs where we got a definitive HTTP answer (exclude transient failures
   // so a DNS outage run doesn't incorrectly cap the confidence score).
   const urlsChecked = researchItems.filter(
-    r => r.url_status !== "no_url" && !TRANSIENT_STATUSES.has(r.url_status)
+    (r) => r.url_status !== "no_url" && !TRANSIENT_STATUSES.has(r.url_status),
   ).length;
   const verifiedClaims = researchItems.filter(
-    r => r.claim_verification === "verified" || r.claim_verification === "partially_verified"
+    (r) => r.claim_verification === "verified" || r.claim_verification === "partially_verified",
   ).length;
 
   // Implementation signals
-  const installSuccesses = implItems.filter(
-    i => i.install_result?.exit_code === 0
-  ).length;
-  const verificationPassed = implItems.filter(
-    i => i.verification_results?.some(vr => vr.exit_code === 0)
-  ).length;
+  const installSuccesses = implItems.filter((i) => i.install_result?.exit_code === 0).length;
+  const verificationPassed = implItems.filter((i) => i.verification_results?.some((vr) => vr.exit_code === 0)).length;
 
   // If most URLs are dead → likely outdated content, cap low
   if (urlsChecked > 0 && deadUrls > urlsChecked * 0.6) return 3;
@@ -138,7 +131,7 @@ function buildVerificationPrompt(
     parts.push(`  URL: ${item.url || "N/A"}`);
 
     // Research findings
-    const researchItem = research?.items.find(r => r.item_name === item.name);
+    const researchItem = research?.items.find((r) => r.item_name === item.name);
     if (researchItem) {
       parts.push(`  URL Status: ${researchItem.url_status}`);
       parts.push(`  Claim Verification: ${researchItem.claim_verification}`);
@@ -150,7 +143,7 @@ function buildVerificationPrompt(
     }
 
     // Implementation findings
-    const implItem = implementation?.items.find(r => r.item_name === item.name);
+    const implItem = implementation?.items.find((r) => r.item_name === item.name);
     if (implItem) {
       parts.push(`  Implementation Status: ${implItem.overall_status}`);
       if (implItem.install_result) {
@@ -173,11 +166,15 @@ function buildVerificationPrompt(
   parts.push(`\n--- INSTRUCTIONS ---`);
   parts.push(`Based on ALL the evidence above, produce a verification report:`);
   parts.push(`1. overall_score — choose the BEST fit:`);
-  parts.push(`   "verified_useful": URLs are live, tools/resources work or research confirms the content is valid and current`);
+  parts.push(
+    `   "verified_useful": URLs are live, tools/resources work or research confirms the content is valid and current`,
+  );
   parts.push(`   "partially_verified": some items verified, others couldn't be tested but nothing is clearly wrong`);
   parts.push(`   "not_verified": URLs are dead, tools broken, claims refuted, or content is clearly wrong`);
   parts.push(`   "outdated": tools/services have been deprecated, shut down, or superseded`);
-  parts.push(`   NOTE: Videos with workflow/technique items that can't be mechanically tested should still be "verified_useful" or "partially_verified" if the URLs are live and research doesn't refute the content. "not_verified" means the content is WRONG or DEAD, not just untestable.`);
+  parts.push(
+    `   NOTE: Videos with workflow/technique items that can't be mechanically tested should still be "verified_useful" or "partially_verified" if the URLs are live and research doesn't refute the content. "not_verified" means the content is WRONG or DEAD, not just untestable.`,
+  );
   parts.push(`2. summary: 1-3 sentence recommendation for someone considering this video's content`);
   parts.push(`3. item_results: one entry per actionable item with:`);
   parts.push(`   - item_name: name of the item`);
@@ -190,7 +187,9 @@ function buildVerificationPrompt(
 
   // Cap confidence based on actual evidence
   const maxConf = computeMaxConfidence(analysis, research, implementation);
-  parts.push(`\n\nIMPORTANT: Based on the evidence above, the maximum confidence score is ${maxConf}/10. Do not exceed this ceiling.`);
+  parts.push(
+    `\n\nIMPORTANT: Based on the evidence above, the maximum confidence score is ${maxConf}/10. Do not exceed this ceiling.`,
+  );
 
   return parts.join("\n");
 }
@@ -199,36 +198,32 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
   console.log("\n=== VerifierAgent (Step 15) ===");
 
   // Load all states
-  const analysisState = await loadState<Record<string, AnalysisEntry>>(
-    CONFIG.STATE.ANALYSIS, {}
-  );
-  const researchState = await loadState<Record<string, ResearchEntry>>(
-    CONFIG.STATE.RESEARCH, {}
-  );
-  const implState = await loadState<Record<string, ImplementationEntry>>(
-    CONFIG.STATE.IMPLEMENTATIONS, {}
-  );
+  const analysisState = await loadState<Record<string, AnalysisEntry>>(CONFIG.STATE.ANALYSIS, {});
+  const researchState = await loadState<Record<string, ResearchEntry>>(CONFIG.STATE.RESEARCH, {});
+  const implState = await loadState<Record<string, ImplementationEntry>>(CONFIG.STATE.IMPLEMENTATIONS, {});
 
   // Load existing verification state (resume mode)
-  const verificationState = await loadState<Record<string, VerificationEntry>>(
-    CONFIG.STATE.VERIFICATIONS, {}
-  );
+  const verificationState = await loadState<Record<string, VerificationEntry>>(CONFIG.STATE.VERIFICATIONS, {});
 
   // Videos with actionable items: full LLM-powered verification.
   const entries = Object.entries(analysisState).filter(
-    ([, entry]) => !entry.error && entry.actionable_items.length > 0
+    ([, entry]) => !entry.error && entry.actionable_items.length > 0,
   );
 
   // Videos that were successfully analysed but had NO actionable items.
   // These should get a baseline entry so verifications.json is complete at
   // source and downstream consumers don't need to infer the status themselves.
   const zeroItemEntries = Object.entries(analysisState).filter(
-    ([, entry]) => !entry.error && entry.actionable_items.length === 0
+    ([, entry]) => !entry.error && entry.actionable_items.length === 0,
   );
 
-  console.log(`Verification: ${entries.length} videos to verify, ${zeroItemEntries.length} with no actionable items (baseline entries)`);
+  console.log(
+    `Verification: ${entries.length} videos to verify, ${zeroItemEntries.length} with no actionable items (baseline entries)`,
+  );
 
-  let verified = 0, skipped = 0, errors = 0;
+  let verified = 0,
+    skipped = 0,
+    errors = 0;
 
   for (const [i, [filename, analysis]] of entries.entries()) {
     const logPrefix = `[${i + 1}/${entries.length}]`;
@@ -247,19 +242,23 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
 
     const prompt = buildVerificationPrompt(filename, analysis, research, implementation);
 
-    const result = await exponentialBackoff(async () => {
-      const response = await neurolink.generate({
-        input: { text: prompt },
-        provider: "vertex",
-        model:    CONFIG.MODEL,
-        schema:   VerificationReportSchema,
-        output:   { format: "json" },
-        disableTools: true,
-        maxTokens: 4096,
-        timeout: "120s",
-      });
-      return VerificationReportSchema.parse(safeJsonParse(response.content));
-    }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
+    const result = await exponentialBackoff(
+      async () => {
+        const response = await neurolink.generate({
+          input: { text: prompt },
+          provider: "vertex",
+          model: CONFIG.MODEL,
+          schema: VerificationReportSchema,
+          output: { format: "json" },
+          disableTools: true,
+          maxTokens: 4096,
+          timeout: "120s",
+        });
+        return tolerantOutput(VerificationReportSchema).parse(safeJsonParse(response.content));
+      },
+      CONFIG.MAX_RETRIES,
+      CONFIG.RETRY_BASE_DELAY_MS,
+    );
 
     if (result.success) {
       verificationState[filename] = {
@@ -316,5 +315,7 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
     console.log(`  -> Baseline entries written: ${baselines}`);
   }
 
-  console.log(`\nVerification done. Verified: ${verified}, Skipped: ${skipped}, Errors: ${errors}, Baselines: ${baselines}`);
+  console.log(
+    `\nVerification done. Verified: ${verified}, Skipped: ${skipped}, Errors: ${errors}, Baselines: ${baselines}`,
+  );
 }

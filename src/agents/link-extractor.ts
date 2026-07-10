@@ -2,6 +2,7 @@ import { type NeuroLink, NeuroLink as NeuroLinkClass } from "@juspay/neurolink";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { LinksSchema, type Links } from "../schemas/links.js";
+import { tolerantOutput } from "../schemas/tolerant.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
@@ -164,13 +165,10 @@ export interface LinkRequest {
 }
 
 /** frames → images; else transcript → text-only; else thumbnail/video → files; else text-only. */
-export function buildLinkRequest(
-  promptText: string,
-  assets: AcquiredAssets,
-  frames: Buffer[] | null,
-): LinkRequest {
+export function buildLinkRequest(promptText: string, assets: AcquiredAssets, frames: Buffer[] | null): LinkRequest {
   if (frames !== null && frames.length > 0) return { input: { text: promptText, images: frames } };
-  if (assets.transcriptText !== null) return { input: { text: promptText + "\n\nTranscript:\n" + assets.transcriptText } };
+  if (assets.transcriptText !== null)
+    return { input: { text: promptText + "\n\nTranscript:\n" + assets.transcriptText } };
   const filePath = assets.thumbnailPath ?? assets.videoPath;
   if (filePath === null) return { input: { text: promptText } };
   return { input: { text: promptText, files: [path.resolve(filePath)] } };
@@ -178,27 +176,23 @@ export function buildLinkRequest(
 
 export async function runLinkExtractAgent(neurolink: NeuroLink, laneItems?: LaneItem[]): Promise<void> {
   // Load knowledge base to know which videos to process
-  const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(
-    CONFIG.STATE.KNOWLEDGE_BASE, {}
-  );
+  const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(CONFIG.STATE.KNOWLEDGE_BASE, {});
 
   // Load existing links (may include error field from failed extractions)
   type LinksWithError = Links & { error?: string };
-  const linksState = await loadState<Record<string, LinksWithError>>(
-    CONFIG.STATE.LINKS_V2, {}
-  );
+  const linksState = await loadState<Record<string, LinksWithError>>(CONFIG.STATE.LINKS_V2, {});
 
   // Lane assets (covers transcript-only YouTube items not present in VIDEOS_DIR).
   const assetsById = new Map<string, AcquiredAssets>((laneItems ?? []).map((l) => [l.item.id, l.assets]));
 
   // Process all videos in the knowledge base (that don't have errors)
-  const kbVideos = Object.entries(knowledgeBase).filter(
-    ([, entry]) => !entry.error
-  );
+  const kbVideos = Object.entries(knowledgeBase).filter(([, entry]) => !entry.error);
 
   console.log(`Link extraction: ${kbVideos.length} videos from knowledge base`);
 
-  let extracted = 0, skipped = 0, errors = 0;
+  let extracted = 0,
+    skipped = 0,
+    errors = 0;
 
   for (const [i, [filename]] of kbVideos.entries()) {
     const logPrefix = `[${i + 1}/${kbVideos.length}]`;
@@ -237,29 +231,33 @@ export async function runLinkExtractAgent(neurolink: NeuroLink, laneItems?: Lane
         const f = await extractVideoFrames(videoPath, 10);
         frames = f.length > 0 ? f : null;
       }
-      const thumbnailPath = frames === null ? (await getThumbnailPath(filename) ?? videoPath) : null;
+      const thumbnailPath = frames === null ? ((await getThumbnailPath(filename)) ?? videoPath) : null;
       assets = { videoPath, thumbnailPath, transcriptText: null };
     }
 
     console.log(`${logPrefix} Extracting links: ${filename}`);
 
     const req = buildLinkRequest(LINK_EXTRACT_PROMPT, assets, frames);
-    const result = await exponentialBackoff(async () => {
-      // Fresh NeuroLink instance per video — shared instances accumulate keyframes
-      // across calls, overflowing Vertex's 16-image limit.
-      const nl = new NeuroLinkClass();
-      const response = await nl.generate({
-        input: req.input,
-        provider: "vertex",
-        model:    CONFIG.MODEL,
-        schema:   LinksSchema,
-        output:   { format: "json" },
-        disableTools: true,  // REQUIRED: Gemini rejects tools + JSON schema together
-        maxTokens: 4096,
-        timeout: "120s",
-      });
-      return LinksSchema.parse(safeJsonParse(response.content));
-    }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
+    const result = await exponentialBackoff(
+      async () => {
+        // Fresh NeuroLink instance per video — shared instances accumulate keyframes
+        // across calls, overflowing Vertex's 16-image limit.
+        const nl = new NeuroLinkClass();
+        const response = await nl.generate({
+          input: req.input,
+          provider: "vertex",
+          model: CONFIG.MODEL,
+          schema: LinksSchema,
+          output: { format: "json" },
+          disableTools: true, // REQUIRED: Gemini rejects tools + JSON schema together
+          maxTokens: 4096,
+          timeout: "120s",
+        });
+        return tolerantOutput(LinksSchema).parse(safeJsonParse(response.content));
+      },
+      CONFIG.MAX_RETRIES,
+      CONFIG.RETRY_BASE_DELAY_MS,
+    );
 
     if (result.success) {
       // Post-extraction URL validation: reject structurally invalid / hallucinated URLs.

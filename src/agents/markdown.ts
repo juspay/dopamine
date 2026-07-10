@@ -10,6 +10,7 @@ import path from "node:path";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
 import type { MetadataEntry, VideoProperties } from "../types/index.js";
+import { takeawayText, type Takeaway } from "../schemas/knowledge.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,7 +44,7 @@ interface KnowledgeEntry {
   transcript?: string | string[];
   visual_description?: string | VisualItem[];
   links_and_resources?: LinkEntry[];
-  key_takeaways?: string[];
+  key_takeaways?: Takeaway[];
   topics?: string[];
 }
 
@@ -87,9 +88,7 @@ function formatTranscript(transcript: string | string[] | undefined | null): str
   if (transcript == null) return "_No transcript available._";
   if (Array.isArray(transcript)) {
     const filtered = transcript.filter(Boolean);
-    return filtered.length > 0
-      ? filtered.map((line) => `> ${line}`).join("\n")
-      : "_No transcript available._";
+    return filtered.length > 0 ? filtered.map((line) => `> ${line}`).join("\n") : "_No transcript available._";
   }
   if (typeof transcript === "string") {
     return transcript.trim() ? transcript : "_No transcript available._";
@@ -98,9 +97,7 @@ function formatTranscript(transcript: string | string[] | undefined | null): str
 }
 
 /** Format visual description which can be a string or list of dicts. */
-function formatVisualDescription(
-  visual: string | VisualItem[] | undefined | null
-): string {
+function formatVisualDescription(visual: string | VisualItem[] | undefined | null): string {
   if (visual == null) return "_No visual description available._";
   if (typeof visual === "string") {
     return visual.trim() ? visual : "_No visual description available._";
@@ -116,9 +113,7 @@ function formatVisualDescription(
         parts.push(String(item));
       }
     }
-    return parts.length > 0
-      ? parts.join("\n\n")
-      : "_No visual description available._";
+    return parts.length > 0 ? parts.join("\n\n") : "_No visual description available._";
   }
   return String(visual);
 }
@@ -146,11 +141,7 @@ function buildMetadataIndex(metadataList: MetadataEntry[]): MetadataIndex {
   return { byPk, byUsernamePk };
 }
 
-function findMetadata(
-  filename: string,
-  kbEntry: KnowledgeEntry,
-  index: MetadataIndex
-): MetadataEntry | undefined {
+function findMetadata(filename: string, kbEntry: KnowledgeEntry, index: MetadataIndex): MetadataEntry | undefined {
   // Direct filename match
   if (index.byUsernamePk.has(filename)) return index.byUsernamePk.get(filename);
   // Try by pk from kb_entry
@@ -174,21 +165,14 @@ function generateMarkdown(
   kbEntry: KnowledgeEntry,
   classification: ClassificationEntry | undefined,
   metadata: MetadataEntry | undefined,
-  videoProps: VideoProperties | undefined
+  videoProps: VideoProperties | undefined,
 ): { content: string; category: string } {
   // Gather data from all sources
-  const category =
-    kbEntry.category ??
-    classification?.category ??
-    "Uncategorized";
+  const category = kbEntry.category ?? classification?.category ?? "Uncategorized";
   const subcategory = kbEntry.subcategory ?? classification?.subcategory ?? "";
 
   // Username and full name
-  const username =
-    kbEntry.username ??
-    classification?.username ??
-    metadata?.username ??
-    "unknown";
+  const username = kbEntry.username ?? classification?.username ?? metadata?.username ?? "unknown";
   const fullName = metadata?.full_name ?? "";
 
   // Description / title
@@ -241,9 +225,7 @@ function generateMarkdown(
   lines.push(`**Source:** ${source}  `);
   lines.push(`**Date:** ${takenAt}  `);
   lines.push(`**Duration:** ${duration}  `);
-  lines.push(
-    `**Category:** ${category}` + (subcategory ? ` > ${subcategory}` : "")
-  );
+  lines.push(`**Category:** ${category}` + (subcategory ? ` > ${subcategory}` : ""));
   lines.push(`  `);
   lines.push(`**Likes:** ${likesStr}  `);
   lines.push(`**Tags:** ${tagsStr}`);
@@ -272,8 +254,13 @@ function generateMarkdown(
     lines.push("|----------|-------------|-----------|");
     // Escape '|' and strip newlines so cells don't break the Markdown table.
     // Coerce to string first: timestamps/urls may arrive as numbers or null.
+    // Escape backslashes BEFORE pipes so an input like "\|" can't produce an
+    // ambiguous escape sequence (complete-escaping; CodeQL js/incomplete-sanitization).
     const escapeCell = (s: unknown): string =>
-      String(s ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+      String(s ?? "")
+        .replace(/\\/g, "\\\\")
+        .replace(/\|/g, "\\|")
+        .replace(/\r?\n/g, " ");
     for (const link of links) {
       const url = escapeCell(link.url);
       const desc = escapeCell(link.description);
@@ -291,7 +278,7 @@ function generateMarkdown(
   lines.push("");
   if (takeaways.length > 0) {
     for (const t of takeaways) {
-      lines.push(`- ${t}`);
+      lines.push(`- ${takeawayText(t)}`);
     }
   } else {
     lines.push("_No key takeaways extracted._");
@@ -327,9 +314,7 @@ function generateIndex(allEntries: IndexEntry[]): string {
 
   lines.push("# Knowledge Base Index");
   lines.push("");
-  lines.push(
-    `_Generated on ${dateStr} | ${allEntries.length} videos total_`
-  );
+  lines.push(`_Generated on ${dateStr} | ${allEntries.length} videos total_`);
   lines.push("");
   lines.push("---");
   lines.push("");
@@ -376,9 +361,7 @@ function generateIndex(allEntries: IndexEntry[]): string {
       let titleShort = e.title.length > 60 ? e.title.slice(0, 60) + "..." : e.title;
       // Escape pipes in title
       titleShort = titleShort.replace(/\|/g, "\\|");
-      lines.push(
-        `| ${i + 1} | [${titleShort}](${relPath}) | @${e.username} | ${e.duration} | ${e.likes} |`
-      );
+      lines.push(`| ${i + 1} | [${titleShort}](${relPath}) | @${e.username} | ${e.duration} | ${e.likes} |`);
     }
     lines.push("");
   }
@@ -395,31 +378,21 @@ export async function runMarkdownAgent(): Promise<void> {
   console.log("Loading data files...");
 
   // Load knowledge base (single merged file)
-  const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(
-    CONFIG.STATE.KNOWLEDGE_BASE, {}
-  );
+  const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(CONFIG.STATE.KNOWLEDGE_BASE, {});
   console.log(`  knowledge_base.json: ${Object.keys(knowledgeBase).length} entries`);
 
-  const classifications = await loadState<Record<string, ClassificationEntry>>(
-    CONFIG.STATE.CLASSIFICATIONS,
-    {}
-  );
+  const classifications = await loadState<Record<string, ClassificationEntry>>(CONFIG.STATE.CLASSIFICATIONS, {});
   console.log(`  classifications.json: ${Object.keys(classifications).length} entries`);
 
   const metadataList = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
   console.log(`  metadata.json: ${metadataList.length} entries`);
 
-  const videoProps = await loadState<Record<string, VideoProperties>>(
-    CONFIG.STATE.PROPERTIES,
-    {}
-  );
+  const videoProps = await loadState<Record<string, VideoProperties>>(CONFIG.STATE.PROPERTIES, {});
   console.log(`  video_properties.json: ${Object.keys(videoProps).length} entries`);
 
   // Build metadata index
   const metaIndex = buildMetadataIndex(metadataList);
-  console.log(
-    `Metadata indexed: ${metaIndex.byPk.size} by pk, ${metaIndex.byUsernamePk.size} by filename`
-  );
+  console.log(`Metadata indexed: ${metaIndex.byPk.size} by pk, ${metaIndex.byUsernamePk.size} by filename`);
 
   // Process each video
   const outputDir = CONFIG.OUTPUT.KNOWLEDGE_BASE;
@@ -434,13 +407,7 @@ export async function runMarkdownAgent(): Promise<void> {
     const props = videoProps[filename];
 
     // Generate markdown
-    const { content: mdContent, category } = generateMarkdown(
-      filename,
-      kbEntry,
-      classification,
-      meta,
-      props
-    );
+    const { content: mdContent, category } = generateMarkdown(filename, kbEntry, classification, meta, props);
 
     // Create category directory
     const catDir = path.join(outputDir, sanitizeDirname(category));
@@ -458,11 +425,7 @@ export async function runMarkdownAgent(): Promise<void> {
     generated++;
 
     // Collect for index
-    const username =
-      kbEntry.username ??
-      classification?.username ??
-      meta?.username ??
-      "unknown";
+    const username = kbEntry.username ?? classification?.username ?? meta?.username ?? "unknown";
 
     const description = classification?.description ?? "";
     const caption = meta?.caption_text ?? "";

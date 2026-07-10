@@ -1,30 +1,35 @@
-import dotenv from "dotenv";
-dotenv.config();
+// Side-effect import so .env loads BEFORE config.js evaluates. With the old
+// `import dotenv; dotenv.config()` form, ESM hoists all imports (including
+// config.js) and runs them before the config() statement — so CONFIG.VIDEOS_DIR
+// was computed from an unset INSTAGRAM_USERNAME (→ videos/user_saved) whenever
+// the env wasn't exported (e.g. the launchd job), silently breaking classification.
+import "dotenv/config";
 
 import { NeuroLink } from "@juspay/neurolink";
-import { runPropertiesAgent }   from "../agents/properties.js";
-import { runClassifierAgent }   from "../agents/classifier.js";
-import { runKnowledgeAgent }    from "../agents/knowledge.js";
-import { runLinkExtractAgent }  from "../agents/link-extractor.js";
+import { runPropertiesAgent } from "../agents/properties.js";
+import { runClassifierAgent } from "../agents/classifier.js";
+import { runKnowledgeAgent } from "../agents/knowledge.js";
+import { runLinkExtractAgent } from "../agents/link-extractor.js";
 import { runLinkResolverAgent } from "../agents/link-resolver.js";
-import { runCatalogAgent }      from "../agents/catalog.js";
-import { runOrganizerAgent }    from "../agents/organizer.js";
-import { runMarkdownAgent }     from "../agents/markdown.js";
-import { runDashboardAgent }    from "../agents/dashboard.js";
+import { runCatalogAgent } from "../agents/catalog.js";
+import { runOrganizerAgent } from "../agents/organizer.js";
+import { runMarkdownAgent } from "../agents/markdown.js";
+import { runDashboardAgent } from "../agents/dashboard.js";
 // Verification pipeline agents (steps 10-14 in the 0-indexed run order)
-import { runAnalyzerAgent }     from "../agents/analyzer.js";
-import { runResearchAgent }     from "../agents/researcher.js";
-import { runImplementerAgent }  from "../agents/implementer.js";
-import { runVerifierAgent }     from "../agents/verifier.js";
-import { runEnrichmentAgent }   from "../agents/enrichment.js";
+import { runAnalyzerAgent } from "../agents/analyzer.js";
+import { runResearchAgent } from "../agents/researcher.js";
+import { runImplementerAgent } from "../agents/implementer.js";
+import { runVerifierAgent } from "../agents/verifier.js";
+import { runEnrichmentAgent } from "../agents/enrichment.js";
 
-import { getLogger }            from "../utils/logger.js";
-import { resetMetrics }         from "../utils/metrics.js";
+import { getLogger } from "../utils/logger.js";
+import { resetMetrics } from "../utils/metrics.js";
 import { getEnabledCollectors } from "../sources/registry.js";
 import { acquireAll, type LaneItem } from "../pipeline/lanes.js";
-import { loadState, saveState } from "../pipeline/state.js";
-import { CONFIG }               from "../pipeline/config.js";
-import type { SourceItem }      from "../types/index.js";
+import { loadState } from "../pipeline/state.js";
+import { CONFIG } from "../pipeline/config.js";
+import { igMetadataToSourceItem } from "../sources/instagram/map.js";
+import type { SourceItem, MetadataEntry } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
 // Pipeline step definition
@@ -65,7 +70,7 @@ export interface PipelineOptions {
 }
 
 export async function runFullPipeline(options: PipelineOptions = {}): Promise<void> {
-  const log     = getLogger({ agent: "runner" });
+  const log = getLogger({ agent: "runner" });
   const metrics = resetMetrics();
 
   // Rotate old log files once per run
@@ -105,46 +110,57 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   // ---------------------------------------------------------------------------
   // Lane assets acquired in step 1, consumed by steps 3-5 (read at call time).
   let laneItems: LaneItem[] = [];
+  // Collector output threaded in-memory to acquisition. The persistent
+  // MetadataEntry[] store (metadata.json) is owned by the ingest layer now —
+  // the collection step no longer clobbers it with SourceItem[].
+  let collectedItems: SourceItem[] = [];
+  let collectionRan = false;
 
   const runCollectionStep = async (): Promise<void> => {
     const collectors = getEnabledCollectors(CONFIG.SOURCES);
     console.log(`\n=== Collection — ${collectors.map((c) => c.source).join(", ")} ===`);
     const collected = await Promise.all(collectors.map((c) => c.collect()));
-    const items = collected.flat();
-    await saveState(CONFIG.STATE.METADATA, items);
-    console.log(`  Collected ${items.length} item(s) → ${CONFIG.STATE.METADATA}`);
+    collectedItems = collected.flat();
+    collectionRan = true;
+    console.log(`  Collected ${collectedItems.length} new item(s); metadata.json updated via ingest.`);
   };
 
   const runAcquisitionStep = async (): Promise<void> => {
-    const items = await loadState<SourceItem[]>(CONFIG.STATE.METADATA, []);
+    let items = collectedItems;
+    if (!collectionRan) {
+      // Collection step was skipped (e.g. --start>0): reconstruct the item list
+      // from the canonical accumulating store so partial runs still work.
+      const meta = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
+      items = meta.filter((e) => e.media_type === 2).map(igMetadataToSourceItem);
+    }
     const registry = new Map(getEnabledCollectors(CONFIG.SOURCES).map((c) => [c.source, c] as const));
     laneItems = await acquireAll(items, registry);
     console.log(`\n=== Acquisition — ${laneItems.length}/${items.length} item(s) acquired ===`);
   };
 
   const steps: PipelineStep[] = [
-    { name: "Source-agnostic collection", run: () => runCollectionStep() },                       //  0
-    { name: "Asset acquisition",          run: () => runAcquisitionStep() },                       //  1
-    { name: "Properties extraction",      run: () => runPropertiesAgent() },                       //  2
-    { name: "Classification",             run: () => runClassifierAgent(neurolink, laneItems) },   //  3
-    { name: "Knowledge extraction",       run: () => runKnowledgeAgent(neurolink, laneItems) },    //  4
-    { name: "Link extraction",            run: () => runLinkExtractAgent(neurolink, laneItems) },  //  5
-    { name: "Link resolution",           run: () => runLinkResolverAgent(neurolink) },    //  6
-    { name: "Catalog generation",        run: () => runCatalogAgent(),        parallelGroup: "post-classify" }, //  7
-    { name: "Folder organization",       run: () => runOrganizerAgent(),      parallelGroup: "post-classify" }, //  8
-    { name: "Markdown generation",       run: () => runMarkdownAgent(),       parallelGroup: "post-classify" }, //  9
+    { name: "Source-agnostic collection", run: () => runCollectionStep() }, //  0
+    { name: "Asset acquisition", run: () => runAcquisitionStep() }, //  1
+    { name: "Properties extraction", run: () => runPropertiesAgent() }, //  2
+    { name: "Classification", run: () => runClassifierAgent(neurolink, laneItems) }, //  3
+    { name: "Knowledge extraction", run: () => runKnowledgeAgent(neurolink, laneItems) }, //  4
+    { name: "Link extraction", run: () => runLinkExtractAgent(neurolink, laneItems) }, //  5
+    { name: "Link resolution", run: () => runLinkResolverAgent(neurolink) }, //  6
+    { name: "Catalog generation", run: () => runCatalogAgent(), parallelGroup: "post-classify" }, //  7
+    { name: "Folder organization", run: () => runOrganizerAgent(), parallelGroup: "post-classify" }, //  8
+    { name: "Markdown generation", run: () => runMarkdownAgent(), parallelGroup: "post-classify" }, //  9
     // Verification pipeline
-    { name: "Content analysis",          run: () => runAnalyzerAgent(neurolink) },        // 10
-    { name: "Research & verification",   run: () => runResearchAgent(neurolink) },        // 11
-    { name: "Implementation testing",    run: () => runImplementerAgent() },              // 12
-    { name: "Verification synthesis",    run: () => runVerifierAgent(neurolink) },        // 13
-    { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() },              // 14
+    { name: "Content analysis", run: () => runAnalyzerAgent(neurolink) }, // 10
+    { name: "Research & verification", run: () => runResearchAgent(neurolink) }, // 11
+    { name: "Implementation testing", run: () => runImplementerAgent() }, // 12
+    { name: "Verification synthesis", run: () => runVerifierAgent(neurolink) }, // 13
+    { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() }, // 14
     // Dashboard build runs LAST so verification scores land in the same run
-    { name: "Dashboard build",           run: () => runDashboardAgent() },                // 15  -- reads verifications.json
+    { name: "Dashboard build", run: () => runDashboardAgent() }, // 15  -- reads verifications.json
   ];
 
   const startStep = options.startStep ?? parseInt(process.env.START_STEP ?? "0", 10);
-  const endStep   = options.endStep   ?? parseInt(process.env.END_STEP   ?? String(steps.length), 10);
+  const endStep = options.endStep ?? parseInt(process.env.END_STEP ?? String(steps.length), 10);
 
   log.info("Pipeline starting", {
     startStep,
@@ -172,13 +188,11 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
       } else {
         // Parallel group
         console.log(`\n${"=".repeat(60)}`);
-        console.log(`Parallel group: ${group.map(g => g.step.name).join(", ")}`);
+        console.log(`Parallel group: ${group.map((g) => g.step.name).join(", ")}`);
         console.log("=".repeat(60));
 
         const results = await Promise.allSettled(
-          group.map(({ step, index }) =>
-            runSingleStep(step, index, steps.length, metrics, log, errors)
-          )
+          group.map(({ step, index }) => runSingleStep(step, index, steps.length, metrics, log, errors)),
         );
 
         // Check for unexpected rejections (runSingleStep already handles errors internally)
@@ -196,7 +210,7 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     printPerformanceSummary(metrics, parallel);
 
     if (errors.length > 0) {
-      log.warn(`Pipeline completed with ${errors.length} error(s)`, { errors: errors.map(e => e.slice(0, 150)) });
+      log.warn(`Pipeline completed with ${errors.length} error(s)`, { errors: errors.map((e) => e.slice(0, 150)) });
     } else {
       log.info("Pipeline complete — all steps succeeded");
     }
@@ -319,10 +333,7 @@ async function runSingleStep(
 /**
  * Print a human-readable performance summary after the pipeline run.
  */
-function printPerformanceSummary(
-  metrics: ReturnType<typeof resetMetrics>,
-  parallel: boolean,
-): void {
+function printPerformanceSummary(metrics: ReturnType<typeof resetMetrics>, parallel: boolean): void {
   console.log(`\n${"=".repeat(60)}`);
   console.log("Pipeline Performance Summary");
   console.log("=".repeat(60));
@@ -401,7 +412,7 @@ Environment variables:
     }
   }
 
-  runFullPipeline(opts).catch(err => {
+  runFullPipeline(opts).catch((err) => {
     console.error("Pipeline failed:", err);
     process.exit(1);
   });
