@@ -262,10 +262,13 @@ def download_saved_videos():
     # Load the metadata collect_metadata.py just wrote, instead of re-paginating
     # the saved feed a SECOND time. That duplicate full fetch doubled the load on
     # the exact endpoint Instagram throttles; the list is already on disk.
-    metadata_file = Path("./videos/metadata.json")
+    # Prefer the incremental batch collect_metadata.py just wrote (new items
+    # only); fall back to the full store. Either way we never re-paginate the feed.
+    incoming_file = Path("./videos/metadata.incoming.json")
+    metadata_file = incoming_file if incoming_file.exists() else Path("./videos/metadata.json")
     if not metadata_file.exists():
         print(
-            "[ig] videos/metadata.json not found — run collect_metadata.py first "
+            "[ig] no metadata batch found — run collect_metadata.py first "
             "(the pipeline runs it immediately before this step).",
             flush=True,
         )
@@ -273,12 +276,12 @@ def download_saved_videos():
     try:
         entries = json.loads(metadata_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"[ig] Could not read videos/metadata.json: {exc}", flush=True)
+        print(f"[ig] Could not read {metadata_file}: {exc}", flush=True)
         raise SystemExit(1)
     medias = [_entry_to_media(e) for e in entries if isinstance(e, dict)]
 
     print(f"\nOutput: {OUTPUT_DIR}", flush=True)
-    print(f"Found {len(medias)} saved post(s) from metadata.json (no re-fetch).\n", flush=True)
+    print(f"Found {len(medias)} saved post(s) from {metadata_file.name} (no re-fetch).\n", flush=True)
 
     # A client is still needed to stream the media bytes (session validation only —
     # no saved-feed pagination).

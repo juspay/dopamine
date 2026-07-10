@@ -22,16 +22,33 @@ export const CATEGORIES = [
 // NOTE: Gemini + disableTools + schema requires flat structures.
 // Avoid z.union() — triggers "Too many states" error.
 export const ClassificationSchema = z.object({
-  category: z.enum(CATEGORIES).describe(
-    "Pick exactly one from the closed taxonomy. No free-form values."
-  ),
+  category: z.enum(CATEGORIES).describe("Pick exactly one from the closed taxonomy. No free-form values."),
   subcategory: z.string().describe("More specific subcategory (free-form)"),
   tags: z.array(z.string()).describe("5-10 descriptive tags"),
   description: z.string().describe("1-2 sentence description of the video content"),
   language: z.string().describe("Primary language spoken or shown"),
-  mood: z.string().describe(
-    'Mood/tone: "educational", "entertaining", "inspirational", "tutorial", "promotional"'
-  ),
+  mood: z.string().describe('Mood/tone: "educational", "entertaining", "inspirational", "tutorial", "promotional"'),
 });
 
 export type Classification = z.infer<typeof ClassificationSchema>;
+
+// Lenient variant for validating MODEL OUTPUT only (never sent to the model).
+// Gemini occasionally returns a null/omitted free-form field (e.g. subcategory),
+// which made a strict .parse() throw and the whole classification get saved as
+// "Other" + error, blocking downstream knowledge extraction. Here the free-form
+// fields coerce null/undefined → safe defaults; `category` stays strict so a bad
+// enum value still errors (it's the one field that must be right).
+const coerceStr = z
+  .string()
+  .nullish()
+  .transform((v) => v ?? "");
+export const LenientClassificationSchema = ClassificationSchema.extend({
+  subcategory: coerceStr,
+  tags: z
+    .array(z.string())
+    .nullish()
+    .transform((v) => v ?? []),
+  description: coerceStr,
+  language: coerceStr,
+  mood: coerceStr,
+});

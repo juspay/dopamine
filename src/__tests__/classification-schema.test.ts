@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ClassificationSchema } from "../schemas/classification.js";
+import { ClassificationSchema, LenientClassificationSchema } from "../schemas/classification.js";
 
 describe("ClassificationSchema", () => {
   const validData = {
@@ -73,6 +73,38 @@ describe("ClassificationSchema", () => {
 
   it("rejects non-string values for string fields", () => {
     const result = ClassificationSchema.safeParse({ ...validData, category: 123 });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("LenientClassificationSchema (model-output tolerance)", () => {
+  const validData = {
+    category: "Tech & Coding",
+    subcategory: "Web Development",
+    tags: ["react"],
+    description: "desc",
+    language: "English",
+    mood: "educational",
+  };
+
+  it("coerces a null subcategory to an empty string (the real-world Gemini flake)", () => {
+    const result = LenientClassificationSchema.safeParse({ ...validData, subcategory: null });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.subcategory).toBe("");
+  });
+
+  it("coerces missing free-form fields to defaults", () => {
+    const result = LenientClassificationSchema.safeParse({ category: "Other" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.subcategory).toBe("");
+      expect(result.data.tags).toEqual([]);
+      expect(result.data.description).toBe("");
+    }
+  });
+
+  it("still rejects a bad category enum (category stays strict)", () => {
+    const result = LenientClassificationSchema.safeParse({ ...validData, category: "Nonsense" });
     expect(result.success).toBe(false);
   });
 });

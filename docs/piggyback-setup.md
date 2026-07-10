@@ -1,0 +1,63 @@
+# Piggyback harvester — setup
+
+The piggyback harvester opens your Instagram saved page in a headless Chrome
+(logged in on a dedicated profile) and reads the saved-feed responses
+Instagram's own web client fetches — so it issues **zero** API calls of its own
+and sidesteps the private-API soft-block. It's the block-resistant primary
+capture path; the incremental instagrapi collector remains as a fallback.
+
+## One-time setup
+
+1. **Create the dedicated Chrome profile and log into Instagram once (headed):**
+
+   ```
+   open -a "Google Chrome" --args --user-data-dir="$HOME/.dopamine-ig-profile" https://www.instagram.com/
+   ```
+
+   Log in fully (complete any 2FA / "save login info"), confirm you can open
+   your Saved page, then **quit that Chrome window**. The session cookie now
+   lives in `~/.dopamine-ig-profile` and the headless harvester reuses it.
+
+2. **Smoke-test the harvester once, headless** (reads `INSTAGRAM_USERNAME` from `.env`):
+
+   ```
+   npm run build && node dist/pipeline/piggyback/harvester.js
+   ```
+
+   Expect `captured N saved item(s)` and `downloaded M mp4(s)`. If you instead
+   see `NOT LOGGED IN`, repeat step 1 (the session expired).
+
+3. **Install the schedule** — copy the template, fill the placeholders, bootstrap:
+
+   ```
+   cp deploy/launchd/com.dopamine.piggyback.plist ~/Library/LaunchAgents/
+   # edit ~/Library/LaunchAgents/com.dopamine.piggyback.plist and replace:
+   #   REPLACE_WITH_PROJECT_DIR  → absolute path to this repo
+   #   REPLACE_WITH_HOME         → your $HOME
+   #   REPLACE_WITH_USERNAME     → your Instagram username
+   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.dopamine.piggyback.plist
+   ```
+
+4. **Switch the pipeline to consume the harvest** — add `IG_COLLECTOR=piggyback`
+   to `com.dopamine.pipeline.plist`'s `EnvironmentVariables` so its collect step
+   ingests the harvested batch instead of re-hitting instagrapi.
+
+## Cadence
+
+Harvester runs **8:00 Mon/Thu**, the pipeline **8:30 Mon/Thu** — the 30-minute
+gap lets captured items be ingested + downloaded before the pipeline builds.
+
+## Maintenance
+
+The only recurring manual task is re-running step 1 when the harvester logs
+`NOT LOGGED IN` (typically weeks apart). To bypass the browser path entirely,
+set `IG_COLLECTOR=instagrapi` (now incremental, low-volume) or `gallerydl`.
+
+## Environment knobs
+
+| Var | Default | Meaning |
+|-----|---------|---------|
+| `IG_PIGGYBACK_PROFILE_DIR` | `~/.dopamine-ig-profile` | Chrome profile with the IG session |
+| `IG_PIGGYBACK_PORT` | `9455` | CDP remote-debugging port |
+| `IG_PIGGYBACK_SCROLLS` | `3` | saved-page scrolls (more = deeper backfill) |
+| `IG_PIGGYBACK_CHROME` | macOS Chrome path | Chrome binary override |

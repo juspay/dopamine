@@ -45,6 +45,33 @@ PASSWORD = os.environ["INSTAGRAM_PASSWORD"]
 SESSION_FILE = os.path.expanduser("~/.config/instagrapi/session.json")
 OUTPUT_FILE = Path("./videos/metadata.json")
 COOLDOWN_FILE = Path("./videos/ig_cooldown.json")
+CURSOR_FILE = Path("./videos/ig_saved_cursor.json")
+INCOMING_FILE = Path("./videos/metadata.incoming.json")
+
+
+def _fetch_kwargs(cursor_pk, max_items, force_full):
+    """collection_medias kwargs: full sweep on cold-start/force, else a bounded
+    newest-first walk that stops at the cursor pk (instagrapi ``last_media_pk``)."""
+    if force_full or not cursor_pk:
+        return {"amount": 0, "last_media_pk": 0}
+    return {"amount": int(max_items), "last_media_pk": int(cursor_pk)}
+
+
+def _next_cursor(medias, old_cursor):
+    """New feed head = newest-saved item; keep the old cursor if nothing new."""
+    return str(medias[0].pk) if medias else old_cursor
+
+
+def _load_cursor() -> dict:
+    try:
+        return json.loads(CURSOR_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def _save_cursor(cur: dict) -> None:
+    CURSOR_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CURSOR_FILE.write_text(json.dumps(cur))
 
 
 def _check_cooldown() -> None:
@@ -300,19 +327,26 @@ def extract_media(media):
     }
 
 
-def _fetch_all_saved_media(cl):
-    """Return every saved post, de-duplicated by pk.
+def _fetch_saved_media(cl, cursor, max_items, force_full):
+    """Fetch new saves across the uncategorized feed + named collections, using
+    each feed's cursor for an early stop. Returns ``(medias, new_cursor)``.
 
-    instagrapi's ``collection_medias("saved")`` hits ``feed/saved/posts/``, which
-    returns only *uncategorized* saves — posts organised into a named collection
-    are silently omitted. So union the uncategorized feed with each named
-    collection (``feed/collection/{id}/``). The numeric-id check skips the
-    ``ALL_MEDIA_AUTO_COLLECTION`` pseudo-collection, which maps back to the feed
-    already fetched. Rate-limit errors propagate so the caller can abort cleanly.
+    instagrapi's ``collection_medias("saved", ..., last_media_pk=<pk>)`` walks
+    ``feed/saved/posts/`` newest-first and stops when it reaches the cursor pk,
+    so an incremental run pulls roughly one page instead of re-paginating every
+    saved post — the request-volume reduction that starves the soft-block.
+    Named collections (``feed/collection/{id}/``) get the same early-stop walk.
+    The numeric-id check skips the ``ALL_MEDIA_AUTO_COLLECTION`` pseudo-collection.
+    Rate-limit errors propagate so the caller can abort cleanly.
     """
+    new_cursor = dict(cursor)
     by_pk = {}
-    for media in cl.collection_medias("saved", amount=0):
+
+    kw = _fetch_kwargs(cursor.get("saved"), max_items, force_full)
+    saved = cl.collection_medias("saved", **kw)
+    for media in saved:
         by_pk[str(media.pk)] = media
+    new_cursor["saved"] = _next_cursor(saved, cursor.get("saved"))
     uncategorized = len(by_pk)
 
     try:
@@ -333,8 +367,11 @@ def _fetch_all_saved_media(cl):
             continue  # ALL_MEDIA_AUTO_COLLECTION etc. — already covered above
         time.sleep(random.uniform(2, 6))  # jitter between collections to look less bot-like
         try:
-            for media in cl.collection_medias(cid, amount=0):
+            kwc = _fetch_kwargs(cursor.get(cid), max_items, force_full)
+            items = cl.collection_medias(cid, **kwc)
+            for media in items:
                 by_pk.setdefault(str(media.pk), media)
+            new_cursor[cid] = _next_cursor(items, cursor.get(cid))
         except (PleaseWaitFewMinutes, RateLimitError):
             raise
         except Exception as exc:
@@ -347,23 +384,29 @@ def _fetch_all_saved_media(cl):
     extra = len(by_pk) - uncategorized
     if extra:
         print(f"  (+{extra} additional from named collections)", flush=True)
-    return list(by_pk.values())
+    return list(by_pk.values()), new_cursor
 
 
 def collect_metadata():
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    INCOMING_FILE.parent.mkdir(parents=True, exist_ok=True)
     _check_cooldown()  # back off automatically if a recent run was rate-limited
     # Cap the whole collection at IG_FETCH_TIMEOUT_SEC (default 600s) so a
     # throttled/stalled saved-feed fetch aborts cleanly instead of hanging.
     _install_fetch_watchdog(int(os.environ.get("IG_FETCH_TIMEOUT_SEC", "600")))
     cl = get_client()
 
-    print("Fetching all saved posts (this may take a moment)...", flush=True)
+    force_full = os.environ.get("IG_FORCE_FULL", "").lower() in ("1", "true", "yes")
+    max_items = int(os.environ.get("IG_INCREMENTAL_MAX", "200"))
+    cursor = _load_cursor()
+
+    incremental = bool(cursor) and not force_full
+    print("Fetching new saved posts (incremental)..." if incremental
+          else "Fetching all saved posts (full sync)...", flush=True)
     try:
-        medias = _fetch_all_saved_media(cl)
+        medias, new_cursor = _fetch_saved_media(cl, cursor, max_items, force_full)
     except (PleaseWaitFewMinutes, RateLimitError) as exc:
         _abort_rate_limited(exc)
-    print(f"Found {len(medias)} total saved posts.", flush=True)
+    print(f"Fetched {len(medias)} post(s) this run.", flush=True)
     signal.alarm(0)  # fetch done — remaining work is local, cancel the watchdog
 
     seen_codes = set()
@@ -375,13 +418,14 @@ def collect_metadata():
         seen_codes.add(media.code)
         results.append(extract_media(media))
 
-    print(f"Deduplicated to {len(results)} unique posts.", flush=True)
-
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    # Write only this run's batch; the TS ingest layer unions it into the
+    # canonical, accumulating videos/metadata.json (dedup by pk).
+    with open(INCOMING_FILE, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
 
+    _save_cursor(new_cursor)
     _clear_cooldown()  # collection succeeded — clear any stale cooldown
-    print(f"Saved metadata to {OUTPUT_FILE}", flush=True)
+    print(f"Wrote {len(results)} entries to {INCOMING_FILE}", flush=True)
 
 
 if __name__ == "__main__":

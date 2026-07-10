@@ -22,6 +22,7 @@ import { computeRelated } from "./related.js";
 import type { RelInput } from "./related.js";
 import type { CatalogRecord } from "../agents/catalog.js";
 import type { MetadataEntry, VideoProperties } from "../types/index.js";
+import { takeawayText, type Takeaway } from "../schemas/knowledge.js";
 
 /** Dashboard author: prefer catalog author, then instagram_user, then the username fallback. */
 export function resolveDashboardAuthor(author: string, instagramUser: string, fallbackUsername: string): string {
@@ -165,7 +166,7 @@ interface KnowledgeEntry {
   transcript?: string | string[];
   visual_description?: string | Array<{ timestamp?: string; description?: string }>;
   links_and_resources?: Array<{ url?: string; description?: string; timestamp?: string }>;
-  key_takeaways?: string[];
+  key_takeaways?: Takeaway[];
   topics?: string[];
   low_content?: boolean;
 }
@@ -248,9 +249,7 @@ function normalizeTranscript(raw: KnowledgeEntry["transcript"]): string {
   return out.includes("[object Object]") ? "" : out;
 }
 
-function normalizeVisualDescription(
-  raw: KnowledgeEntry["visual_description"]
-): string {
+function normalizeVisualDescription(raw: KnowledgeEntry["visual_description"]): string {
   if (!raw) return "";
   let out: string;
   if (Array.isArray(raw)) {
@@ -316,17 +315,14 @@ function makeId(filename: string): string {
  */
 function matchVerifItemToAnalysis(
   verifItemName: string,
-  analysisItems: AnalysisItemRaw[]
+  analysisItems: AnalysisItemRaw[],
 ): AnalysisItemRaw | undefined {
   const vn = verifItemName.toLowerCase();
   return analysisItems.find((ai) => {
     const an = String(ai.name ?? ai.item_name ?? "").toLowerCase();
     const anClean = an.replace(/`/g, "");
     return (
-      vn.startsWith(an) ||
-      vn.startsWith(anClean) ||
-      vn.includes(an) ||
-      (anClean.length > 0 && vn.includes(anClean))
+      vn.startsWith(an) || vn.startsWith(anClean) || vn.includes(an) || (anClean.length > 0 && vn.includes(anClean))
     );
   });
 }
@@ -338,44 +334,19 @@ function matchVerifItemToAnalysis(
 export async function buildDashboardData(): Promise<void> {
   console.log("\n=== Data Builder ===");
 
-  const knowledge = await loadState<Record<string, KnowledgeEntry>>(
-    CONFIG.STATE.KNOWLEDGE_BASE,
-    {}
-  );
+  const knowledge = await loadState<Record<string, KnowledgeEntry>>(CONFIG.STATE.KNOWLEDGE_BASE, {});
   const catalog = await loadState<CatalogRecord[]>(CONFIG.STATE.CATALOG, []);
-  const classifications = await loadState<Record<string, ClassificationEntry>>(
-    CONFIG.STATE.CLASSIFICATIONS,
-    {}
-  );
+  const classifications = await loadState<Record<string, ClassificationEntry>>(CONFIG.STATE.CLASSIFICATIONS, {});
   const metadata = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
-  const analysis = await loadState<Record<string, AnalysisEntry>>(
-    CONFIG.STATE.ANALYSIS,
-    {}
-  );
-  const research = await loadState<Record<string, ResearchEntry>>(
-    CONFIG.STATE.RESEARCH,
-    {}
-  );
-  const verifications = await loadState<Record<string, VerificationEntry>>(
-    CONFIG.STATE.VERIFICATIONS,
-    {}
-  );
-  const linksV2 = await loadState<Record<string, LinksV2Entry>>(
-    CONFIG.STATE.LINKS_V2,
-    {}
-  );
-  const videoProperties = await loadState<Record<string, VideoProperties>>(
-    CONFIG.STATE.PROPERTIES,
-    {}
-  );
+  const analysis = await loadState<Record<string, AnalysisEntry>>(CONFIG.STATE.ANALYSIS, {});
+  const research = await loadState<Record<string, ResearchEntry>>(CONFIG.STATE.RESEARCH, {});
+  const verifications = await loadState<Record<string, VerificationEntry>>(CONFIG.STATE.VERIFICATIONS, {});
+  const linksV2 = await loadState<Record<string, LinksV2Entry>>(CONFIG.STATE.LINKS_V2, {});
+  const videoProperties = await loadState<Record<string, VideoProperties>>(CONFIG.STATE.PROPERTIES, {});
 
   console.log(`Catalog: ${catalog.length}, KB: ${Object.keys(knowledge).length}`);
-  console.log(
-    `Analysis: ${Object.keys(analysis).length}, Verif: ${Object.keys(verifications).length}`
-  );
-  console.log(
-    `Research: ${Object.keys(research).length}, Links: ${Object.keys(linksV2).length}`
-  );
+  console.log(`Analysis: ${Object.keys(analysis).length}, Verif: ${Object.keys(verifications).length}`);
+  console.log(`Research: ${Object.keys(research).length}, Links: ${Object.keys(linksV2).length}`);
 
   // O(1) lookup maps
   const catalogByFilename = new Map(catalog.map((c) => [c.filename, c]));
@@ -416,11 +387,7 @@ export async function buildDashboardData(): Promise<void> {
     const pk = pkFromClassification ?? pkFromFilename;
 
     const code = classEntry?.code ?? null;
-    const username =
-      classEntry?.username ??
-      kbEntry?.username ??
-      catEntry?.instagram_user ??
-      "";
+    const username = classEntry?.username ?? kbEntry?.username ?? catEntry?.instagram_user ?? "";
 
     // Enrich with metadata full_name
     const metaEntry = pk ? metadataByPk.get(pk) : undefined;
@@ -428,21 +395,10 @@ export async function buildDashboardData(): Promise<void> {
 
     // Title = catalog.description || first key_takeaway || classification.description || "(untitled)"
     const title =
-      catEntry?.description ||
-      kbEntry?.key_takeaways?.[0] ||
-      classEntry?.description ||
-      "(untitled)";
+      catEntry?.description || takeawayText(kbEntry?.key_takeaways?.[0]) || classEntry?.description || "(untitled)";
 
-    const category =
-      classEntry?.category ??
-      kbEntry?.category ??
-      catEntry?.category ??
-      "Other";
-    const subcategory =
-      classEntry?.subcategory ??
-      kbEntry?.subcategory ??
-      catEntry?.subcategory ??
-      "";
+    const category = classEntry?.category ?? kbEntry?.category ?? catEntry?.category ?? "Other";
+    const subcategory = classEntry?.subcategory ?? kbEntry?.subcategory ?? catEntry?.subcategory ?? "";
 
     const tags: string[] = classEntry?.tags ?? catEntry?.tags ?? [];
     const date = catEntry?.taken_at ?? "";
@@ -467,20 +423,16 @@ export async function buildDashboardData(): Promise<void> {
 
     // No verification record: distinguish "analysed but had no actionable items
     // to verify" (definitive → not_verifiable) from "never analysed" (→ unknown).
-    const analysedNoItems =
-      !!anEntry && (anEntry.actionable_items?.length ?? 0) === 0;
-    const verification =
-      verifEntry?.overall_score ?? (analysedNoItems ? "not_verifiable" : "unknown");
+    const analysedNoItems = !!anEntry && (anEntry.actionable_items?.length ?? 0) === 0;
+    const verification = verifEntry?.overall_score ?? (analysedNoItems ? "not_verifiable" : "unknown");
     const confidence = Math.round(verifEntry?.confidence ?? 0);
     const verificationSummary = verifEntry?.summary ?? "";
     const implementability = anEntry?.implementability_score ?? 0;
     const usefulness = anEntry?.usefulness_prediction ?? "unknown";
 
     const transcript = normalizeTranscript(kbEntry?.transcript);
-    const visualDescription = normalizeVisualDescription(
-      kbEntry?.visual_description
-    );
-    const keyTakeaways = kbEntry?.key_takeaways ?? [];
+    const visualDescription = normalizeVisualDescription(kbEntry?.visual_description);
+    const keyTakeaways = (kbEntry?.key_takeaways ?? []).map(takeawayText);
     const topics = kbEntry?.topics ?? [];
 
     // Clean each link URL through the same normalizer used for tools: strips
@@ -553,8 +505,7 @@ export async function buildDashboardData(): Promise<void> {
     if (!resolution && props) {
       resolution = `${props.width}x${props.height}`;
     }
-    const fileSizeMb =
-      catEntry?.file_size_mb ?? (props ? props.file_size / (1024 * 1024) : 0);
+    const fileSizeMb = catEntry?.file_size_mb ?? (props ? props.file_size / (1024 * 1024) : 0);
 
     const source = catEntry?.source ?? "instagram";
     const contentType = catEntry?.content_type ?? "short_video";
@@ -610,9 +561,7 @@ export async function buildDashboardData(): Promise<void> {
     topics: v.topics,
     category: v.category,
     username: v.username,
-    toolUrls: v.actionableItems
-      .map((ai) => ai.url)
-      .filter((u) => u.length > 0),
+    toolUrls: v.actionableItems.map((ai) => ai.url).filter((u) => u.length > 0),
     date: v.date,
   }));
   const relatedMap = computeRelated(relInputs);
@@ -629,10 +578,7 @@ export async function buildDashboardData(): Promise<void> {
   await fs.mkdir(videoDataDir, { recursive: true });
 
   // Meta
-  const totalDurationSec = normalized.reduce(
-    (s, v) => s + (v.durationSec ?? 0),
-    0
-  );
+  const totalDurationSec = normalized.reduce((s, v) => s + (v.durationSec ?? 0), 0);
   const categories = new Set(normalized.map((v) => v.category));
   const meta: Meta = {
     generatedAt: new Date().toISOString(),
@@ -665,11 +611,7 @@ export async function buildDashboardData(): Promise<void> {
   }));
 
   const indexFile: IndexFile = { meta, videos: indexRecords };
-  await fs.writeFile(
-    path.join(dataDir, "index.json"),
-    JSON.stringify(indexFile),
-    "utf8"
-  );
+  await fs.writeFile(path.join(dataDir, "index.json"), JSON.stringify(indexFile), "utf8");
 
   // Per-video detail files (ensure unique IDs)
   const usedIds = new Map<string, number>();
@@ -717,11 +659,7 @@ export async function buildDashboardData(): Promise<void> {
       fileSizeMb: v.fileSizeMb,
     };
 
-    await fs.writeFile(
-      path.join(videoDataDir, `${safeId}.json`),
-      JSON.stringify(detail),
-      "utf8"
-    );
+    await fs.writeFile(path.join(videoDataDir, `${safeId}.json`), JSON.stringify(detail), "utf8");
   }
 
   // Facets
@@ -759,9 +697,7 @@ export async function buildDashboardData(): Promise<void> {
       if (tag) tagCountMap.set(tag, (tagCountMap.get(tag) ?? 0) + 1);
     }
   }
-  const facetTags = [...tagCountMap.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => ({ name, count }));
+  const facetTags = [...tagCountMap.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
 
   const topicCountMap = new Map<string, number>();
   for (const v of normalized) {
@@ -779,11 +715,7 @@ export async function buildDashboardData(): Promise<void> {
     tags: facetTags,
     topics: facetTopics,
   };
-  await fs.writeFile(
-    path.join(dataDir, "facets.json"),
-    JSON.stringify(facets),
-    "utf8"
-  );
+  await fs.writeFile(path.join(dataDir, "facets.json"), JSON.stringify(facets), "utf8");
 
   // Tools: flatten actionableItems with non-empty url from verified videos
   const goodVerifications = new Set(["verified_useful", "partially_verified"]);
@@ -804,8 +736,7 @@ export async function buildDashboardData(): Promise<void> {
       if (!ai.url) continue;
       const key = `${ai.name}|||${ai.url}`;
       const existing = toolMap.get(key);
-      const existingPriority =
-        urlStatusPriority[existing?.urlStatus ?? ""] ?? 99;
+      const existingPriority = urlStatusPriority[existing?.urlStatus ?? ""] ?? 99;
       const newPriority = urlStatusPriority[ai.urlStatus] ?? 99;
       if (!existing || newPriority < existingPriority) {
         toolMap.set(key, {
@@ -824,18 +755,10 @@ export async function buildDashboardData(): Promise<void> {
     }
   }
   const tools: ToolRecord[] = [...toolMap.values()];
-  await fs.writeFile(
-    path.join(dataDir, "tools.json"),
-    JSON.stringify(tools),
-    "utf8"
-  );
+  await fs.writeFile(path.join(dataDir, "tools.json"), JSON.stringify(tools), "utf8");
 
   // Meta (standalone)
-  await fs.writeFile(
-    path.join(dataDir, "meta.json"),
-    JSON.stringify(meta),
-    "utf8"
-  );
+  await fs.writeFile(path.join(dataDir, "meta.json"), JSON.stringify(meta), "utf8");
 
   // Report
   const detailFiles = await fs.readdir(videoDataDir);
@@ -853,8 +776,7 @@ export async function buildDashboardData(): Promise<void> {
 // CLI entry — invoke when run directly via `node dist/dashboard/data-builder.js`
 // ---------------------------------------------------------------------------
 const isMain =
-  process.argv[1] !== undefined &&
-  (await import("node:url")).fileURLToPath(import.meta.url) === process.argv[1];
+  process.argv[1] !== undefined && (await import("node:url")).fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   buildDashboardData().catch((err) => {
     console.error("Data builder failed:", err);

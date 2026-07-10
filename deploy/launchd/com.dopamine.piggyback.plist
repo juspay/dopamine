@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template launchd job for the piggyback harvester. Copy to
+  ~/Library/LaunchAgents/com.dopamine.piggyback.plist and replace the three
+  REPLACE_WITH_* placeholders before bootstrapping. See docs/piggyback-setup.md.
+  Runs 30 min BEFORE com.dopamine.pipeline (8:00 vs 8:30) so captured items are
+  ingested + downloaded first.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.dopamine.piggyback</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>REPLACE_WITH_PROJECT_DIR/scripts/run-piggyback.sh</string>
+    </array>
+    <key>WorkingDirectory</key><string>REPLACE_WITH_PROJECT_DIR</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key><string>REPLACE_WITH_HOME/.pyenv/shims:REPLACE_WITH_HOME/Library/pnpm:REPLACE_WITH_HOME/Library/pnpm/nodejs/24.0.2/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key><string>REPLACE_WITH_HOME</string>
+        <key>INSTAGRAM_USERNAME</key><string>REPLACE_WITH_USERNAME</string>
+        <key>IG_PIGGYBACK_PROFILE_DIR</key><string>REPLACE_WITH_HOME/.dopamine-ig-profile</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+    </array>
+    <key>StandardOutPath</key><string>REPLACE_WITH_PROJECT_DIR/logs/launchd-piggyback.log</string>
+    <key>StandardErrorPath</key><string>REPLACE_WITH_PROJECT_DIR/logs/launchd-piggyback.log</string>
+    <key>RunAtLoad</key><false/>
+</dict>
+</plist>

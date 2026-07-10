@@ -11,6 +11,8 @@ import { type NeuroLink } from "@juspay/neurolink";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { AnalysisSchema, type Analysis } from "../schemas/analysis.js";
+import { tolerantOutput } from "../schemas/tolerant.js";
+import { takeawayText, type Takeaway } from "../schemas/knowledge.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { safeJsonParse } from "../utils/json-repair.js";
@@ -24,7 +26,7 @@ interface KnowledgeEntry {
   transcript?: string;
   visual_description?: string;
   links_and_resources?: Array<{ url?: string | null; description?: string; timestamp?: string }>;
-  key_takeaways?: string[];
+  key_takeaways?: Takeaway[];
   topics?: string[];
   error?: string;
 }
@@ -74,7 +76,7 @@ function buildContextPrompt(entry: KnowledgeEntry): string {
   }
 
   if (entry.key_takeaways && entry.key_takeaways.length > 0) {
-    parts.push(`\nKey Takeaways:\n${entry.key_takeaways.map(t => `- ${t}`).join("\n")}`);
+    parts.push(`\nKey Takeaways:\n${entry.key_takeaways.map((t) => `- ${takeawayText(t)}`).join("\n")}`);
   }
 
   if (entry.topics && entry.topics.length > 0) {
@@ -95,14 +97,10 @@ export async function runAnalyzerAgent(neurolink: NeuroLink): Promise<void> {
   console.log("\n=== AnalyzerAgent (Step 12) ===");
 
   // Load knowledge base
-  const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(
-    CONFIG.STATE.KNOWLEDGE_BASE, {}
-  );
+  const knowledgeBase = await loadState<Record<string, KnowledgeEntry>>(CONFIG.STATE.KNOWLEDGE_BASE, {});
 
   // Load existing analysis state (resume mode)
-  const analysisState = await loadState<Record<string, AnalysisEntry>>(
-    CONFIG.STATE.ANALYSIS, {}
-  );
+  const analysisState = await loadState<Record<string, AnalysisEntry>>(CONFIG.STATE.ANALYSIS, {});
 
   // Include entries that have ANY analysable content — transcript, visual_description,
   // key_takeaways, or topics. Videos with no speech (silent demos, screen recordings,
@@ -121,7 +119,9 @@ export async function runAnalyzerAgent(neurolink: NeuroLink): Promise<void> {
 
   console.log(`Analysis: ${entries.length} knowledge base entries to analyze`);
 
-  let analyzed = 0, skipped = 0, errors = 0;
+  let analyzed = 0,
+    skipped = 0,
+    errors = 0;
 
   for (const [i, [filename, entry]] of entries.entries()) {
     const logPrefix = `[${i + 1}/${entries.length}]`;
@@ -149,22 +149,26 @@ export async function runAnalyzerAgent(neurolink: NeuroLink): Promise<void> {
       inputConfig.files = [path.resolve(thumbPath)];
     }
 
-    const result = await exponentialBackoff(async () => {
-      const response = await neurolink.generate({
-        input: inputConfig,
-        provider: "vertex",
-        model:    CONFIG.MODEL,
-        schema:   AnalysisSchema,
-        output:   { format: "json" },
-        disableTools: true,  // REQUIRED: Gemini rejects tools + JSON schema together
-        temperature: 0.1,    // Lower temp -> more deterministic extraction. Default 0.7
-                             // was causing ~16% of entries to randomly return 0 items
-                             // even when the KB content clearly listed tools.
-        maxTokens: 8192,
-        timeout: "180s",
-      });
-      return AnalysisSchema.parse(safeJsonParse(response.content));
-    }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
+    const result = await exponentialBackoff(
+      async () => {
+        const response = await neurolink.generate({
+          input: inputConfig,
+          provider: "vertex",
+          model: CONFIG.MODEL,
+          schema: AnalysisSchema,
+          output: { format: "json" },
+          disableTools: true, // REQUIRED: Gemini rejects tools + JSON schema together
+          temperature: 0.1, // Lower temp -> more deterministic extraction. Default 0.7
+          // was causing ~16% of entries to randomly return 0 items
+          // even when the KB content clearly listed tools.
+          maxTokens: 8192,
+          timeout: "180s",
+        });
+        return tolerantOutput(AnalysisSchema).parse(safeJsonParse(response.content));
+      },
+      CONFIG.MAX_RETRIES,
+      CONFIG.RETRY_BASE_DELAY_MS,
+    );
 
     if (result.success) {
       analysisState[filename] = {

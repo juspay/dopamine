@@ -1,7 +1,12 @@
 import { type NeuroLink } from "@juspay/neurolink";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { ClassificationSchema, CATEGORIES, type Classification } from "../schemas/classification.js";
+import {
+  ClassificationSchema,
+  LenientClassificationSchema,
+  CATEGORIES,
+  type Classification,
+} from "../schemas/classification.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
@@ -26,7 +31,7 @@ Instagram metadata:
 - Hashtags: ${hashtags}
 
 CATEGORY RULES — pick exactly one from this closed list:
-${CATEGORIES.map(c => `  - ${c}`).join("\n")}
+${CATEGORIES.map((c) => `  - ${c}`).join("\n")}
 
 Guidance (pick the BEST fit based on primary subject matter):
 - Programming, dev tools, hardware, software tutorials → "Tech & Coding"
@@ -61,16 +66,15 @@ export function buildClassifyRequest(
   frames: Buffer[] | null,
 ): ClassifyRequest {
   if (frames !== null && frames.length > 0) return { input: { text: promptText, images: frames } };
-  if (assets.transcriptText !== null) return { input: { text: promptText + "\n\nTranscript:\n" + assets.transcriptText } };
+  if (assets.transcriptText !== null)
+    return { input: { text: promptText + "\n\nTranscript:\n" + assets.transcriptText } };
   const filePath = assets.thumbnailPath ?? assets.videoPath;
   if (filePath === null) return { input: { text: promptText } };
   return { input: { text: promptText, files: [path.resolve(filePath)] } };
 }
 
 export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneItem[]): Promise<void> {
-  const classifications = await loadState<Record<string, ClassificationEntry>>(
-    CONFIG.STATE.CLASSIFICATIONS, {}
-  );
+  const classifications = await loadState<Record<string, ClassificationEntry>>(CONFIG.STATE.CLASSIFICATIONS, {});
 
   // Multi-source path: classify items straight from acquired lanes (covers YouTube + IG).
   if (laneItems && laneItems.length > 0) {
@@ -91,18 +95,37 @@ export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneI
       const hashtags = (caption.match(/#\w+/g) ?? []).join(", ");
       console.log(`[${i + 1}/${laneItems.length}] Classifying ${filename}`);
       const req = buildClassifyRequest(CLASSIFY_PROMPT(username, caption, hashtags), assets, frames);
-      const result = await exponentialBackoff(async () => {
-        const response = await neurolink.generate({
-          input: req.input, provider: "vertex", model: CONFIG.MODEL,
-          schema: ClassificationSchema, output: { format: "json" },
-          disableTools: true, maxTokens: 1024, timeout: "120s",
-        });
-        return ClassificationSchema.parse(safeJsonParse(response.content));
-      }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
+      const result = await exponentialBackoff(
+        async () => {
+          const response = await neurolink.generate({
+            input: req.input,
+            provider: "vertex",
+            model: CONFIG.MODEL,
+            schema: ClassificationSchema,
+            output: { format: "json" },
+            disableTools: true,
+            maxTokens: 1024,
+            timeout: "120s",
+          });
+          return LenientClassificationSchema.parse(safeJsonParse(response.content));
+        },
+        CONFIG.MAX_RETRIES,
+        CONFIG.RETRY_BASE_DELAY_MS,
+      );
       classifications[filename] = result.success
         ? { pk: ig?.pk ?? null, code: ig?.code ?? null, username: ig?.username ?? null, ...result.value }
-        : { pk: ig?.pk ?? null, code: ig?.code ?? null, username: ig?.username ?? null,
-            category: "Other", subcategory: "", tags: [], description: "", language: "", mood: "", error: result.error };
+        : {
+            pk: ig?.pk ?? null,
+            code: ig?.code ?? null,
+            username: ig?.username ?? null,
+            category: "Other",
+            subcategory: "",
+            tags: [],
+            description: "",
+            language: "",
+            mood: "",
+            error: result.error,
+          };
       await saveState(CONFIG.STATE.CLASSIFICATIONS, classifications);
       await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
     }
@@ -112,10 +135,12 @@ export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneI
   const metadata = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
 
   // Build pk -> metadata lookup (mirrors classify_videos.py:load_metadata)
-  const pkLookup = new Map(metadata.map(m => [String(m.pk), m]));
+  const pkLookup = new Map(metadata.map((m) => [String(m.pk), m]));
 
   const videoFiles = await getVideoFiles(CONFIG.VIDEOS_DIR);
-  let classified = 0, skipped = 0, errors = 0;
+  let classified = 0,
+    skipped = 0,
+    errors = 0;
 
   for (const [i, videoPath] of videoFiles.entries()) {
     const filename = path.basename(videoPath);
@@ -155,35 +180,39 @@ export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneI
     }
 
     // Fall back to thumbnail if large or ffmpeg failed
-    const thumbnailPath = frames === null ? (await getThumbnailPath(filename) ?? videoPath) : null;
+    const thumbnailPath = frames === null ? ((await getThumbnailPath(filename)) ?? videoPath) : null;
     const assets: AcquiredAssets = { videoPath, thumbnailPath, transcriptText: null };
 
-    const username  = meta?.username ?? "unknown";
-    const caption   = meta?.caption_text ?? "";
-    const hashtags  = (caption.match(/#\w+/g) ?? []).join(", ");
+    const username = meta?.username ?? "unknown";
+    const caption = meta?.caption_text ?? "";
+    const hashtags = (caption.match(/#\w+/g) ?? []).join(", ");
 
     console.log(`${logPrefix} Classifying: ${filename}`);
     console.log(`  User: ${username} | Caption: ${caption.slice(0, 60)}...`);
 
     const req = buildClassifyRequest(CLASSIFY_PROMPT(username, caption, hashtags), assets, frames);
-    const result = await exponentialBackoff(async () => {
-      const response = await neurolink.generate({
-        input: req.input,
-        provider: "vertex",
-        model:    CONFIG.MODEL,
-        schema:   ClassificationSchema,
-        output:   { format: "json" },
-        disableTools: true,  // REQUIRED: Gemini rejects tools + JSON schema together
-        maxTokens: 1024,
-        timeout: "120s",
-      });
-      return ClassificationSchema.parse(safeJsonParse(response.content));
-    }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
+    const result = await exponentialBackoff(
+      async () => {
+        const response = await neurolink.generate({
+          input: req.input,
+          provider: "vertex",
+          model: CONFIG.MODEL,
+          schema: ClassificationSchema,
+          output: { format: "json" },
+          disableTools: true, // REQUIRED: Gemini rejects tools + JSON schema together
+          maxTokens: 1024,
+          timeout: "120s",
+        });
+        return LenientClassificationSchema.parse(safeJsonParse(response.content));
+      },
+      CONFIG.MAX_RETRIES,
+      CONFIG.RETRY_BASE_DELAY_MS,
+    );
 
     if (result.success) {
       classifications[filename] = {
-        pk:       pk ?? null,
-        code:     meta?.code ?? null,
+        pk: pk ?? null,
+        code: meta?.code ?? null,
         username: meta?.username ?? null,
         ...result.value,
       };
@@ -191,9 +220,15 @@ export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneI
       console.log(`  -> ${result.value.category} / ${result.value.subcategory}`);
     } else {
       classifications[filename] = {
-        pk: pk ?? null, code: meta?.code ?? null, username: meta?.username ?? null,
-        category: "Other", subcategory: "", tags: [], description: "",
-        language: "", mood: "",
+        pk: pk ?? null,
+        code: meta?.code ?? null,
+        username: meta?.username ?? null,
+        category: "Other",
+        subcategory: "",
+        tags: [],
+        description: "",
+        language: "",
+        mood: "",
         error: result.error,
       };
       errors++;

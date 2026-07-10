@@ -15,12 +15,16 @@ export const CONFIG = {
   // "gallerydl" (cookie-auth fallback, used when instagrapi is soft-blocked).
   IG_COLLECTOR: process.env.IG_COLLECTOR ?? "instagrapi",
 
+  // Incremental saved-feed fetch: cap on items pulled per run (bounds a stale-cursor
+  // blowout back toward a full pagination). Cold start ignores this and fetches all.
+  IG_INCREMENTAL_MAX: parseInt(process.env.IG_INCREMENTAL_MAX ?? "200", 10),
+
   // YouTube downloaded assets land here (separate dir to avoid id collisions).
   YOUTUBE_VIDEOS_DIR: path.resolve("videos", "youtube"),
 
   // YouTube OAuth2 credentials (refresh token is written by `npm run youtube:auth`).
   YOUTUBE: {
-    clientId:     process.env.YOUTUBE_CLIENT_ID,
+    clientId: process.env.YOUTUBE_CLIENT_ID,
     clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
     refreshToken: process.env.YOUTUBE_REFRESH_TOKEN,
   },
@@ -29,36 +33,37 @@ export const CONFIG = {
   YT_DOWNLOAD_MAX_SECONDS: parseInt(process.env.YT_DOWNLOAD_MAX_SECONDS ?? "300", 10),
 
   STATE: {
-    METADATA:          path.resolve("videos", "metadata.json"),
-    KNOWN_PKS:         path.resolve("videos", "known_pks.json"),
+    METADATA: path.resolve("videos", "metadata.json"),
+    METADATA_INCOMING: path.resolve("videos", "metadata.incoming.json"),
+    KNOWN_PKS: path.resolve("videos", "known_pks.json"),
     YOUTUBE_KNOWN_IDS: path.resolve("videos", "youtube_known_ids.json"),
-    PROPERTIES:        path.resolve("videos", "video_properties.json"),
-    CLASSIFICATIONS:   path.resolve("videos", "classifications.json"),
-    KNOWLEDGE_BASE:    path.resolve("videos", "knowledge_base.json"),
-    LINKS_V2:          path.resolve("videos", "links_v2.json"),
-    CATALOG:           path.resolve("videos", "catalog.json"),
-    CATALOG_CSV:       path.resolve("videos", "catalog.csv"),
-    ANALYSIS:          path.resolve("videos", "analysis.json"),
-    RESEARCH:          path.resolve("videos", "research.json"),
-    IMPLEMENTATIONS:   path.resolve("videos", "implementations.json"),
-    VERIFICATIONS:     path.resolve("videos", "verifications.json"),
+    PROPERTIES: path.resolve("videos", "video_properties.json"),
+    CLASSIFICATIONS: path.resolve("videos", "classifications.json"),
+    KNOWLEDGE_BASE: path.resolve("videos", "knowledge_base.json"),
+    LINKS_V2: path.resolve("videos", "links_v2.json"),
+    CATALOG: path.resolve("videos", "catalog.json"),
+    CATALOG_CSV: path.resolve("videos", "catalog.csv"),
+    ANALYSIS: path.resolve("videos", "analysis.json"),
+    RESEARCH: path.resolve("videos", "research.json"),
+    IMPLEMENTATIONS: path.resolve("videos", "implementations.json"),
+    VERIFICATIONS: path.resolve("videos", "verifications.json"),
   },
 
   OUTPUT: {
-    CLASSIFIED:     path.resolve("videos", "classified"),
+    CLASSIFIED: path.resolve("videos", "classified"),
     KNOWLEDGE_BASE: path.resolve("knowledge_base"),
-    DASHBOARD:      path.resolve("dashboard", "index.html"),
+    DASHBOARD: path.resolve("dashboard", "index.html"),
   },
 
-  MODEL:           process.env.MODEL ?? "gemini-3.1-flash-image-preview",
-  VERTEX_PROJECT:  process.env.VERTEX_PROJECT  ?? "your-gcp-project-id",
+  MODEL: process.env.MODEL ?? "gemini-3.1-flash-image-preview",
+  VERTEX_PROJECT: process.env.VERTEX_PROJECT ?? "your-gcp-project-id",
   // 3.1 models require "global" location; 2.x models use "us-central1"
   VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "global",
 
   KNOWLEDGE_TARGET_CATEGORIES: new Set(
     process.env.KB_CATEGORIES
       ? process.env.KB_CATEGORIES.split(",").map((s) => s.trim())
-      : ["AI & Machine Learning", "Tech & Coding", "Business & Marketing", "UI/UX Design"]
+      : ["AI & Machine Learning", "Tech & Coding", "Business & Marketing", "UI/UX Design"],
   ),
 
   DELAY_BETWEEN_REQUESTS_MS: parseInt(process.env.DELAY_MS ?? "500", 10),

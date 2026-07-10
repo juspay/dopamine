@@ -11,7 +11,7 @@ access path that may not be throttled at the same time. This script is a drop-in
 alternative for the collect_metadata.py + download_videos.py pair.
 
 It downloads saved videos into videos/<username>_saved/<username>_<pk>.mp4 and
-writes videos/metadata.json in the same MetadataEntry shape the TypeScript
+writes videos/metadata.incoming.json in the same MetadataEntry shape the TypeScript
 pipeline consumes (src/types/index.ts), so nothing downstream changes.
 
 SELECTION
@@ -49,7 +49,7 @@ sys.stdout.reconfigure(line_buffering=True)
 USERNAME = os.environ["INSTAGRAM_USERNAME"]
 ROOT = "https://www.instagram.com"
 SAVED_DIR = Path("./videos") / f"{USERNAME}_saved"
-METADATA_FILE = Path("./videos/metadata.json")
+METADATA_FILE = Path("./videos/metadata.incoming.json")
 KNOWN_PKS_FILE = Path("./videos/known_pks.json")
 
 

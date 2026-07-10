@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import { execa } from "execa";
 import { CONFIG } from "../../pipeline/config.js";
 import { loadState } from "../../pipeline/state.js";
+import { ingestMetadata } from "../../pipeline/ingest.js";
 import { getThumbnailPath } from "../../utils/video.js";
 import { igMetadataToSourceItem } from "./map.js";
 import type { MetadataEntry, AcquiredAssets, SourceItem } from "../../types/index.js";
@@ -54,23 +55,44 @@ async function runScript(script: string, timeoutMs: number): Promise<void> {
   }
 }
 
+type ScriptStep = { script: string; kind: "collector" | "download" };
+
+/**
+ * Which python scripts a given IG_COLLECTOR mode runs before ingest:
+ *   - "instagrapi" (default): incremental metadata fetch, then download.
+ *   - "gallerydl": the cookie-auth fallback (fetch + download in one pass).
+ *   - "piggyback": none — the scheduled-Chrome harvester already captured,
+ *     ingested and downloaded; the pipeline just consumes its incoming batch.
+ */
+export function collectorScriptsFor(mode: string): ScriptStep[] {
+  if (mode === "piggyback") return [];
+  if (mode === "gallerydl") return [{ script: "scripts/collect_saved_gallerydl.py", kind: "download" }];
+  return [
+    { script: "scripts/collect_metadata.py", kind: "collector" },
+    { script: "scripts/download_videos.py", kind: "download" },
+  ];
+}
+
+/** Keep only video entries (media_type 2) and map them to canonical SourceItems. */
+export function batchToSourceItems(batch: MetadataEntry[]): SourceItem[] {
+  return batch.filter((e) => e.media_type === 2).map(igMetadataToSourceItem);
+}
+
 export function makeInstagramCollector(): SourceCollector {
   return {
     source: "instagram",
 
     async collect(): Promise<SourceItem[]> {
-      if (CONFIG.IG_COLLECTOR === "gallerydl") {
-        // Fallback path: gallery-dl (cookie auth, web endpoints) — a different
-        // request signature that may survive when instagrapi is soft-blocked.
-        // It writes metadata.json AND downloads the videos in one pass.
-        await runScript("scripts/collect_saved_gallerydl.py", CONFIG.DOWNLOAD_TIMEOUT_MS);
-      } else {
-        // Default: the instagrapi private-API scrapers (metadata then download).
-        await runScript("scripts/collect_metadata.py", CONFIG.COLLECTOR_TIMEOUT_MS);
-        await runScript("scripts/download_videos.py", CONFIG.DOWNLOAD_TIMEOUT_MS);
+      for (const step of collectorScriptsFor(CONFIG.IG_COLLECTOR)) {
+        const timeout = step.kind === "collector" ? CONFIG.COLLECTOR_TIMEOUT_MS : CONFIG.DOWNLOAD_TIMEOUT_MS;
+        await runScript(step.script, timeout);
       }
-      const entries = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
-      return entries.filter((e) => e.media_type === 2).map(igMetadataToSourceItem);
+      // Both capture paths deposit a batch here; ingest unions it into the
+      // canonical, accumulating metadata.json (dedup by pk). Idempotent.
+      const batch = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA_INCOMING, []);
+      const { added, updated, total } = await ingestMetadata(batch);
+      console.log(`  [ingest] +${added} new, ~${updated} refreshed, ${total} total → metadata.json`);
+      return batchToSourceItems(batch);
     },
 
     async acquire(item: SourceItem): Promise<AcquiredAssets | null> {

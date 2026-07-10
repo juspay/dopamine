@@ -30,4 +30,10 @@ describe("CONFIG — multi-provider additions", () => {
   it("DOWNLOAD_TIMEOUT_MS defaults to 45 minutes", () => {
     expect(CONFIG.DOWNLOAD_TIMEOUT_MS).toBe(45 * 60 * 1000);
   });
+  it("STATE.METADATA_INCOMING points at videos/metadata.incoming.json", () => {
+    expect(CONFIG.STATE.METADATA_INCOMING).toBe(path.resolve("videos", "metadata.incoming.json"));
+  });
+  it("IG_INCREMENTAL_MAX defaults to 200", () => {
+    expect(CONFIG.IG_INCREMENTAL_MAX).toBe(200);
+  });
 });
