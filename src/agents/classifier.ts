@@ -15,11 +15,18 @@ import { getVideoFiles, extractPkFromFilename, getThumbnailPath, extractVideoFra
 import type { MetadataEntry, AcquiredAssets } from "../types/index.js";
 import type { LaneItem } from "../pipeline/lanes.js";
 
-interface ClassificationEntry extends Classification {
+export interface ClassificationEntry extends Classification {
   pk: string | null;
   code: string | null;
   username: string | null;
   error?: string;
+}
+
+/** A file still needs classifying when it has no valid, error-free entry yet —
+ *  absent, left with an empty category, or previously errored. Shared by the
+ *  lane path and the disk-orphan sweep so their resume logic can't drift apart. */
+export function needsClassification(existing: ClassificationEntry | undefined): boolean {
+  return !(existing && existing.category && !existing.error);
 }
 
 const CLASSIFY_PROMPT = (username: string, caption: string, hashtags: string) => `
@@ -82,7 +89,7 @@ export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneI
     for (const [i, lane] of laneItems.entries()) {
       const filename = lane.item.id;
       const existing = classifications[filename];
-      if (existing && existing.category && !existing.error) continue;
+      if (!needsClassification(existing)) continue;
       const assets = lane.assets;
       let frames: Buffer[] | null = null;
       if (assets.videoPath) {
@@ -129,7 +136,11 @@ export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneI
       await saveState(CONFIG.STATE.CLASSIFICATIONS, classifications);
       await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
     }
-    return;
+    // No early return: after lane items, fall through to the disk sweep below so
+    // any orphan .mp4 on disk that no lane covered (e.g. a legacy download whose
+    // metadata was lost) still gets classified. The resume check skips everything
+    // already classified — including the lane items just written — so the sweep
+    // only does real work for genuine orphans.
   }
 
   const metadata = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
@@ -148,7 +159,7 @@ export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneI
 
     // Resume mode -- skip if already classified with a valid category (no error)
     const existing = classifications[filename];
-    if (existing && existing.category && !existing.error) {
+    if (!needsClassification(existing)) {
       skipped++;
       console.log(`${logPrefix} SKIP (already classified): ${filename}`);
       continue;
