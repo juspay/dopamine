@@ -96,6 +96,20 @@ export async function harvest(): Promise<void> {
       return;
     }
 
+    // 0 saved-feed responses = the feed never loaded (wrong INSTAGRAM_USERNAME,
+    // expired session, or too-slow render). For an account with saves this is a
+    // failure, not a normal empty result — exit non-zero so the wrapper retries
+    // and the failure is visible in `launchctl list` instead of silently passing.
+    if (savedRequestIds.length === 0) {
+      console.error(
+        `[piggyback] captured 0 saved-feed responses — the saved page never loaded its feed. ` +
+          `Check INSTAGRAM_USERNAME (must be the saved-scraping account) and the session, or raise ` +
+          `IG_PIGGYBACK_INITIAL_MS. Exiting non-zero for retry.`,
+      );
+      process.exitCode = 3;
+      return;
+    }
+
     const entries: MetadataEntry[] = [];
     for (const requestId of savedRequestIds) {
       try {
