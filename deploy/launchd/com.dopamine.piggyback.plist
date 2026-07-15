@@ -3,8 +3,10 @@
   Template launchd job for the piggyback harvester. Copy to
   ~/Library/LaunchAgents/com.dopamine.piggyback.plist and replace the two
   REPLACE_WITH_* placeholders before bootstrapping. See docs/piggyback-setup.md.
-  Runs 30 min BEFORE com.dopamine.pipeline (8:00 vs 8:30) so captured items are
-  ingested + downloaded first.
+  Runs daily at 8:00, 30 min BEFORE com.dopamine.pipeline (8:30), so captured
+  items are ingested + downloaded first. Daily (vs weekly) means a missed/failed
+  run costs at most a day; run-piggyback.sh also retries on failure, and
+  scripts/run-now.sh runs the whole flow on demand.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -27,10 +29,7 @@
         <key>IG_PIGGYBACK_PROFILE_DIR</key><string>REPLACE_WITH_HOME/.dopamine-ig-profile</string>
     </dict>
     <key>StartCalendarInterval</key>
-    <array>
-        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
-    </array>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
     <key>StandardOutPath</key><string>REPLACE_WITH_PROJECT_DIR/logs/launchd-piggyback.log</string>
     <key>StandardErrorPath</key><string>REPLACE_WITH_PROJECT_DIR/logs/launchd-piggyback.log</string>
     <key>RunAtLoad</key><false/>

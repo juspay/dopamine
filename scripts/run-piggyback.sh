@@ -39,5 +39,21 @@ if [ -z "$NODE_BIN" ]; then
   exit 1
 fi
 
-echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) harvest start (node $("$NODE_BIN" --version)) ===" >> "$LOGFILE"
-exec "$NODE_BIN" dist/pipeline/piggyback/harvester.js >> "$LOGFILE" 2>&1
+# Retry on failure so a single scheduled slot self-heals. The harvester exits
+# non-zero on a 0-capture (feed didn't load) or not-logged-in — a slow render is
+# transient and often succeeds on a second try. Up to 3 attempts, 60s apart.
+max_attempts=3
+attempt=1
+while true; do
+  echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) harvest attempt ${attempt}/${max_attempts} (node $("$NODE_BIN" --version)) ===" >> "$LOGFILE"
+  rc=0
+  "$NODE_BIN" dist/pipeline/piggyback/harvester.js >> "$LOGFILE" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] && exit 0
+  if [ "$attempt" -ge "$max_attempts" ]; then
+    echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) harvest FAILED after ${max_attempts} attempts (rc=${rc}) ===" >> "$LOGFILE"
+    exit "$rc"
+  fi
+  echo "=== harvest failed (rc=${rc}); retrying in 60s ===" >> "$LOGFILE"
+  attempt=$((attempt + 1))
+  sleep 60
+done

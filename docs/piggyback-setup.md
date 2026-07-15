@@ -46,8 +46,24 @@ capture path; the incremental instagrapi collector remains as a fallback.
 
 ## Cadence
 
-Harvester runs **8:00 Mon/Thu**, the pipeline **8:30 Mon/Thu** — the 30-minute
-gap lets captured items be ingested + downloaded before the pipeline builds.
+Harvester runs **daily at 8:00**, the pipeline **8:30** — the 30-minute gap lets
+captured items be ingested + downloaded before the pipeline builds. Daily (vs
+weekly) means a missed or failed run costs at most a day.
+
+`run-piggyback.sh` **retries up to 3 times** (60s apart) if the harvester exits
+non-zero — a 0-capture (feed never loaded) or not-logged-in — so a transient slow
+render self-heals within the slot instead of waiting for tomorrow.
+
+## Run on demand
+
+Don't want to wait for the 8:00 slot, or recovering from a failed auto-run? Run
+the whole flow — harvest, then the full pipeline (enrich + dashboard) — manually:
+
+```
+bash scripts/run-now.sh
+```
+
+Safe to run anytime; the harvest and metadata ingest are idempotent.
 
 ## Maintenance
 
