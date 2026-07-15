@@ -65,6 +65,20 @@ bash scripts/run-now.sh
 
 Safe to run anytime; the harvest and metadata ingest are idempotent.
 
+## Failure alerts
+
+When a scheduled harvest fails all retries (or the pipeline hard-fails), the
+launcher calls `scripts/notify-failure.sh`, which:
+
+1. appends to `logs/piggyback-failures.log` (always — durable + greppable);
+2. posts a macOS desktop notification (best-effort; launchd may suppress it);
+3. if `PIGGYBACK_ALERT_WEBHOOK` is set in `.env`, POSTs a Slack-compatible
+   `{"text": …}` payload to it — the reliable channel when you're away from the
+   machine. Any Slack incoming-webhook URL works.
+
+So even with daily runs, a genuine outage surfaces immediately instead of going
+unnoticed for days.
+
 ## Maintenance
 
 The only recurring manual task is re-running step 1 when the harvester logs

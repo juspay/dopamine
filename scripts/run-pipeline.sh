@@ -41,5 +41,11 @@ fi
 
 echo "Using node: $NODE_BIN ($("$NODE_BIN" --version))"
 
-# Run the pre-built pipeline (build separately when code changes)
-exec "$NODE_BIN" dist/pipeline/runner.js
+# Run the pre-built pipeline (build separately when code changes). Notify on a
+# hard failure (crash / non-zero exit) so a silent outage can't go unnoticed.
+rc=0
+"$NODE_BIN" dist/pipeline/runner.js || rc=$?
+if [ "$rc" -ne 0 ]; then
+  bash "$DIR/scripts/notify-failure.sh" "Pipeline run failed (rc=${rc})" || true
+  exit "$rc"
+fi
