@@ -51,6 +51,7 @@ while true; do
   [ "$rc" -eq 0 ] && exit 0
   if [ "$attempt" -ge "$max_attempts" ]; then
     echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) harvest FAILED after ${max_attempts} attempts (rc=${rc}) ===" >> "$LOGFILE"
+    bash "$DIR/scripts/notify-failure.sh" "Piggyback harvest failed after ${max_attempts} attempts (rc=${rc})" || true
     exit "$rc"
   fi
   echo "=== harvest failed (rc=${rc}); retrying in 60s ===" >> "$LOGFILE"
