@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Template launchd job for the piggyback harvester. Copy to
-  ~/Library/LaunchAgents/com.dopamine.piggyback.plist and replace the three
+  ~/Library/LaunchAgents/com.dopamine.piggyback.plist and replace the two
   REPLACE_WITH_* placeholders before bootstrapping. See docs/piggyback-setup.md.
   Runs 30 min BEFORE com.dopamine.pipeline (8:00 vs 8:30) so captured items are
   ingested + downloaded first.
@@ -20,7 +20,10 @@
     <dict>
         <key>PATH</key><string>REPLACE_WITH_HOME/.pyenv/shims:REPLACE_WITH_HOME/Library/pnpm:REPLACE_WITH_HOME/Library/pnpm/nodejs/24.0.2/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key><string>REPLACE_WITH_HOME</string>
-        <key>INSTAGRAM_USERNAME</key><string>REPLACE_WITH_USERNAME</string>
+        <!-- INSTAGRAM_USERNAME is intentionally NOT set here: the harvester reads it
+             from .env (via dotenv), keeping .env the single source of truth.
+             Hardcoding it here once caused a silent drift that scraped the wrong
+             account (personal handle instead of the saved-scraping account). -->
         <key>IG_PIGGYBACK_PROFILE_DIR</key><string>REPLACE_WITH_HOME/.dopamine-ig-profile</string>
     </dict>
     <key>StartCalendarInterval</key>
