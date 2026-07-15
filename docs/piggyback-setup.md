@@ -34,7 +34,9 @@ capture path; the incremental instagrapi collector remains as a fallback.
    # edit ~/Library/LaunchAgents/com.dopamine.piggyback.plist and replace:
    #   REPLACE_WITH_PROJECT_DIR  → absolute path to this repo
    #   REPLACE_WITH_HOME         → your $HOME
-   #   REPLACE_WITH_USERNAME     → your Instagram username
+   # INSTAGRAM_USERNAME is NOT set in the plist — the harvester reads it from .env
+   # (via dotenv). Make sure .env's INSTAGRAM_USERNAME is the saved-scraping account,
+   # not your personal handle, so the launchd job can't drift from the rest of the pipeline.
    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.dopamine.piggyback.plist
    ```
 
