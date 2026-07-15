@@ -59,5 +59,8 @@ set `IG_COLLECTOR=instagrapi` (now incremental, low-volume) or `gallerydl`.
 |-----|---------|---------|
 | `IG_PIGGYBACK_PROFILE_DIR` | `~/.dopamine-ig-profile` | Chrome profile with the IG session |
 | `IG_PIGGYBACK_PORT` | `9455` | CDP remote-debugging port |
-| `IG_PIGGYBACK_SCROLLS` | `3` | saved-page scrolls (more = deeper backfill) |
+| `IG_PIGGYBACK_SCROLLS` | `4` | saved-page scrolls (more = deeper backfill) |
+| `IG_PIGGYBACK_INITIAL_MS` | `6000` | wait after navigate before scrolling — raise if a scheduled/headless run captures 0 (launchd's Chrome renders the feed slower than interactive) |
+| `IG_PIGGYBACK_SCROLL_MS` | `2200` | pause between scrolls |
+| `IG_PIGGYBACK_SETTLE_MS` | `3000` | wait after the last scroll for in-flight responses to settle |
 | `IG_PIGGYBACK_CHROME` | macOS Chrome path | Chrome binary override |

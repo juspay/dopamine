@@ -18,7 +18,14 @@ import type { MetadataEntry } from "../../types/index.js";
 
 const PORT = parseInt(process.env.IG_PIGGYBACK_PORT ?? "9455", 10);
 const PROFILE = process.env.IG_PIGGYBACK_PROFILE_DIR ?? path.join(os.homedir(), ".dopamine-ig-profile");
-const SCROLLS = parseInt(process.env.IG_PIGGYBACK_SCROLLS ?? "3", 10);
+const SCROLLS = parseInt(process.env.IG_PIGGYBACK_SCROLLS ?? "4", 10);
+// Timing knobs — defaults are generous enough for the slower headless Chrome that
+// launchd spawns: a 3.5s initial wait let the scrolls fire before the feed had
+// rendered, so scheduled runs captured nothing while interactive runs (faster
+// Chrome) worked. ~6s is reliable in both. All overridable for tuning.
+const INITIAL_MS = parseInt(process.env.IG_PIGGYBACK_INITIAL_MS ?? "6000", 10);
+const SCROLL_MS = parseInt(process.env.IG_PIGGYBACK_SCROLL_MS ?? "2200", 10);
+const SETTLE_MS = parseInt(process.env.IG_PIGGYBACK_SETTLE_MS ?? "3000", 10);
 const USER = process.env.INSTAGRAM_USERNAME ?? "";
 const SAVED_URL = `https://www.instagram.com/${USER}/saved/all-posts/`;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -71,12 +78,12 @@ export async function harvest(): Promise<void> {
     });
 
     await Page.navigate({ url: SAVED_URL });
-    await sleep(3500); // initial load + first saved-feed fetch
+    await sleep(INITIAL_MS); // initial load + first saved-feed fetch
     for (let i = 0; i < SCROLLS; i++) {
       await Runtime.evaluate({ expression: "window.scrollTo(0, document.body.scrollHeight)" });
-      await sleep(1800);
+      await sleep(SCROLL_MS);
     }
-    await sleep(1500); // let in-flight responses settle
+    await sleep(SETTLE_MS); // let in-flight responses settle
 
     const loc = await Runtime.evaluate({ expression: "location.pathname" });
     if (String(loc.result?.value ?? "").includes("/accounts/login")) {
