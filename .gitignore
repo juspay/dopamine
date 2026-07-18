@@ -33,6 +33,8 @@ pnpm-lock.yaml
 knowledge_base/
 videos/*.json
 videos/*.csv
+videos/*.db
+videos/*.db-*
 /dashboard/data/video/*
 !/dashboard/data/video/demo_*.json
 

@@ -16,7 +16,7 @@
   "homepage": "https://github.com/juspay/dopamine#readme",
   "keywords": ["ai", "video", "pipeline", "gemini", "vertex-ai", "instagram", "youtube", "knowledge-extraction"],
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "packageManager": "npm@10.9.0",
   "files": ["dist", "README.md", "LICENSE"],
@@ -35,6 +35,8 @@
     "start": "node dist/server/webhook.js",
     "serve": "node dist/server/dashboard-server.js",
     "dashboard:data": "node dist/dashboard/data-builder.js",
+    "search:index": "node dist/search/indexer.js",
+    "mcp:serve": "node dist/mcp/server.js",
     "dashboard:build": "npm run build && npm --prefix web install && npm --prefix web run build && npm run dashboard:data",
     "dev": "tsc --watch",
     "test": "node node_modules/vitest/vitest.mjs run",
@@ -59,6 +61,7 @@
   },
   "dependencies": {
     "@juspay/neurolink": "^9.79.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/compression": "^1.8.1",
     "chrome-remote-interface": "^0.33.3",
     "compression": "^1.8.1",

@@ -149,6 +149,21 @@ npm run serve
 # Open http://localhost:3001/dashboard/
 ```
 
+### Search the corpus (MCP server)
+
+```bash
+npm run search:index   # build/refresh videos/search.db (also runs as the last pipeline step)
+npm run mcp:serve      # run the dopamine-kb MCP server manually (stdio)
+```
+
+Register it user-scoped so every Claude Code session can query the corpus:
+
+```bash
+claude mcp add --scope user dopamine-kb -- node <repo>/dist/mcp/server.js
+```
+
+See [docs/mcp-server.md](docs/mcp-server.md) for the tool reference.
+
 ### Development mode
 
 ```bash

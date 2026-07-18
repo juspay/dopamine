@@ -47,6 +47,7 @@ export const CONFIG = {
     RESEARCH: path.resolve("videos", "research.json"),
     IMPLEMENTATIONS: path.resolve("videos", "implementations.json"),
     VERIFICATIONS: path.resolve("videos", "verifications.json"),
+    SEARCH_DB: path.resolve("videos", "search.db"),
   },
 
   OUTPUT: {
@@ -56,6 +57,7 @@ export const CONFIG = {
   },
 
   MODEL: process.env.MODEL ?? "gemini-3.1-flash-image-preview",
+  EMBEDDING_MODEL: process.env.EMBEDDING_MODEL ?? "gemini-embedding-001",
   VERTEX_PROJECT: process.env.VERTEX_PROJECT ?? "your-gcp-project-id",
   // 3.1 models require "global" location; 2.x models use "us-central1"
   VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "global",
