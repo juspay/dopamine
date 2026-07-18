@@ -164,6 +164,14 @@ claude mcp add --scope user dopamine-kb -- node <repo>/dist/mcp/server.js
 
 See [docs/mcp-server.md](docs/mcp-server.md) for the tool reference.
 
+### Daily digest push
+
+```bash
+npm run digest   # push top new learnings to a Shooter-compatible notify endpoint
+```
+
+Runs automatically as the last pipeline step. See [docs/digest.md](docs/digest.md).
+
 ### Development mode
 
 ```bash
