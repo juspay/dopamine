@@ -18,6 +18,7 @@ import path from "node:path";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
 import { catColor, catBg } from "./colors.js";
+import { deriveTitle } from "./title.js";
 import { computeRelated } from "./related.js";
 import type { RelInput } from "./related.js";
 import type { CatalogRecord } from "../agents/catalog.js";
@@ -393,9 +394,11 @@ export async function buildDashboardData(): Promise<void> {
     const metaEntry = pk ? metadataByPk.get(pk) : undefined;
     const fullName = metaEntry?.full_name ?? "";
 
-    // Title = catalog.description || first key_takeaway || classification.description || "(untitled)"
-    const title =
-      catEntry?.description || takeawayText(kbEntry?.key_takeaways?.[0]) || classEntry?.description || "(untitled)";
+    const title = deriveTitle(
+      catEntry?.description,
+      takeawayText(kbEntry?.key_takeaways?.[0]),
+      classEntry?.description,
+    );
 
     const category = classEntry?.category ?? kbEntry?.category ?? catEntry?.category ?? "Other";
     const subcategory = classEntry?.subcategory ?? kbEntry?.subcategory ?? catEntry?.subcategory ?? "";

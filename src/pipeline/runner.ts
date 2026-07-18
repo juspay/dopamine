@@ -22,6 +22,7 @@ import { runImplementerAgent } from "../agents/implementer.js";
 import { runVerifierAgent } from "../agents/verifier.js";
 import { runEnrichmentAgent } from "../agents/enrichment.js";
 
+import { runSearchIndexer } from "../search/indexer.js";
 import { getLogger } from "../utils/logger.js";
 import { resetMetrics } from "../utils/metrics.js";
 import { getEnabledCollectors } from "../sources/registry.js";
@@ -106,7 +107,8 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   //  12  Implementation testing
   //  13  Verification synthesis
   //  14  Knowledge base enrichment
-  //  15  Dashboard build           ← LAST: reads ALL state including verifications
+  //  15  Dashboard build           ← reads ALL state including verifications
+  //  16  Search index              ← LAST: refreshes videos/search.db for the MCP server
   // ---------------------------------------------------------------------------
   // Lane assets acquired in step 1, consumed by steps 3-5 (read at call time).
   let laneItems: LaneItem[] = [];
@@ -155,8 +157,10 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     { name: "Implementation testing", run: () => runImplementerAgent() }, // 12
     { name: "Verification synthesis", run: () => runVerifierAgent(neurolink) }, // 13
     { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() }, // 14
-    // Dashboard build runs LAST so verification scores land in the same run
+    // Dashboard build runs late so verification scores land in the same run
     { name: "Dashboard build", run: () => runDashboardAgent() }, // 15  -- reads verifications.json
+    // Search index runs last so the MCP corpus reflects this run's data
+    { name: "Search index", run: () => runSearchIndexer() }, // 16
   ];
 
   const startStep = options.startStep ?? parseInt(process.env.START_STEP ?? "0", 10);
@@ -395,12 +399,13 @@ Step index map (0-indexed, for use with --start / --end / START_STEP / END_STEP)
   12  Implementation testing
   13  Verification synthesis
   14  Knowledge base enrichment
-  15  Dashboard build           (runs LAST — reads verifications.json so scores are current)
+  15  Dashboard build           (reads verifications.json so scores are current)
+  16  Search index              (runs LAST — refreshes videos/search.db for the dopamine-kb MCP server)
 
-NOTE: Dashboard build was previously step 10 (before verification). It is now step 15
-(last) so verification scores, URL statuses, and confidence data from the current run
-are present in the dashboard JSON.  If you previously used END_STEP=11 to stop after
-the dashboard, update it to END_STEP=16 (or omit it to run all steps).
+NOTE: Dashboard build was previously step 10 (before verification). It now runs at
+step 15 so verification scores, URL statuses, and confidence data from the current
+run are present in the dashboard JSON.  If you previously used END_STEP=16 to stop
+after the dashboard, update it to END_STEP=17 (or omit it to run all steps).
 
 Environment variables:
   START_STEP                 Same as --start
