@@ -22,6 +22,7 @@ import { runImplementerAgent } from "../agents/implementer.js";
 import { runVerifierAgent } from "../agents/verifier.js";
 import { runEnrichmentAgent } from "../agents/enrichment.js";
 
+import { runDigestAgent } from "../agents/digest.js";
 import { runSearchIndexer } from "../search/indexer.js";
 import { getLogger } from "../utils/logger.js";
 import { resetMetrics } from "../utils/metrics.js";
@@ -108,7 +109,8 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   //  13  Verification synthesis
   //  14  Knowledge base enrichment
   //  15  Dashboard build           ← reads ALL state including verifications
-  //  16  Search index              ← LAST: refreshes videos/search.db for the MCP server
+  //  16  Search index              ← refreshes videos/search.db for the MCP server
+  //  17  Digest                    ← LAST: pushes top new learnings via Shooter-compatible notify
   // ---------------------------------------------------------------------------
   // Lane assets acquired in step 1, consumed by steps 3-5 (read at call time).
   let laneItems: LaneItem[] = [];
@@ -159,8 +161,10 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() }, // 14
     // Dashboard build runs late so verification scores land in the same run
     { name: "Dashboard build", run: () => runDashboardAgent() }, // 15  -- reads verifications.json
-    // Search index runs last so the MCP corpus reflects this run's data
+    // Search index runs after dashboard build so the MCP corpus reflects this run
     { name: "Search index", run: () => runSearchIndexer() }, // 16
+    // Digest runs LAST — it reads the fresh search index to push new learnings
+    { name: "Digest", run: () => runDigestAgent(neurolink) }, // 17
   ];
 
   const startStep = options.startStep ?? parseInt(process.env.START_STEP ?? "0", 10);
@@ -400,12 +404,13 @@ Step index map (0-indexed, for use with --start / --end / START_STEP / END_STEP)
   13  Verification synthesis
   14  Knowledge base enrichment
   15  Dashboard build           (reads verifications.json so scores are current)
-  16  Search index              (runs LAST — refreshes videos/search.db for the dopamine-kb MCP server)
+  16  Search index              (refreshes videos/search.db for the dopamine-kb MCP server)
+  17  Digest                    (runs LAST — pushes top new learnings to a Shooter-compatible endpoint)
 
 NOTE: Dashboard build was previously step 10 (before verification). It now runs at
 step 15 so verification scores, URL statuses, and confidence data from the current
-run are present in the dashboard JSON.  If you previously used END_STEP=16 to stop
-after the dashboard, update it to END_STEP=17 (or omit it to run all steps).
+run are present in the dashboard JSON.  If you previously used END_STEP=17 to stop
+after the search index, update it to END_STEP=18 (or omit it to run all steps).
 
 Environment variables:
   START_STEP                 Same as --start

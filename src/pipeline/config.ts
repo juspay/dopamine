@@ -17,7 +17,7 @@ export const CONFIG = {
 
   // Incremental saved-feed fetch: cap on items pulled per run (bounds a stale-cursor
   // blowout back toward a full pagination). Cold start ignores this and fetches all.
-  IG_INCREMENTAL_MAX: parseInt(process.env.IG_INCREMENTAL_MAX ?? "200", 10),
+  IG_INCREMENTAL_MAX: Number.parseInt(process.env.IG_INCREMENTAL_MAX ?? "200", 10),
 
   // YouTube downloaded assets land here (separate dir to avoid id collisions).
   YOUTUBE_VIDEOS_DIR: path.resolve("videos", "youtube"),
@@ -30,7 +30,7 @@ export const CONFIG = {
   },
 
   // Download the mp4 only for YouTube videos at/under this duration (seconds).
-  YT_DOWNLOAD_MAX_SECONDS: parseInt(process.env.YT_DOWNLOAD_MAX_SECONDS ?? "300", 10),
+  YT_DOWNLOAD_MAX_SECONDS: Number.parseInt(process.env.YT_DOWNLOAD_MAX_SECONDS ?? "300", 10),
 
   STATE: {
     METADATA: path.resolve("videos", "metadata.json"),
@@ -48,6 +48,7 @@ export const CONFIG = {
     IMPLEMENTATIONS: path.resolve("videos", "implementations.json"),
     VERIFICATIONS: path.resolve("videos", "verifications.json"),
     SEARCH_DB: path.resolve("videos", "search.db"),
+    DIGEST_STATE: path.resolve("videos", "digest_state.json"),
   },
 
   OUTPUT: {
@@ -58,6 +59,14 @@ export const CONFIG = {
 
   MODEL: process.env.MODEL ?? "gemini-3.1-flash-image-preview",
   EMBEDDING_MODEL: process.env.EMBEDDING_MODEL ?? "gemini-embedding-001",
+
+  // Daily digest push (Shooter-compatible /api/notify endpoint).
+  DIGEST_TOP_N: Number.parseInt(process.env.DIGEST_TOP_N ?? "5", 10),
+  // Text-only model: CONFIG.MODEL (image-preview) returns free text / empty
+  // parts on text-only JSON prompts (same issue link-resolver works around).
+  DIGEST_MODEL: process.env.DIGEST_MODEL ?? "gemini-2.5-flash",
+  DIGEST_PUSH_URL:
+    process.env.DIGEST_PUSH_URL ?? `http://localhost:${process.env.SHOOTER_LOCAL_PORT ?? "54006"}/api/notify`,
   VERTEX_PROJECT: process.env.VERTEX_PROJECT ?? "your-gcp-project-id",
   // 3.1 models require "global" location; 2.x models use "us-central1"
   VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "global",
@@ -68,7 +77,7 @@ export const CONFIG = {
       : ["AI & Machine Learning", "Tech & Coding", "Business & Marketing", "UI/UX Design"],
   ),
 
-  DELAY_BETWEEN_REQUESTS_MS: parseInt(process.env.DELAY_MS ?? "500", 10),
+  DELAY_BETWEEN_REQUESTS_MS: Number.parseInt(process.env.DELAY_MS ?? "500", 10),
   MAX_RETRIES: 5,
   RETRY_BASE_DELAY_MS: 10_000,
 
@@ -76,9 +85,9 @@ export const CONFIG = {
   // private API stalls instead of erroring, so without a cap one run can hang for
   // hours and block the next scheduled run. Metadata collection is quick;
   // downloading a backlog can legitimately take much longer.
-  COLLECTOR_TIMEOUT_MS: parseInt(process.env.COLLECTOR_TIMEOUT_MS ?? String(11 * 60 * 1000), 10),
-  DOWNLOAD_TIMEOUT_MS: parseInt(process.env.DOWNLOAD_TIMEOUT_MS ?? String(45 * 60 * 1000), 10),
+  COLLECTOR_TIMEOUT_MS: Number.parseInt(process.env.COLLECTOR_TIMEOUT_MS ?? String(11 * 60 * 1000), 10),
+  DOWNLOAD_TIMEOUT_MS: Number.parseInt(process.env.DOWNLOAD_TIMEOUT_MS ?? String(45 * 60 * 1000), 10),
 
   // Gemini inline limit is ~20MB; most Instagram Reels are 5-15MB.
-  VIDEO_SIZE_THRESHOLD_BYTES: parseInt(process.env.VIDEO_SIZE_THRESHOLD ?? String(20 * 1024 * 1024), 10),
+  VIDEO_SIZE_THRESHOLD_BYTES: Number.parseInt(process.env.VIDEO_SIZE_THRESHOLD ?? String(20 * 1024 * 1024), 10),
 } as const;
