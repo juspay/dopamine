@@ -59,6 +59,28 @@ CREATE TABLE IF NOT EXISTS project_mappings (
 CREATE INDEX IF NOT EXISTS project_mappings_project ON project_mappings(project);
 `;
 
+/**
+ * Columns added to an existing table AFTER its initial ship. `CREATE TABLE IF
+ * NOT EXISTS` never alters a table that already exists, so a DB created by an
+ * older build keeps the old columns and any query for the new one throws
+ * "no such column". Each entry is idempotently ALTERed in on open — a no-op
+ * when the column is already present (fresh DBs), a heal when it isn't.
+ * Table and column names are hardcoded literals (no injection surface).
+ */
+const ADDED_COLUMNS: { table: string; column: string; decl: string }[] = [
+  { table: "project_vectors", column: "model", decl: "TEXT NOT NULL DEFAULT ''" },
+];
+
+/** Migrate in any columns added after a table's original creation. */
+export function ensureColumns(db: DatabaseSync): void {
+  for (const { table, column, decl } of ADDED_COLUMNS) {
+    const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+    if (!cols.includes(column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+    }
+  }
+}
+
 export function openSearchDb(dbPath: string, opts: { readonly?: boolean } = {}): DatabaseSync {
   if (opts.readonly) {
     const db = new DatabaseSync(dbPath, { readOnly: true });
@@ -75,6 +97,7 @@ export function openSearchDb(dbPath: string, opts: { readonly?: boolean } = {}):
   db.exec("PRAGMA synchronous = NORMAL");
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec(SCHEMA);
+  ensureColumns(db);
   return db;
 }
 

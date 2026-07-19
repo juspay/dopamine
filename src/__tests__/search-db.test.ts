@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { blobToVector, openSearchDb, vectorToBlob } from "../search/db.js";
 
@@ -12,6 +13,30 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+describe("schema migration", () => {
+  it("adds project_vectors.model to a DB created by an older build", () => {
+    const p = path.join(tmpDir, "search.db");
+    // Simulate an old DB: project_vectors WITHOUT the model column.
+    const old = new DatabaseSync(p);
+    old.exec(
+      "CREATE TABLE project_vectors (project TEXT PRIMARY KEY, hash TEXT NOT NULL, dims INTEGER NOT NULL, vector BLOB NOT NULL)",
+    );
+    old
+      .prepare("INSERT INTO project_vectors (project, hash, dims, vector) VALUES (?,?,?,?)")
+      .run("P", "h", 2, vectorToBlob([1, 2]));
+    old.close();
+
+    // Opening through openSearchDb heals the schema without losing the row.
+    const db = openSearchDb(p);
+    const cols = (db.prepare("PRAGMA table_info(project_vectors)").all() as { name: string }[]).map((c) => c.name);
+    expect(cols).toContain("model");
+    const row = db.prepare("SELECT model FROM project_vectors WHERE project = ?").get("P") as { model: string };
+    expect(row.model).toBe(""); // healed rows default to empty → treated as a cache miss, re-embedded
+    openSearchDb(p).close(); // idempotent: re-opening an already-healed DB is a no-op
+    db.close();
+  });
 });
 
 describe("openSearchDb", () => {
