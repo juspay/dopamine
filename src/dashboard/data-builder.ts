@@ -21,6 +21,7 @@ import { catColor, catBg } from "./colors.js";
 import { deriveTitle } from "./title.js";
 import { computeRelated } from "./related.js";
 import type { RelInput } from "./related.js";
+import { qualityScore, tierOf, type Tier, type QualityInput } from "./quality.js";
 import type { CatalogRecord } from "../agents/catalog.js";
 import type { MetadataEntry, VideoProperties } from "../types/index.js";
 import { takeawayText, type Takeaway } from "../schemas/knowledge.js";
@@ -57,6 +58,8 @@ interface IndexRecord {
   usefulness: string;
   hasVideo: boolean;
   appliesTo: string[];
+  quality: number;
+  tier: Tier;
 }
 
 interface ActionableItem {
@@ -545,6 +548,11 @@ export async function buildDashboardData(): Promise<void> {
     const contentType = catEntry?.content_type ?? "short_video";
     const author = resolveDashboardAuthor(catEntry?.author ?? "", catEntry?.instagram_user ?? "", username);
 
+    const appliesTo = appliesToFor(projectMappings, id);
+    const qi: QualityInput = { verification, usefulness, confidence, implementability, appliesTo, tags, likes };
+    const quality = qualityScore(qi);
+    const tier = tierOf(qi);
+
     normalized.push({
       _filename: filename,
       id,
@@ -566,7 +574,9 @@ export async function buildDashboardData(): Promise<void> {
       implementability,
       usefulness,
       hasVideo,
-      appliesTo: appliesToFor(projectMappings, id),
+      appliesTo,
+      quality,
+      tier,
       code: code ?? "",
       pk,
       caption,
@@ -586,8 +596,15 @@ export async function buildDashboardData(): Promise<void> {
     });
   }
 
-  // Sort by date descending (newest first)
-  normalized.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  // Quality-first ordering: lead with the most useful, applicable, verified
+  // learnings and let the thin tail sink to the bottom. Recency stays available
+  // as an explicit sort in the app. Quality/tier were computed per video above.
+  const TIER_RANK: Record<Tier, number> = { featured: 0, standard: 1, thin: 2 };
+  normalized.sort((a, b) => {
+    if (a.tier !== b.tier) return TIER_RANK[a.tier] - TIER_RANK[b.tier];
+    if (b.quality !== a.quality) return b.quality - a.quality;
+    return (b.date || "").localeCompare(a.date || "");
+  });
 
   // Compute related IDs
   const relInputs: RelInput[] = normalized.map((v) => ({
@@ -644,6 +661,8 @@ export async function buildDashboardData(): Promise<void> {
     usefulness: v.usefulness,
     hasVideo: v.hasVideo,
     appliesTo: v.appliesTo,
+    quality: v.quality,
+    tier: v.tier,
   }));
 
   const indexFile: IndexFile = { meta, videos: indexRecords };
@@ -678,6 +697,8 @@ export async function buildDashboardData(): Promise<void> {
       usefulness: v.usefulness,
       hasVideo: v.hasVideo,
       appliesTo: v.appliesTo,
+      quality: v.quality,
+      tier: v.tier,
       code: v.code,
       pk: v.pk,
       caption: v.caption,

@@ -25,13 +25,17 @@
   let cats     = $state<string[]>([]);
   let projs    = $state<string[]>([]);
   let verif    = $state('all');
-  let sort     = $state('date-desc');
+  let sort     = $state('best');
+  // Low-quality (thin) learnings are hidden by default so the empty/unprocessed
+  // tail never leads the library; a toggle brings them back.
+  let showThin = $state(false);
 
   // Sync from URL on navigation (including first load).
   $effect(() => {
     q     = sp.get('q')    ?? '';
     verif = sp.get('verif') ?? 'all';
-    sort  = sp.get('sort')  ?? 'date-desc';
+    sort  = sp.get('sort')  ?? 'best';
+    showThin = sp.get('thin') === '1';
     const rawCats = sp.get('cat');
     cats = rawCats ? rawCats.split(',').filter(Boolean) : [];
     const rawProjs = sp.get('project');
@@ -45,7 +49,8 @@
     if (cats.length) url.searchParams.set('cat', cats.join(',')); else url.searchParams.delete('cat');
     if (projs.length) url.searchParams.set('project', projs.join(',')); else url.searchParams.delete('project');
     if (verif !== 'all') url.searchParams.set('verif', verif); else url.searchParams.delete('verif');
-    if (sort !== 'date-desc') url.searchParams.set('sort', sort); else url.searchParams.delete('sort');
+    if (sort !== 'best') url.searchParams.set('sort', sort); else url.searchParams.delete('sort');
+    if (showThin) url.searchParams.set('thin', '1'); else url.searchParams.delete('thin');
     goto(url.toString(), { replaceState: true, keepFocus: true, noScroll: true });
   }
 
@@ -71,6 +76,7 @@
 
   // ── Sort options — shaped for SUI Select (id + label) ───────────────────
   const SORT_OPTIONS: SelectItem[] = [
+    { id: 'best',       label: 'Best first' },
     { id: 'date-desc',  label: 'Newest first' },
     { id: 'date-asc',   label: 'Oldest first' },
     { id: 'dur-desc',   label: 'Longest first' },
@@ -79,37 +85,35 @@
   ];
 
   // ── Filter + sort pipeline ────────────────────────────────────────────────
-  const filtered = $derived((): IndexRecord[] => {
+  // Tier order matches the data builder (src/dashboard/quality.ts): applicable
+  // learnings first, thin tail last.
+  const TIER_RANK: Record<string, number> = { featured: 0, standard: 1, thin: 2 };
+
+  // Base filters — everything EXCEPT the quality floor. Shared by the list and
+  // the hidden-thin counter so the two can never drift apart.
+  function matchesBase(v: IndexRecord): boolean {
     const needle = q.trim().toLowerCase();
+    if (needle) {
+      const haystack = [v.title, v.username, v.fullName, v.category, v.subcategory, ...v.tags]
+        .join(' ').toLowerCase();
+      if (!haystack.includes(needle)) return false;
+    }
+    if (cats.length && !cats.includes(v.category)) return false;
+    if (projs.length && !projs.some((p) => (v.appliesTo ?? []).includes(p))) return false;
+    if (verif !== 'all' && v.verification !== verif) return false;
+    return true;
+  }
 
-    let out = all.filter((v) => {
-      // text search
-      if (needle) {
-        const haystack = [
-          v.title,
-          v.username,
-          v.fullName,
-          v.category,
-          v.subcategory,
-          ...v.tags,
-        ].join(' ').toLowerCase();
-        if (!haystack.includes(needle)) return false;
-      }
-
-      // category multi-select
-      if (cats.length && !cats.includes(v.category)) return false;
-
-      // project multi-select (OR across selected projects)
-      if (projs.length && !projs.some((p) => (v.appliesTo ?? []).includes(p))) return false;
-
-      // verification filter
-      if (verif !== 'all' && v.verification !== verif) return false;
-
-      return true;
-    });
+  const filtered = $derived((): IndexRecord[] => {
+    // quality floor — hide the thin/unprocessed tail unless asked to show it
+    let out = all.filter((v) => matchesBase(v) && (showThin || v.tier !== 'thin'));
 
     // sort
     switch (sort) {
+      case 'best':
+        out = [...out].sort((a, b) =>
+          (TIER_RANK[a.tier] - TIER_RANK[b.tier]) || (b.quality - a.quality) || b.date.localeCompare(a.date));
+        break;
       case 'date-asc':
         out = [...out].sort((a, b) => a.date.localeCompare(b.date));
         break;
@@ -150,9 +154,21 @@
     cats  = [];
     projs = [];
     verif = 'all';
-    sort  = 'date-desc';
+    sort  = 'best';
+    showThin = false;
     syncUrl();
   }
+
+  function toggleThin() {
+    showThin = !showThin;
+    syncUrl();
+  }
+
+  // How many thin learnings the quality floor is currently hiding (respecting
+  // ALL other active filters, search included) — powers the toggle label.
+  const hiddenThin = $derived(
+    showThin ? 0 : all.filter((v) => v.tier === 'thin' && matchesBase(v)).length
+  );
 
   // SUI Select.onchange passes string[]; we extract the first element.
   function handleSortChange(values: string[]) {
@@ -164,7 +180,7 @@
   }
 
   const hasFilters = $derived(
-    q.trim() !== '' || cats.length > 0 || projs.length > 0 || verif !== 'all' || sort !== 'date-desc'
+    q.trim() !== '' || cats.length > 0 || projs.length > 0 || verif !== 'all' || sort !== 'best' || showThin
   );
 </script>
 
@@ -205,6 +221,14 @@
         classes="videos-sort-select"
       />
     </div>
+
+    <!-- Quality floor toggle -->
+    {#if showThin || hiddenThin > 0}
+      <button class="thin-toggle" class:active={showThin} type="button" onclick={toggleThin}
+        aria-pressed={showThin}>
+        {showThin ? 'Hide low-quality' : `Show ${hiddenThin} low-quality`}
+      </button>
+    {/if}
   </div>
 
   <!-- Category chips -->
@@ -370,6 +394,30 @@
 
   .select-wrap :global(.videos-sort-select) {
     width: 100%;
+  }
+
+  /* Quality-floor toggle */
+  .thin-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    color: var(--muted);
+    font-size: var(--fs-0);
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color var(--t-fast), border-color var(--t-fast);
+    flex-shrink: 0;
+  }
+
+  .thin-toggle:hover {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+
+  .thin-toggle.active {
+    color: var(--text);
+    border-color: var(--accent);
   }
 
   /* ── Category chips ────────────────────────────────────── */
