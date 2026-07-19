@@ -49,6 +49,8 @@ export const CONFIG = {
     VERIFICATIONS: path.resolve("videos", "verifications.json"),
     SEARCH_DB: path.resolve("videos", "search.db"),
     DIGEST_STATE: path.resolve("videos", "digest_state.json"),
+    PROJECT_MAPPINGS: path.resolve("videos", "project_mappings.json"),
+    IDEAS_STATE: path.resolve("videos", "ideas_state.json"),
   },
 
   OUTPUT: {
@@ -67,6 +69,13 @@ export const CONFIG = {
   DIGEST_MODEL: process.env.DIGEST_MODEL ?? "gemini-2.5-flash",
   DIGEST_PUSH_URL:
     process.env.DIGEST_PUSH_URL ?? `http://localhost:${process.env.SHOOTER_LOCAL_PORT ?? "54006"}/api/notify`,
+
+  // Project mapping (hybrid embed-prefilter → LLM judge).
+  PROJECTS_CONFIG: path.resolve("projects.json"),
+  MAP_PREFILTER_TOPK: Number.parseInt(process.env.MAP_PREFILTER_TOPK ?? "4", 10),
+  MAP_PREFILTER_MIN: Number.parseFloat(process.env.MAP_PREFILTER_MIN ?? "0.55"),
+  MAP_MODEL: process.env.MAP_MODEL ?? "gemini-2.5-flash",
+
   VERTEX_PROJECT: process.env.VERTEX_PROJECT ?? "your-gcp-project-id",
   // 3.1 models require "global" location; 2.x models use "us-central1"
   VERTEX_LOCATION: process.env.VERTEX_LOCATION ?? "global",

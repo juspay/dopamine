@@ -6,32 +6,33 @@
 import "dotenv/config";
 
 import { NeuroLink } from "@juspay/neurolink";
-import { runPropertiesAgent } from "../agents/properties.js";
+// Verification pipeline agents (steps 10-14 in the 0-indexed run order)
+import { runAnalyzerAgent } from "../agents/analyzer.js";
+import { runCatalogAgent } from "../agents/catalog.js";
 import { runClassifierAgent } from "../agents/classifier.js";
+import { runDashboardAgent } from "../agents/dashboard.js";
+import { runEnrichmentAgent } from "../agents/enrichment.js";
+import { runImplementerAgent } from "../agents/implementer.js";
 import { runKnowledgeAgent } from "../agents/knowledge.js";
 import { runLinkExtractAgent } from "../agents/link-extractor.js";
 import { runLinkResolverAgent } from "../agents/link-resolver.js";
-import { runCatalogAgent } from "../agents/catalog.js";
-import { runOrganizerAgent } from "../agents/organizer.js";
 import { runMarkdownAgent } from "../agents/markdown.js";
-import { runDashboardAgent } from "../agents/dashboard.js";
-// Verification pipeline agents (steps 10-14 in the 0-indexed run order)
-import { runAnalyzerAgent } from "../agents/analyzer.js";
+import { runOrganizerAgent } from "../agents/organizer.js";
+import { runPropertiesAgent } from "../agents/properties.js";
 import { runResearchAgent } from "../agents/researcher.js";
-import { runImplementerAgent } from "../agents/implementer.js";
 import { runVerifierAgent } from "../agents/verifier.js";
-import { runEnrichmentAgent } from "../agents/enrichment.js";
 
 import { runDigestAgent } from "../agents/digest.js";
+import { runProjectMapper } from "../agents/project-mapper.js";
+import { CONFIG } from "../pipeline/config.js";
+import { type LaneItem, acquireAll } from "../pipeline/lanes.js";
+import { loadState } from "../pipeline/state.js";
 import { runSearchIndexer } from "../search/indexer.js";
+import { igMetadataToSourceItem } from "../sources/instagram/map.js";
+import { getEnabledCollectors } from "../sources/registry.js";
+import type { MetadataEntry, SourceItem } from "../types/index.js";
 import { getLogger } from "../utils/logger.js";
 import { resetMetrics } from "../utils/metrics.js";
-import { getEnabledCollectors } from "../sources/registry.js";
-import { acquireAll, type LaneItem } from "../pipeline/lanes.js";
-import { loadState } from "../pipeline/state.js";
-import { CONFIG } from "../pipeline/config.js";
-import { igMetadataToSourceItem } from "../sources/instagram/map.js";
-import type { SourceItem, MetadataEntry } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
 // Pipeline step definition
@@ -110,7 +111,8 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   //  14  Knowledge base enrichment
   //  15  Dashboard build           ← reads ALL state including verifications
   //  16  Search index              ← refreshes videos/search.db for the MCP server
-  //  17  Digest                    ← LAST: pushes top new learnings via Shooter-compatible notify
+  //  17  Project mapping           ← maps learnings to projects (hybrid embed + LLM judge)
+  //  18  Digest                    ← LAST: pushes top new learnings via Shooter-compatible notify
   // ---------------------------------------------------------------------------
   // Lane assets acquired in step 1, consumed by steps 3-5 (read at call time).
   let laneItems: LaneItem[] = [];
@@ -163,12 +165,14 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     { name: "Dashboard build", run: () => runDashboardAgent() }, // 15  -- reads verifications.json
     // Search index runs after dashboard build so the MCP corpus reflects this run
     { name: "Search index", run: () => runSearchIndexer() }, // 16
+    // Project mapping reads the fresh embeddings to map learnings to projects
+    { name: "Project mapping", run: () => runProjectMapper(neurolink) }, // 17
     // Digest runs LAST — it reads the fresh search index to push new learnings
-    { name: "Digest", run: () => runDigestAgent(neurolink) }, // 17
+    { name: "Digest", run: () => runDigestAgent(neurolink) }, // 18
   ];
 
-  const startStep = options.startStep ?? parseInt(process.env.START_STEP ?? "0", 10);
-  const endStep = options.endStep ?? parseInt(process.env.END_STEP ?? String(steps.length), 10);
+  const startStep = options.startStep ?? Number.parseInt(process.env.START_STEP ?? "0", 10);
+  const endStep = options.endStep ?? Number.parseInt(process.env.END_STEP ?? String(steps.length), 10);
 
   log.info("Pipeline starting", {
     startStep,
@@ -374,9 +378,9 @@ if (process.argv[1]?.endsWith("runner.js")) {
     if (arg === "--parallel") {
       opts.parallel = true;
     } else if (arg.startsWith("--start=")) {
-      opts.startStep = parseInt(arg.split("=")[1], 10);
+      opts.startStep = Number.parseInt(arg.split("=")[1], 10);
     } else if (arg.startsWith("--end=")) {
-      opts.endStep = parseInt(arg.split("=")[1], 10);
+      opts.endStep = Number.parseInt(arg.split("=")[1], 10);
     } else if (arg === "--help" || arg === "-h") {
       console.log(`
 Usage: node dist/pipeline/runner.js [options]
@@ -405,12 +409,12 @@ Step index map (0-indexed, for use with --start / --end / START_STEP / END_STEP)
   14  Knowledge base enrichment
   15  Dashboard build           (reads verifications.json so scores are current)
   16  Search index              (refreshes videos/search.db for the dopamine-kb MCP server)
-  17  Digest                    (runs LAST — pushes top new learnings to a Shooter-compatible endpoint)
+  17  Project mapping           (maps learnings to projects.json via hybrid embed + LLM judge)
+  18  Digest                    (runs LAST — pushes top new learnings to a Shooter-compatible endpoint)
 
-NOTE: Dashboard build was previously step 10 (before verification). It now runs at
-step 15 so verification scores, URL statuses, and confidence data from the current
-run are present in the dashboard JSON.  If you previously used END_STEP=17 to stop
-after the search index, update it to END_STEP=18 (or omit it to run all steps).
+NOTE: Two steps were appended after the search index — Project mapping (17) and
+Digest (18) — so the pipeline now has 19 steps (0-18). END_STEP is exclusive: use
+END_STEP=17 to stop after the search index, or omit it to run everything.
 
 Environment variables:
   START_STEP                 Same as --start

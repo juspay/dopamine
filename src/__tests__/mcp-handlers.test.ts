@@ -67,8 +67,14 @@ afterEach(async () => {
 });
 
 describe("TOOLS", () => {
-  it("declares the four tools", () => {
-    expect(TOOLS.map((t) => t.name)).toEqual(["search_corpus", "get_video", "search_tools", "corpus_stats"]);
+  it("declares the five tools", () => {
+    expect(TOOLS.map((t) => t.name)).toEqual([
+      "search_corpus",
+      "get_video",
+      "search_tools",
+      "corpus_stats",
+      "find_for_project",
+    ]);
   });
 });
 
@@ -109,6 +115,28 @@ describe("handleToolCall", () => {
     const detail = parseJson(await handleToolCall(deps, "get_video", { id: "a_1" })) as { transcript: string };
     expect(detail.transcript).toContain("cloudflare");
     expect((await handleToolCall(deps, "get_video", { id: "missing" })).isError).toBe(true);
+  });
+
+  it("find_for_project returns mapped learnings and errors with known names when absent", async () => {
+    db.prepare("INSERT INTO project_mappings (video_id, project, confidence, reason) VALUES (?,?,?,?)").run(
+      "a_1",
+      "Dopamine",
+      "high",
+      "fits the scraper",
+    );
+    const hits = parseJson(await handleToolCall(deps, "find_for_project", { project: "dopamine" })) as {
+      videoId: string;
+      confidence: string;
+      reason: string;
+    }[];
+    expect(hits[0]).toMatchObject({ videoId: "a_1", confidence: "high", reason: "fits the scraper" });
+
+    const missing = await handleToolCall(deps, "find_for_project", { project: "Nonexistent" });
+    expect(missing.isError).toBe(true);
+    expect(missing.content[0].text).toContain("Dopamine");
+
+    const empty = await handleToolCall(deps, "find_for_project", {});
+    expect(empty.isError).toBe(true);
   });
 
   it("search_tools and corpus_stats return indexed data", async () => {

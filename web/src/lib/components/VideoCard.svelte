@@ -3,6 +3,7 @@
   import { fmtDuration, fmtDate, fmtNumber } from '$lib/format.js';
   import CategoryChip from './CategoryChip.svelte';
   import TagChip from './TagChip.svelte';
+  import ProjectChip from './ProjectChip.svelte';
   import CreatorLink from './CreatorLink.svelte';
   import VerificationBadge from './VerificationBadge.svelte';
   import { Img } from '@juspay/svelte-ui-components';
@@ -14,6 +15,7 @@
   const { record }: Props = $props();
 
   const visibleTags = $derived(record.tags.slice(0, 5));
+  const visibleProjects = $derived((record.appliesTo ?? []).slice(0, 5));
   const duration = $derived(fmtDuration(record.durationSec));
   const date = $derived(fmtDate(record.date));
   const likes = $derived(fmtNumber(record.likes));
@@ -51,6 +53,14 @@
       <div class="tags-row">
         {#each visibleTags as tag}
           <TagChip {tag} />
+        {/each}
+      </div>
+    {/if}
+
+    {#if visibleProjects.length > 0}
+      <div class="tags-row">
+        {#each visibleProjects as project}
+          <ProjectChip {project} />
         {/each}
       </div>
     {/if}

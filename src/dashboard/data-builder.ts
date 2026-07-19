@@ -56,6 +56,7 @@ interface IndexRecord {
   implementability: number;
   usefulness: string;
   hasVideo: boolean;
+  appliesTo: string[];
 }
 
 interface ActionableItem {
@@ -116,6 +117,31 @@ interface Facets {
   creators: { name: string; fullName: string; count: number }[];
   tags: { name: string; count: number }[];
   topics: { name: string; count: number }[];
+  projects: { name: string; count: number }[];
+}
+
+interface ProjectMappingRaw {
+  project: string;
+  confidence: "high" | "medium" | "low";
+  reason: string;
+}
+
+interface ProjectMappingsFileRaw {
+  portfolioHash: string;
+  mappings: Record<string, ProjectMappingRaw[]>;
+}
+
+/** Projects mapped to a video at medium+ confidence, deduped, for chips + facet. */
+export function appliesToFor(mappings: Record<string, ProjectMappingRaw[]>, id: string): string[] {
+  const list = mappings[id] ?? [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of list) {
+    if (m.confidence === "low" || seen.has(m.project)) continue;
+    seen.add(m.project);
+    out.push(m.project);
+  }
+  return out;
 }
 
 interface ToolRecord {
@@ -344,6 +370,11 @@ export async function buildDashboardData(): Promise<void> {
   const verifications = await loadState<Record<string, VerificationEntry>>(CONFIG.STATE.VERIFICATIONS, {});
   const linksV2 = await loadState<Record<string, LinksV2Entry>>(CONFIG.STATE.LINKS_V2, {});
   const videoProperties = await loadState<Record<string, VideoProperties>>(CONFIG.STATE.PROPERTIES, {});
+  const projectMappingsFile = await loadState<ProjectMappingsFileRaw>(CONFIG.STATE.PROJECT_MAPPINGS, {
+    portfolioHash: "",
+    mappings: {},
+  });
+  const projectMappings = projectMappingsFile.mappings ?? {};
 
   console.log(`Catalog: ${catalog.length}, KB: ${Object.keys(knowledge).length}`);
   console.log(`Analysis: ${Object.keys(analysis).length}, Verif: ${Object.keys(verifications).length}`);
@@ -535,6 +566,7 @@ export async function buildDashboardData(): Promise<void> {
       implementability,
       usefulness,
       hasVideo,
+      appliesTo: appliesToFor(projectMappings, id),
       code: code ?? "",
       pk,
       caption,
@@ -611,6 +643,7 @@ export async function buildDashboardData(): Promise<void> {
     implementability: v.implementability,
     usefulness: v.usefulness,
     hasVideo: v.hasVideo,
+    appliesTo: v.appliesTo,
   }));
 
   const indexFile: IndexFile = { meta, videos: indexRecords };
@@ -644,6 +677,7 @@ export async function buildDashboardData(): Promise<void> {
       implementability: v.implementability,
       usefulness: v.usefulness,
       hasVideo: v.hasVideo,
+      appliesTo: v.appliesTo,
       code: v.code,
       pk: v.pk,
       caption: v.caption,
@@ -712,11 +746,22 @@ export async function buildDashboardData(): Promise<void> {
     .sort((a, b) => b[1] - a[1])
     .map(([name, count]) => ({ name, count }));
 
+  const projectCountMap = new Map<string, number>();
+  for (const v of normalized) {
+    for (const project of v.appliesTo) {
+      if (project) projectCountMap.set(project, (projectCountMap.get(project) ?? 0) + 1);
+    }
+  }
+  const facetProjects = [...projectCountMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({ name, count }));
+
   const facets: Facets = {
     categories: facetCategories,
     creators: facetCreators,
     tags: facetTags,
     topics: facetTopics,
+    projects: facetProjects,
   };
   await fs.writeFile(path.join(dataDir, "facets.json"), JSON.stringify(facets), "utf8");
 

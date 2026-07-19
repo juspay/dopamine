@@ -8,6 +8,7 @@
   import CreatorLink from '$lib/components/CreatorLink.svelte';
   import CategoryChip from '$lib/components/CategoryChip.svelte';
   import TagChip from '$lib/components/TagChip.svelte';
+  import ProjectChip from '$lib/components/ProjectChip.svelte';
   import SectionNav from '$lib/components/SectionNav.svelte';
   import ActionableItem from '$lib/components/ActionableItem.svelte';
   import VerificationBadge from '$lib/components/VerificationBadge.svelte';
@@ -104,6 +105,14 @@
           <div class="tags-row" aria-label="Tags">
             {#each detail.tags as tag}
               <TagChip {tag} />
+            {/each}
+          </div>
+        {/if}
+
+        {#if (detail.appliesTo ?? []).length > 0}
+          <div class="tags-row" aria-label="Applies to projects">
+            {#each detail.appliesTo as project}
+              <ProjectChip {project} />
             {/each}
           </div>
         {/if}

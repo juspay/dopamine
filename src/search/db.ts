@@ -42,6 +42,21 @@ CREATE TABLE IF NOT EXISTS index_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_vectors (
+  project TEXT PRIMARY KEY,
+  hash TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT '',
+  dims INTEGER NOT NULL,
+  vector BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_mappings (
+  video_id TEXT NOT NULL REFERENCES videos(id),
+  project TEXT NOT NULL,
+  confidence TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (video_id, project)
+);
+CREATE INDEX IF NOT EXISTS project_mappings_project ON project_mappings(project);
 `;
 
 export function openSearchDb(dbPath: string, opts: { readonly?: boolean } = {}): DatabaseSync {
