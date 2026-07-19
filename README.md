@@ -172,6 +172,15 @@ npm run digest   # push top new learnings to a Shooter-compatible notify endpoin
 
 Runs automatically as the last pipeline step. See [docs/digest.md](docs/digest.md).
 
+### Map learnings to your projects
+
+```bash
+npm run map:projects   # map corpus learnings to projects.json (chips, find_for_project MCP tool, IDEAS.md)
+```
+
+Define your projects in `projects.json` (see `projects.example.json`). Runs as a
+pipeline step. See [docs/project-mapping.md](docs/project-mapping.md).
+
 ### Development mode
 
 ```bash

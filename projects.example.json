@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Example App",
+    "description": "One-sentence description of what this project is and does; the more specific, the better the mapping. Mention the stack and the problems it solves.",
+    "keywords": ["typescript", "sveltekit", "payments"],
+    "path": "/absolute/path/to/example-app"
+  },
+  {
+    "name": "Example CLI",
+    "description": "A command-line tool for X. Projects without a path get chips and find_for_project results but no IDEAS.md drops.",
+    "keywords": ["cli", "automation"]
+  }
+]

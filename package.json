@@ -38,6 +38,7 @@
     "search:index": "node dist/search/indexer.js",
     "mcp:serve": "node dist/mcp/server.js",
     "digest": "node dist/agents/digest.js",
+    "map:projects": "node dist/agents/project-mapper.js",
     "dashboard:build": "npm run build && npm --prefix web install && npm --prefix web run build && npm run dashboard:data",
     "dev": "tsc --watch",
     "test": "node node_modules/vitest/vitest.mjs run",

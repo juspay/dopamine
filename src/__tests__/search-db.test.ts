@@ -26,6 +26,33 @@ describe("openSearchDb", () => {
     db2.close();
   });
 
+  it("creates the project_vectors and project_mappings tables", () => {
+    const p = path.join(tmpDir, "search.db");
+    const db = openSearchDb(p);
+    db.prepare(
+      "INSERT INTO videos (id, title, category, creator, taken_at, source_url, verification, implementability, usefulness, takeaways_json, topics_json, doc_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    ).run("v1", "t", "c", "u", "", "", "unknown", 0, "unknown", "[]", "[]", "h");
+    db.prepare("INSERT INTO project_vectors (project, hash, dims, vector) VALUES (?,?,?,?)").run(
+      "P",
+      "h",
+      2,
+      vectorToBlob([1, 2]),
+    );
+    db.prepare("INSERT INTO project_mappings (video_id, project, confidence, reason) VALUES (?,?,?,?)").run(
+      "v1",
+      "P",
+      "high",
+      "why",
+    );
+    const row = db
+      .prepare("SELECT confidence FROM project_mappings WHERE video_id = ? AND project = ?")
+      .get("v1", "P") as {
+      confidence: string;
+    };
+    expect(row.confidence).toBe("high");
+    db.close();
+  });
+
   it("round-trips a Float32 vector through a BLOB", () => {
     const p = path.join(tmpDir, "search.db");
     const db = openSearchDb(p);

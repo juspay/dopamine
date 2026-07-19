@@ -18,6 +18,7 @@ export interface IndexRecord {
   implementability: number;
   usefulness: string;
   hasVideo: boolean;
+  appliesTo: string[];
 }
 
 export interface ActionableItem {
@@ -78,6 +79,7 @@ export interface Facets {
   creators: { name: string; fullName: string; count: number }[];
   tags: { name: string; count: number }[];
   topics: { name: string; count: number }[];
+  projects: { name: string; count: number }[];
 }
 
 export interface ToolRecord {

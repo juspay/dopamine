@@ -212,6 +212,67 @@ export function searchTools(db: DatabaseSync, query: string, type?: string, limi
   }));
 }
 
+export type Confidence = "high" | "medium" | "low";
+const CONFIDENCE_RANK: Record<Confidence, number> = { high: 3, medium: 2, low: 1 };
+
+export interface ProjectHit {
+  videoId: string;
+  title: string;
+  confidence: Confidence;
+  reason: string;
+  takeaways: string[];
+  topTools: string[];
+  verification: string;
+  sourceUrl: string;
+}
+
+/** Learnings mapped to `project` (case-insensitive), best confidence first. */
+export function findForProject(db: DatabaseSync, project: string, minConfidence: Confidence = "low"): ProjectHit[] {
+  const floor = CONFIDENCE_RANK[minConfidence];
+  const rows = db
+    .prepare(`
+      SELECT m.video_id, m.confidence, m.reason, v.title, v.verification, v.source_url, v.takeaways_json,
+             v.implementability
+      FROM project_mappings m JOIN videos v ON v.id = m.video_id
+      WHERE LOWER(m.project) = LOWER(?)
+    `)
+    .all(project) as {
+    video_id: string;
+    confidence: Confidence;
+    reason: string;
+    title: string;
+    verification: string;
+    source_url: string;
+    takeaways_json: string;
+    implementability: number;
+  }[];
+  const toolStmt = db.prepare("SELECT name FROM tools WHERE video_id = ? LIMIT 3");
+  return rows
+    .filter((r) => (CONFIDENCE_RANK[r.confidence] ?? 0) >= floor)
+    .sort(
+      (a, b) =>
+        (CONFIDENCE_RANK[b.confidence] ?? 0) - (CONFIDENCE_RANK[a.confidence] ?? 0) ||
+        b.implementability - a.implementability,
+    )
+    .map((r) => ({
+      videoId: r.video_id,
+      title: r.title,
+      confidence: r.confidence,
+      reason: r.reason,
+      takeaways: JSON.parse(r.takeaways_json) as string[],
+      topTools: (toolStmt.all(r.video_id) as unknown as { name: string }[]).map((t) => t.name),
+      verification: r.verification,
+      sourceUrl: r.source_url,
+    }));
+}
+
+/** Distinct project names present in the mapping table (for unknown-project help). */
+export function listMappedProjects(db: DatabaseSync): string[] {
+  return (
+    db.prepare("SELECT DISTINCT project FROM project_mappings ORDER BY project").all() as { project: string }[]
+  ).map((r) => r.project);
+}
+
 export interface CorpusStats {
   totalVideos: number;
   totalTools: number;

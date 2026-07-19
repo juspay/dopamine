@@ -23,6 +23,7 @@
 
   let q        = $state('');
   let cats     = $state<string[]>([]);
+  let projs    = $state<string[]>([]);
   let verif    = $state('all');
   let sort     = $state('date-desc');
 
@@ -33,6 +34,8 @@
     sort  = sp.get('sort')  ?? 'date-desc';
     const rawCats = sp.get('cat');
     cats = rawCats ? rawCats.split(',').filter(Boolean) : [];
+    const rawProjs = sp.get('project');
+    projs = rawProjs ? rawProjs.split(',').filter(Boolean) : [];
   });
 
   // ── Push current filter state into URL ───────────────────────────────────
@@ -40,6 +43,7 @@
     const url = new URL($page.url);
     if (q.trim()) url.searchParams.set('q', q.trim()); else url.searchParams.delete('q');
     if (cats.length) url.searchParams.set('cat', cats.join(',')); else url.searchParams.delete('cat');
+    if (projs.length) url.searchParams.set('project', projs.join(',')); else url.searchParams.delete('project');
     if (verif !== 'all') url.searchParams.set('verif', verif); else url.searchParams.delete('verif');
     if (sort !== 'date-desc') url.searchParams.set('sort', sort); else url.searchParams.delete('sort');
     goto(url.toString(), { replaceState: true, keepFocus: true, noScroll: true });
@@ -51,6 +55,9 @@
       ? facets.categories.map((c) => c.name)
       : [...new Set(all.map((v) => v.category))].sort()
   );
+
+  // ── Project list from facets (empty when nothing is mapped yet) ──────────
+  const allProjects = $derived(facets?.projects?.map((p) => p.name) ?? []);
 
   // ── Verification options ─────────────────────────────────────────────────
   const VERIF_OPTIONS = [
@@ -92,6 +99,9 @@
       // category multi-select
       if (cats.length && !cats.includes(v.category)) return false;
 
+      // project multi-select (OR across selected projects)
+      if (projs.length && !projs.some((p) => (v.appliesTo ?? []).includes(p))) return false;
+
       // verification filter
       if (verif !== 'all' && v.verification !== verif) return false;
 
@@ -128,9 +138,17 @@
     syncUrl();
   }
 
+  function toggleProj(project: string) {
+    projs = projs.includes(project)
+      ? projs.filter((p) => p !== project)
+      : [...projs, project];
+    syncUrl();
+  }
+
   function clearAll() {
     q     = '';
     cats  = [];
+    projs = [];
     verif = 'all';
     sort  = 'date-desc';
     syncUrl();
@@ -145,7 +163,9 @@
     }
   }
 
-  const hasFilters = $derived(q.trim() !== '' || cats.length > 0 || verif !== 'all' || sort !== 'date-desc');
+  const hasFilters = $derived(
+    q.trim() !== '' || cats.length > 0 || projs.length > 0 || verif !== 'all' || sort !== 'date-desc'
+  );
 </script>
 
 <div class="library-page">
@@ -200,6 +220,22 @@
           style="--chip-color:{catColor(cat)};--chip-bg:{catBg(cat)}"
           onclick={() => toggleCat(cat)}
         >{cat}</button>
+      {/each}
+    </div>
+  {/if}
+
+  <!-- Project chips (only when learnings have been mapped) -->
+  {#if allProjects.length > 0}
+    <div class="cat-chips" role="group" aria-label="Filter by project">
+      {#each allProjects as project}
+        {@const active = projs.includes(project)}
+        <button
+          class="cat-chip"
+          class:active
+          type="button"
+          aria-pressed={active}
+          onclick={() => toggleProj(project)}
+        >→ {project}</button>
       {/each}
     </div>
   {/if}

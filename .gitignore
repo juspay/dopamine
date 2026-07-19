@@ -38,6 +38,9 @@ videos/*.db-*
 /dashboard/data/video/*
 !/dashboard/data/video/demo_*.json
 
+# Personal project portfolio for mapping (the .example.json is tracked).
+projects.json
+
 # Debug artifacts
 dashboard-*.png
 videos/*.backup.*
