@@ -1,6 +1,11 @@
 // Data contracts — single source of truth shared between the data builder
 // (src/dashboard/data-builder.ts emits these shapes) and the app.
 
+// Surfacing bucket — mirrors src/dashboard/quality.ts. `thin` learnings are
+// the unprocessed/empty tail (demoted, hidden by default); `featured` maps to a
+// project or is verified + highly useful.
+export type Tier = "featured" | "standard" | "thin";
+
 export interface IndexRecord {
   id: string;
   title: string;
@@ -19,6 +24,8 @@ export interface IndexRecord {
   usefulness: string;
   hasVideo: boolean;
   appliesTo: string[];
+  quality: number;
+  tier: Tier;
 }
 
 export interface ActionableItem {

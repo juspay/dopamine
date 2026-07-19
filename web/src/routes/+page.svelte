@@ -26,6 +26,21 @@
   const allVideos = $derived(getVideos());
   const tools = $derived(getTools());
 
+  // 12 highest-quality learnings — leads the page so the first thing seen is
+  // the best, most-applicable content, not whatever was saved last. Thin
+  // (unprocessed/empty) learnings are excluded. Ordered tier-first (applicable
+  // learnings ahead of merely well-analyzed ones), matching the data builder.
+  const TIER_RANK: Record<string, number> = { featured: 0, standard: 1, thin: 2 };
+  const topLearnings = $derived(
+    [...allVideos]
+      .filter((v) => v.tier !== 'thin')
+      .sort((a, b) =>
+        (TIER_RANK[a.tier] - TIER_RANK[b.tier]) ||
+        (b.quality - a.quality) ||
+        (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
+      .slice(0, 12)
+  );
+
   // 12 newest videos sorted by date desc
   const recentVideos = $derived(
     [...allVideos]
@@ -88,11 +103,27 @@
   {/if}
 </section>
 
+<!-- ── Top learnings (quality-first) ─────────────────────────────── -->
+<section class="section">
+  <div class="section-header">
+    <h2 class="section-title">Top learnings</h2>
+    <a class="see-all" href="/videos">See all videos →</a>
+  </div>
+
+  {#if !indexLoaded}
+    <Spinner />
+  {:else if topLearnings.length === 0}
+    <p class="empty-hint">No learnings found.</p>
+  {:else}
+    <VideoGrid items={topLearnings} emptyMessage="No learnings yet." />
+  {/if}
+</section>
+
 <!-- ── Recent videos ─────────────────────────────────────────────── -->
 <section class="section">
   <div class="section-header">
-    <h2 class="section-title">Recent</h2>
-    <a class="see-all" href="/videos">See all videos →</a>
+    <h2 class="section-title">Recently added</h2>
+    <a class="see-all" href="/videos?sort=date-desc">See all videos →</a>
   </div>
 
   {#if !indexLoaded}
