@@ -77,7 +77,7 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         id: yama
         continue-on-error: true
-        uses: juspay/yama@v2.6.0
+        uses: juspay/yama@v2.7.1
         with:
           github-token: ${{ secrets.YAMA_GITHUB_TOKEN }}
           ai-provider: litellm
