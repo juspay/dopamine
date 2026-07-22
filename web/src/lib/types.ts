@@ -109,6 +109,14 @@ export interface Meta {
   totalDurationSec: number;
 }
 
+// Per-project action brief (mirror of src/schemas/brief.ts public shape).
+export interface BriefAction {
+  title: string;
+  detail: string;
+  basedOn: string[];
+}
+export type Briefs = Record<string, { actions: BriefAction[] }>;
+
 export interface IndexFile {
   meta: Meta;
   videos: IndexRecord[];

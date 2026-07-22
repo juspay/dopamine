@@ -128,7 +128,6 @@ describe("runProjectMapper", () => {
     dbPath: path.join(tmpDir, "search.db"),
     projectsPath: path.join(tmpDir, "projects.json"),
     mappingsPath: path.join(tmpDir, "project_mappings.json"),
-    ideasStatePath: path.join(tmpDir, "ideas_state.json"),
     // the fixture seeds embeddings with "test-model"; the mapper only prefilters
     // videos embedded with this model so its vectors share the project space
     embeddingModel: "test-model",

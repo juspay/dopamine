@@ -50,7 +50,7 @@ export const CONFIG = {
     SEARCH_DB: path.resolve("videos", "search.db"),
     DIGEST_STATE: path.resolve("videos", "digest_state.json"),
     PROJECT_MAPPINGS: path.resolve("videos", "project_mappings.json"),
-    IDEAS_STATE: path.resolve("videos", "ideas_state.json"),
+    PROJECT_BRIEFS: path.resolve("videos", "project_briefs.json"),
   },
 
   OUTPUT: {
@@ -75,6 +75,12 @@ export const CONFIG = {
   MAP_PREFILTER_TOPK: Number.parseInt(process.env.MAP_PREFILTER_TOPK ?? "4", 10),
   MAP_PREFILTER_MIN: Number.parseFloat(process.env.MAP_PREFILTER_MIN ?? "0.55"),
   MAP_MODEL: process.env.MAP_MODEL ?? "gemini-2.5-flash",
+
+  // Per-project action brief (synthesize mapped learnings → concrete actions).
+  BRIEF_MODEL: process.env.BRIEF_MODEL ?? "gemini-2.5-flash",
+  // `|| 1` guards NaN (non-numeric env) and 0, so the min-mappings gate is never
+  // silently disabled.
+  BRIEF_MIN_MAPPINGS: Math.max(1, Number.parseInt(process.env.BRIEF_MIN_MAPPINGS ?? "1", 10) || 1),
 
   VERTEX_PROJECT: process.env.VERTEX_PROJECT ?? "your-gcp-project-id",
   // 3.1 models require "global" location; 2.x models use "us-central1"
