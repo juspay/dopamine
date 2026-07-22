@@ -12,7 +12,7 @@ import { blobToVector, hasSearchSchema, openSearchDb, vectorToBlob } from "../se
 import { cosineSim } from "../search/rank.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { exponentialBackoff } from "../utils/rate-limit.js";
-import { type FsLike, type IdeaVideo, writeIdeas } from "./ideas-writer.js";
+import { type IdeaVideo } from "./ideas-writer.js";
 
 const REASON_MAX = 140;
 
@@ -196,13 +196,10 @@ export interface MapperOverrides {
   dbPath?: string;
   projectsPath?: string;
   mappingsPath?: string;
-  ideasStatePath?: string;
   lockPath?: string;
   embeddingModel?: string;
   embed?: EmbedFn;
   judge?: JudgeFn;
-  now?: () => string;
-  fsImpl?: FsLike;
 }
 
 interface LoadedMappings {
@@ -356,11 +353,8 @@ export async function runProjectMapper(neurolink: NeuroLink | null, overrides: M
     const totalMapped = Object.values(state.mappings).filter((m) => m.length > 0).length;
     console.log(`  Project mapping: ${videos.length} video(s), ${judged} judged this run, ${totalMapped} mapped.`);
 
-    await writeIdeas(state.mappings, videos, projects, {
-      statePath: overrides.ideasStatePath ?? CONFIG.STATE.IDEAS_STATE,
-      now: overrides.now ?? (() => new Date().toISOString()),
-      fsImpl: overrides.fsImpl,
-    });
+    // IDEAS.md is written by the later Project Brief step (writeBriefIdeas) from
+    // the synthesized brief, replacing the old per-learning drops.
   } finally {
     db.close();
     releaseLock(lockPath);

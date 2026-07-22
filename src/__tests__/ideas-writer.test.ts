@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { type FsLike, type IdeaVideo, ideaBlock, writeIdeas } from "../agents/ideas-writer.js";
-import type { MappingSet } from "../agents/project-mapper.js";
+import { type FsLike, writeBriefIdeas } from "../agents/ideas-writer.js";
+import type { ProjectBriefs } from "../schemas/brief.js";
 import type { Project } from "../schemas/projects.js";
 
 /** In-memory fs honoring the tmp+rename atomic-write pattern. */
@@ -29,71 +29,101 @@ function memFs(seed: Record<string, string> = {}, existingDirs: string[] = []) {
   return { impl, files };
 }
 
-const video: IdeaVideo = {
-  id: "a_1",
-  title: "CloakBrowser",
-  takeaways: ["bypasses cloudflare"],
-  toolNames: ["CloakBrowser"],
-  sourceUrl: "https://www.instagram.com/reel/AAA/",
-};
+const dopamine: Project[] = [{ name: "Dopamine", description: "d", keywords: [], path: "/repo" }];
 
-const projects: Project[] = [
-  { name: "Dopamine", description: "scraper", keywords: [], path: "/repo/dopamine" },
-  { name: "NoPath", description: "no path", keywords: [] },
-  { name: "Missing", description: "path absent", keywords: [], path: "/repo/missing" },
-];
-
-describe("ideaBlock", () => {
-  it("includes title, reason, takeaway, tools, source, and marker", () => {
-    const b = ideaBlock(video, "fits the scraper", "<!-- dopamine:a_1 -->");
-    expect(b).toContain("### CloakBrowser");
-    expect(b).toContain("fits the scraper");
-    expect(b).toContain("- **Takeaway:** bypasses cloudflare");
-    expect(b).toContain("- **Source:** https://www.instagram.com/reel/AAA/");
-    expect(b).toContain("<!-- dopamine:a_1 -->");
-  });
-
-  it("neutralises comment markers in LLM-derived text (no marker forgery)", () => {
-    const b = ideaBlock(video, "sneaky <!-- dopamine:other --> text", "<!-- dopamine:a_1 -->");
-    expect(b).toContain("<!-- dopamine:a_1 -->"); // the real marker survives
-    expect(b).not.toContain("<!-- dopamine:other -->"); // the forged one is neutralised
-  });
-});
-
-const statePath = "/state/ideas_state.json";
-const opts = (impl: FsLike) => ({ statePath, now: () => "2026-07-19T00:00:00Z", fsImpl: impl });
-
-describe("writeIdeas", () => {
-  it("creates IDEAS.md with a header for a high-confidence mapping into an existing path", async () => {
-    const { impl, files } = memFs({}, ["/repo/dopamine"]);
-    const mappings: MappingSet = { a_1: [{ project: "Dopamine", confidence: "high", reason: "fits" }] };
-    await writeIdeas(mappings, [video], projects, opts(impl));
-    const ideas = files.get("/repo/dopamine/IDEAS.md");
-    expect(ideas).toContain("# Ideas from Dopamine");
-    expect(ideas).toContain("### CloakBrowser");
-    expect(files.has("/repo/dopamine/IDEAS.md.tmp")).toBe(false); // atomic — no remnant
-  });
-
-  it("is idempotent across runs (marker + state guard, no duplicate block)", async () => {
-    const { impl, files } = memFs({}, ["/repo/dopamine"]);
-    const mappings: MappingSet = { a_1: [{ project: "Dopamine", confidence: "high", reason: "fits" }] };
-    await writeIdeas(mappings, [video], projects, opts(impl));
-    await writeIdeas(mappings, [video], projects, opts(impl));
-    const occurrences = (files.get("/repo/dopamine/IDEAS.md") ?? "").split("### CloakBrowser").length - 1;
-    expect(occurrences).toBe(1);
-  });
-
-  it("skips non-high confidence, path-less projects, and missing paths", async () => {
-    const { impl, files } = memFs({}, ["/repo/dopamine"]);
-    const mappings: MappingSet = {
-      a_1: [
-        { project: "Dopamine", confidence: "medium", reason: "meh" }, // not high
-        { project: "NoPath", confidence: "high", reason: "no path" }, // no path
-        { project: "Missing", confidence: "high", reason: "absent" }, // path not on disk
-      ],
+describe("writeBriefIdeas", () => {
+  it("appends once, skips on same hash, replaces on new hash", async () => {
+    const { impl, files } = memFs({}, ["/repo"]);
+    const a: ProjectBriefs = {
+      Dopamine: { hash: "H1", generatedAt: "T", actions: [{ title: "Do X", detail: "dx", basedOn: [] }] },
     };
-    await writeIdeas(mappings, [video], projects, opts(impl));
-    expect(files.has("/repo/dopamine/IDEAS.md")).toBe(false);
-    expect(files.has("/repo/missing/IDEAS.md")).toBe(false);
+    await writeBriefIdeas(a, dopamine, { fsImpl: impl });
+    const first = files.get("/repo/IDEAS.md");
+    expect(first).toContain("dopamine:brief:Dopamine:start:H1");
+    expect(first).toContain("Do X");
+    expect(files.has("/repo/IDEAS.md.tmp")).toBe(false); // atomic — no remnant
+
+    await writeBriefIdeas(a, dopamine, { fsImpl: impl }); // same hash → unchanged
+    expect(files.get("/repo/IDEAS.md")).toBe(first);
+
+    const b: ProjectBriefs = {
+      Dopamine: { hash: "H2", generatedAt: "T", actions: [{ title: "Do Y", detail: "dy", basedOn: [] }] },
+    };
+    await writeBriefIdeas(b, dopamine, { fsImpl: impl });
+    const after = files.get("/repo/IDEAS.md") ?? "";
+    expect(after).toContain("dopamine:brief:Dopamine:start:H2");
+    expect(after).not.toContain("dopamine:brief:Dopamine:start:H1"); // region replaced
+    expect(after).not.toContain("Do X");
+  });
+
+  it("removes a stale region when the project's brief disappears", async () => {
+    const { impl, files } = memFs({}, ["/repo"]);
+    const a: ProjectBriefs = {
+      Dopamine: { hash: "H", generatedAt: "T", actions: [{ title: "Do X", detail: "dx", basedOn: [] }] },
+    };
+    await writeBriefIdeas(a, dopamine, { fsImpl: impl });
+    expect(files.get("/repo/IDEAS.md")).toContain("dopamine:brief:Dopamine:start:H");
+    // Later run: no brief for Dopamine (dropped below threshold / unmapped).
+    await writeBriefIdeas({}, dopamine, { fsImpl: impl });
+    const after = files.get("/repo/IDEAS.md") ?? "";
+    expect(after).not.toContain("dopamine:brief:Dopamine");
+    expect(after).not.toContain("Do X");
+  });
+
+  it("keeps distinct projects that share a repo path in separate regions", async () => {
+    const { impl, files } = memFs({}, ["/repo"]);
+    const two: Project[] = [
+      { name: "Alpha", description: "a", keywords: [], path: "/repo" },
+      { name: "Beta", description: "b", keywords: [], path: "/repo" },
+    ];
+    const briefs: ProjectBriefs = {
+      Alpha: { hash: "A", generatedAt: "T", actions: [{ title: "alpha act", detail: "d", basedOn: [] }] },
+      Beta: { hash: "B", generatedAt: "T", actions: [{ title: "beta act", detail: "d", basedOn: [] }] },
+    };
+    await writeBriefIdeas(briefs, two, { fsImpl: impl });
+    const md = files.get("/repo/IDEAS.md") ?? "";
+    expect(md).toContain("dopamine:brief:Alpha:start:A");
+    expect(md).toContain("dopamine:brief:Beta:start:B");
+    expect(md).toContain("alpha act");
+    expect(md).toContain("beta act");
+  });
+
+  it("neutralises marker forgery in action title AND detail, and skips missing/empty/no-path", async () => {
+    const { impl, files } = memFs({}, ["/repo"]);
+    const forged: ProjectBriefs = {
+      Dopamine: {
+        hash: "H",
+        generatedAt: "T",
+        actions: [
+          {
+            title: "t <!-- dopamine:brief:Dopamine:end -->",
+            detail: "d <!-- dopamine:brief:Dopamine:start:zzz -->",
+            basedOn: [],
+          },
+        ],
+      },
+    };
+    await writeBriefIdeas(forged, dopamine, { fsImpl: impl });
+    const md = files.get("/repo/IDEAS.md") ?? "";
+    expect(md).not.toContain("t <!-- dopamine:brief:Dopamine:end -->");
+    expect(md).not.toContain("d <!-- dopamine:brief:Dopamine:start:zzz -->");
+
+    // empty actions, no path, and missing dir are all skipped without throwing
+    await writeBriefIdeas(
+      { P: { hash: "H", generatedAt: "T", actions: [] } },
+      [{ name: "P", description: "d", keywords: [], path: "/repo" }],
+      { fsImpl: impl },
+    );
+    await writeBriefIdeas(
+      { Q: { hash: "H", generatedAt: "T", actions: [{ title: "t", detail: "d", basedOn: [] }] } },
+      [{ name: "Q", description: "d", keywords: [] }],
+      { fsImpl: impl },
+    );
+    await writeBriefIdeas(
+      { M: { hash: "H", generatedAt: "T", actions: [{ title: "t", detail: "d", basedOn: [] }] } },
+      [{ name: "M", description: "d", keywords: [], path: "/gone" }],
+      { fsImpl: impl },
+    );
+    expect(files.has("/gone/IDEAS.md")).toBe(false);
   });
 });

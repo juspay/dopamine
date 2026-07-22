@@ -5,16 +5,18 @@
  * All fetches happen in the browser at runtime (SPA, no SSR).
  */
 
-import type { IndexFile, IndexRecord, VideoDetail, Facets, ToolRecord } from './types.js';
+import type { IndexFile, IndexRecord, VideoDetail, Facets, ToolRecord, Briefs } from './types.js';
 
 // ── Reactive state ──────────────────────────────────────────────────────────
 let index = $state<IndexFile | null>(null);
 let facets = $state<Facets | null>(null);
 let tools = $state<ToolRecord[] | null>(null);
+let briefs = $state<Briefs | null>(null);
 
 // ── In-flight de-dup ──────────────────────────────────────────────────────
 let _indexPromise: Promise<IndexFile | null> | null = null;
 let _facetsPromise: Promise<Facets | null> | null = null;
+let _briefsPromise: Promise<Briefs> | null = null;
 let _toolsPromise: Promise<ToolRecord[]> | null = null;
 const _detailCache = new Map<string, VideoDetail | null>();
 const _detailPromises = new Map<string, Promise<VideoDetail | null>>();
@@ -85,6 +87,23 @@ export function loadTools(): Promise<ToolRecord[]> {
 /** Reactive tools accessor. */
 export function getTools(): ToolRecord[] {
   return tools ?? [];
+}
+
+// ── Briefs ────────────────────────────────────────────────────────────────
+export function loadBriefs(): Promise<Briefs> {
+  if (briefs) return Promise.resolve(briefs);
+  if (_briefsPromise) return _briefsPromise;
+  _briefsPromise = fetchJson<Briefs>('/data/briefs.json').then((d) => {
+    const b = d ?? {}; // absent file (feature not built yet) → empty, not an error
+    briefs = b;
+    return b;
+  });
+  return _briefsPromise;
+}
+
+/** Reactive briefs accessor (project name → actions). */
+export function getBriefs(): Briefs {
+  return briefs ?? {};
 }
 
 // ── Per-video detail ────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ import { runVerifierAgent } from "../agents/verifier.js";
 
 import { runDigestAgent } from "../agents/digest.js";
 import { runProjectMapper } from "../agents/project-mapper.js";
+import { runProjectBriefAgent } from "../agents/project-brief.js";
 import { CONFIG } from "../pipeline/config.js";
 import { type LaneItem, acquireAll } from "../pipeline/lanes.js";
 import { loadState } from "../pipeline/state.js";
@@ -112,7 +113,8 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   //  15  Dashboard build           ← reads ALL state including verifications
   //  16  Search index              ← refreshes videos/search.db for the MCP server
   //  17  Project mapping           ← maps learnings to projects (hybrid embed + LLM judge)
-  //  18  Digest                    ← LAST: pushes top new learnings via Shooter-compatible notify
+  //  18  Project brief             ← synthesizes each project's learnings into actions
+  //  19  Digest                    ← LAST: pushes top new learnings via Shooter-compatible notify
   // ---------------------------------------------------------------------------
   // Lane assets acquired in step 1, consumed by steps 3-5 (read at call time).
   let laneItems: LaneItem[] = [];
@@ -167,8 +169,11 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     { name: "Search index", run: () => runSearchIndexer() }, // 16
     // Project mapping reads the fresh embeddings to map learnings to projects
     { name: "Project mapping", run: () => runProjectMapper(neurolink) }, // 17
+    // Project brief synthesizes each project's mapped learnings into actions
+    { name: "Project brief", run: () => runProjectBriefAgent(neurolink) }, // 18
+
     // Digest runs LAST — it reads the fresh search index to push new learnings
-    { name: "Digest", run: () => runDigestAgent(neurolink) }, // 18
+    { name: "Digest", run: () => runDigestAgent(neurolink) }, // 19
   ];
 
   const startStep = options.startStep ?? Number.parseInt(process.env.START_STEP ?? "0", 10);
@@ -410,11 +415,12 @@ Step index map (0-indexed, for use with --start / --end / START_STEP / END_STEP)
   15  Dashboard build           (reads verifications.json so scores are current)
   16  Search index              (refreshes videos/search.db for the dopamine-kb MCP server)
   17  Project mapping           (maps learnings to projects.json via hybrid embed + LLM judge)
-  18  Digest                    (runs LAST — pushes top new learnings to a Shooter-compatible endpoint)
+  18  Project brief             (synthesizes each project's mapped learnings into actions)
+  19  Digest                    (runs LAST — pushes top new learnings to a Shooter-compatible endpoint)
 
-NOTE: Two steps were appended after the search index — Project mapping (17) and
-Digest (18) — so the pipeline now has 19 steps (0-18). END_STEP is exclusive: use
-END_STEP=17 to stop after the search index, or omit it to run everything.
+NOTE: Steps appended after the search index — Project mapping (17), Project brief
+(18), Digest (19) — so the pipeline now has 20 steps (0-19). END_STEP is exclusive:
+use END_STEP=17 to stop after the search index, or omit it to run everything.
 
 Environment variables:
   START_STEP                 Same as --start

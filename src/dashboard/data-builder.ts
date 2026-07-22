@@ -22,6 +22,7 @@ import { deriveTitle } from "./title.js";
 import { computeRelated } from "./related.js";
 import type { RelInput } from "./related.js";
 import { qualityScore, tierOf, type Tier, type QualityInput } from "./quality.js";
+import type { ProjectBriefs } from "../schemas/brief.js";
 import type { CatalogRecord } from "../agents/catalog.js";
 import type { MetadataEntry, VideoProperties } from "../types/index.js";
 import { takeawayText, type Takeaway } from "../schemas/knowledge.js";
@@ -378,6 +379,7 @@ export async function buildDashboardData(): Promise<void> {
     mappings: {},
   });
   const projectMappings = projectMappingsFile.mappings ?? {};
+  const projectBriefs = await loadState<ProjectBriefs>(CONFIG.STATE.PROJECT_BRIEFS, {});
 
   console.log(`Catalog: ${catalog.length}, KB: ${Object.keys(knowledge).length}`);
   console.log(`Analysis: ${Object.keys(analysis).length}, Verif: ${Object.keys(verifications).length}`);
@@ -828,6 +830,12 @@ export async function buildDashboardData(): Promise<void> {
 
   // Meta (standalone)
   await fs.writeFile(path.join(dataDir, "meta.json"), JSON.stringify(meta), "utf8");
+
+  // Per-project action briefs (public shape: drop the internal hash/generatedAt).
+  const briefsPublic = Object.fromEntries(
+    Object.entries(projectBriefs).map(([name, b]) => [name, { actions: b.actions }]),
+  );
+  await fs.writeFile(path.join(dataDir, "briefs.json"), JSON.stringify(briefsPublic), "utf8");
 
   // Report
   const detailFiles = await fs.readdir(videoDataDir);

@@ -24,6 +24,11 @@ describe("CONFIG — multi-provider additions", () => {
     expect(CONFIG.YOUTUBE).toBeDefined();
     expect("clientId" in CONFIG.YOUTUBE).toBe(true);
   });
+  it("exposes action-brief config", () => {
+    expect(CONFIG.BRIEF_MODEL).toBeTruthy();
+    expect(CONFIG.BRIEF_MIN_MAPPINGS).toBeGreaterThanOrEqual(1);
+    expect(CONFIG.STATE.PROJECT_BRIEFS).toMatch(/project_briefs\.json$/);
+  });
   it("COLLECTOR_TIMEOUT_MS defaults to 11 minutes", () => {
     expect(CONFIG.COLLECTOR_TIMEOUT_MS).toBe(11 * 60 * 1000);
   });
