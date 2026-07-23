@@ -323,11 +323,33 @@ const tools = details.flatMap((d) =>
   })),
 );
 
+// One synthetic action brief so the /project page's "Actions to try" section
+// renders in the demo (mirrors src/schemas/brief.ts public shape).
+const briefs = {
+  [DEMO_PROJECT]: {
+    actions: [
+      {
+        title: "Add a retrieval layer over your notes",
+        detail:
+          "Chunk and embed notes, store vectors with metadata, and re-rank before prompting so the assistant answers from your own content.",
+        basedOn: ["demo_ai_rag"],
+      },
+      {
+        title: "Make the notes grid hold up on mobile",
+        detail:
+          "Define breakpoints from content and prefer auto-fit columns so the note list stays usable on small screens.",
+        basedOn: ["demo_ux_grids"],
+      },
+    ],
+  },
+};
+
 await fs.mkdir(path.join(OUT, "video"), { recursive: true });
 await fs.writeFile(path.join(OUT, "meta.json"), JSON.stringify(meta));
 await fs.writeFile(path.join(OUT, "index.json"), JSON.stringify({ meta, videos: details.map(indexRecord) }));
 await fs.writeFile(path.join(OUT, "facets.json"), JSON.stringify(facets));
 await fs.writeFile(path.join(OUT, "tools.json"), JSON.stringify(tools));
+await fs.writeFile(path.join(OUT, "briefs.json"), JSON.stringify(briefs));
 for (const d of details) {
   await fs.writeFile(path.join(OUT, "video", `${d.id}.json`), JSON.stringify(d));
 }
