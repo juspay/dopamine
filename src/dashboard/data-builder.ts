@@ -15,17 +15,19 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { CatalogRecord } from "../agents/catalog.js";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
-import { catColor, catBg } from "./colors.js";
-import { deriveTitle } from "./title.js";
+import type { ProjectBriefs } from "../schemas/brief.js";
+import { type Takeaway, takeawayText } from "../schemas/knowledge.js";
+import { type ActionabilityDisplay, type TriageFile, type Tier as TriageTier, UNTRIAGED } from "../schemas/triage.js";
+import type { MetadataEntry, VideoProperties } from "../types/index.js";
+import { makeVideoId } from "../utils/video-id.js";
+import { catBg, catColor } from "./colors.js";
+import { type QualityInput, type Tier, qualityScore, tierOf } from "./quality.js";
 import { computeRelated } from "./related.js";
 import type { RelInput } from "./related.js";
-import { qualityScore, tierOf, type Tier, type QualityInput } from "./quality.js";
-import type { ProjectBriefs } from "../schemas/brief.js";
-import type { CatalogRecord } from "../agents/catalog.js";
-import type { MetadataEntry, VideoProperties } from "../types/index.js";
-import { takeawayText, type Takeaway } from "../schemas/knowledge.js";
+import { deriveTitle } from "./title.js";
 
 /** Dashboard author: prefer catalog author, then instagram_user, then the username fallback. */
 export function resolveDashboardAuthor(author: string, instagramUser: string, fallbackUsername: string): string {
@@ -61,6 +63,7 @@ interface IndexRecord {
   appliesTo: string[];
   quality: number;
   tier: Tier;
+  actionability: ActionabilityDisplay;
 }
 
 interface ActionableItem {
@@ -122,6 +125,7 @@ interface Facets {
   tags: { name: string; count: number }[];
   topics: { name: string; count: number }[];
   projects: { name: string; count: number }[];
+  actionability: { name: string; count: number }[];
 }
 
 interface ProjectMappingRaw {
@@ -333,12 +337,6 @@ export function normalizeToolUrl(raw: unknown): string {
   return "";
 }
 
-/** Sanitize a filename stem for use as an id in URLs and filenames. */
-function makeId(filename: string): string {
-  const stem = filename.endsWith(".mp4") ? filename.slice(0, -4) : filename;
-  return stem.replace(/[^A-Za-z0-9._-]/g, "_");
-}
-
 /**
  * Match a verification item_name to an analysis item.
  * Verif item_name is often "Analysis Name (type)" so we strip backticks
@@ -380,6 +378,8 @@ export async function buildDashboardData(): Promise<void> {
   });
   const projectMappings = projectMappingsFile.mappings ?? {};
   const projectBriefs = await loadState<ProjectBriefs>(CONFIG.STATE.PROJECT_BRIEFS, {});
+  const triageFile = await loadState<TriageFile>(CONFIG.STATE.TRIAGE, {});
+  const triageById = new Map<string, TriageTier>(Object.entries(triageFile).map(([id, e]) => [id, e.tier]));
 
   console.log(`Catalog: ${catalog.length}, KB: ${Object.keys(knowledge).length}`);
   console.log(`Analysis: ${Object.keys(analysis).length}, Verif: ${Object.keys(verifications).length}`);
@@ -413,7 +413,7 @@ export async function buildDashboardData(): Promise<void> {
     const linksEntry = linksV2[filename];
     const props = videoProperties[filename];
 
-    const id = makeId(filename);
+    const id = makeVideoId(filename);
 
     // pk: from classifications or parse filename pattern {username}_{pk}.mp4
     const pkFromClassification = classEntry?.pk ?? null;
@@ -554,6 +554,7 @@ export async function buildDashboardData(): Promise<void> {
     const qi: QualityInput = { verification, usefulness, confidence, implementability, appliesTo, tags, likes };
     const quality = qualityScore(qi);
     const tier = tierOf(qi);
+    const actionability: ActionabilityDisplay = triageById.get(id) ?? UNTRIAGED;
 
     normalized.push({
       _filename: filename,
@@ -579,6 +580,7 @@ export async function buildDashboardData(): Promise<void> {
       appliesTo,
       quality,
       tier,
+      actionability,
       code: code ?? "",
       pk,
       caption,
@@ -665,6 +667,7 @@ export async function buildDashboardData(): Promise<void> {
     appliesTo: v.appliesTo,
     quality: v.quality,
     tier: v.tier,
+    actionability: v.actionability,
   }));
 
   const indexFile: IndexFile = { meta, videos: indexRecords };
@@ -701,6 +704,7 @@ export async function buildDashboardData(): Promise<void> {
       appliesTo: v.appliesTo,
       quality: v.quality,
       tier: v.tier,
+      actionability: v.actionability,
       code: v.code,
       pk: v.pk,
       caption: v.caption,
@@ -779,12 +783,18 @@ export async function buildDashboardData(): Promise<void> {
     .sort((a, b) => b[1] - a[1])
     .map(([name, count]) => ({ name, count }));
 
+  const actionabilityCounts = new Map<string, number>();
+  for (const v of normalized)
+    actionabilityCounts.set(v.actionability, (actionabilityCounts.get(v.actionability) ?? 0) + 1);
+  const facetActionability = [...actionabilityCounts.entries()].map(([name, count]) => ({ name, count }));
+
   const facets: Facets = {
     categories: facetCategories,
     creators: facetCreators,
     tags: facetTags,
     topics: facetTopics,
     projects: facetProjects,
+    actionability: facetActionability,
   };
   await fs.writeFile(path.join(dataDir, "facets.json"), JSON.stringify(facets), "utf8");
 

@@ -6,6 +6,12 @@
 // project or is verified + highly useful.
 export type Tier = "featured" | "standard" | "thin";
 
+// Actionability triage tier (mirrors src/schemas/triage.ts). Only apply-now /
+// evaluate-later feed the apply-loop; reference stays searchable; skip is enjoyment.
+// "untriaged" is the data-builder sentinel for a video with no triage verdict yet
+// (kept distinct from a real reference-only verdict).
+export type ActionabilityTier = "apply-now" | "evaluate-later" | "reference-only" | "skip" | "untriaged";
+
 export interface IndexRecord {
   id: string;
   title: string;
@@ -26,6 +32,7 @@ export interface IndexRecord {
   appliesTo: string[];
   quality: number;
   tier: Tier;
+  actionability: ActionabilityTier;
 }
 
 export interface ActionableItem {
@@ -87,6 +94,7 @@ export interface Facets {
   tags: { name: string; count: number }[];
   topics: { name: string; count: number }[];
   projects: { name: string; count: number }[];
+  actionability: { name: string; count: number }[];
 }
 
 export interface ToolRecord {

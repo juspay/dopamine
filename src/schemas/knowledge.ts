@@ -32,7 +32,11 @@ export const KnowledgeSchema = z.object({
         takeaway: z.string().describe("The takeaway text"),
       }),
     )
-    .describe("3-7 timestamped takeaways"),
+    .describe(
+      "The genuine, specific takeaways the video conveys — typically 3-7 for a tutorial/product/" +
+        "educational video; few or zero for pure entertainment or personal-lifestyle content. " +
+        "Do NOT invent takeaways for content that has none.",
+    ),
   topics: z.array(z.string()).describe("Specific topics and technologies discussed"),
 });
 

@@ -11,6 +11,7 @@ import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
 import { type Takeaway, takeawayText } from "../schemas/knowledge.js";
 import { exponentialBackoff } from "../utils/rate-limit.js";
+import { makeVideoId } from "../utils/video-id.js";
 import { openSearchDb, vectorToBlob } from "./db.js";
 import { composeDoc, sha256Hex } from "./doc.js";
 
@@ -105,12 +106,6 @@ export interface SearchRecord {
   docHash: string;
   /** Hash of the exact FTS-indexed values — gates FTS row refresh. */
   contentHash: string;
-}
-
-/** Same id sanitisation as the dashboard data-builder. */
-function makeId(filename: string): string {
-  const stem = filename.endsWith(".mp4") ? filename.slice(0, -4) : filename;
-  return stem.replace(/[^A-Za-z0-9._-]/g, "_");
 }
 
 function flattenText(raw: KbEntry["transcript"]): string {
@@ -254,7 +249,7 @@ function buildRecord(inputs: RecordInputs): SearchRecord {
   });
 
   const base = {
-    id: makeId(filename),
+    id: makeVideoId(filename),
     title,
     category,
     creator,

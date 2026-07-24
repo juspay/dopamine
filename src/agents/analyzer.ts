@@ -7,17 +7,18 @@
  * State: videos/analysis.json (keyed by filename, resume support)
  */
 
-import { type NeuroLink } from "@juspay/neurolink";
 import path from "node:path";
-import fs from "node:fs/promises";
-import { AnalysisSchema, type Analysis } from "../schemas/analysis.js";
-import { tolerantOutput } from "../schemas/tolerant.js";
-import { takeawayText, type Takeaway } from "../schemas/knowledge.js";
-import { loadState, saveState } from "../pipeline/state.js";
+import type { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
+import { loadState, saveState } from "../pipeline/state.js";
+import { type Analysis, AnalysisSchema } from "../schemas/analysis.js";
+import { type Takeaway, takeawayText } from "../schemas/knowledge.js";
+import { tolerantOutput } from "../schemas/tolerant.js";
 import { safeJsonParse } from "../utils/json-repair.js";
-import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
+import { exponentialBackoff, sleep } from "../utils/rate-limit.js";
+import { makeVideoId } from "../utils/video-id.js";
 import { getThumbnailPath } from "../utils/video.js";
+import { loadTriageTiers, makeApplyGate } from "./triage.js";
 
 /** Knowledge base entry shape — only fields we need. */
 interface KnowledgeEntry {
@@ -107,8 +108,30 @@ export async function runAnalyzerAgent(neurolink: NeuroLink): Promise<void> {
   // aesthetic content) have an empty transcript but carry rich visual_description +
   // key_takeaways that yield actionable items. Filtering on `entry.transcript` alone
   // permanently excluded these, so analysis was silently skipped for them.
-  const entries = Object.entries(knowledgeBase).filter(([, entry]) => {
+  // Triage gate: only apply-now / evaluate-later videos get analyzed (personal/
+  // entertainment content never reaches actionable-item extraction). No-op until
+  // triage has run.
+  const applyGate = makeApplyGate(await loadTriageTiers());
+
+  // Authoritative gate: retire analysis already written for videos the gate now
+  // excludes (re-triaged to skip/reference-only, or predating triage), so a
+  // re-triage cleans stale actionable-items instead of leaving them forever.
+  // No-op until triage has run (applyGate admits everything on an empty map).
+  let prunedAnalysis = 0;
+  for (const filename of Object.keys(analysisState)) {
+    if (!applyGate(makeVideoId(filename))) {
+      delete analysisState[filename];
+      prunedAnalysis++;
+    }
+  }
+  if (prunedAnalysis > 0) {
+    console.log(`Analysis: pruned ${prunedAnalysis} stale entr${prunedAnalysis === 1 ? "y" : "ies"} now gated out.`);
+    await saveState(CONFIG.STATE.ANALYSIS, analysisState);
+  }
+
+  const entries = Object.entries(knowledgeBase).filter(([filename, entry]) => {
     if (entry.error) return false;
+    if (!applyGate(makeVideoId(filename))) return false;
     return (
       Boolean(entry.transcript) ||
       Boolean(entry.visual_description) ||
