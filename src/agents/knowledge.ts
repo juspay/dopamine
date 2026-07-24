@@ -35,12 +35,11 @@ You MUST provide:
 2. A detailed visual description of everything shown on screen — slides, code, demos, websites,
    apps, text overlays, diagrams. Include timestamps inline where content changes.
 3. Every URL, website, tool, product, or resource mentioned or shown — with timestamps.
-4. 3-7 key takeaways as bullet points. ALWAYS produce at least 3 takeaways.
-   For tutorial/educational videos, capture the actionable lessons or steps.
-   For product/tool videos, describe what the product is and what makes it noteworthy.
-   For entertainment/lifestyle/aesthetic content, describe the format, theme, mood, or
-   what the viewer is meant to feel or learn from watching. Never return an empty list —
-   every saved video has SOME reason it was saved; capture that reason as takeaways.
+4. Key takeaways as bullet points — the genuine, specific lessons, steps, tools, or facts the video
+   actually conveys. For tutorial/product/educational videos, produce 3-7 concrete takeaways.
+   For pure entertainment, aesthetic, or personal-lifestyle content with no real lesson, it is fine to
+   return few or zero takeaways rather than inventing them — do NOT manufacture actionable-sounding
+   takeaways for content that has none.
 5. All specific topics and technologies discussed (or themes for non-technical videos).
 
 Be extremely thorough. Do not summarize — capture everything.

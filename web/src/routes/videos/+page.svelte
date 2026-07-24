@@ -25,6 +25,7 @@
   let cats     = $state<string[]>([]);
   let projs    = $state<string[]>([]);
   let verif    = $state('all');
+  let act      = $state('all');
   let sort     = $state('best');
   // Low-quality (thin) learnings are hidden by default so the empty/unprocessed
   // tail never leads the library; a toggle brings them back.
@@ -34,6 +35,7 @@
   $effect(() => {
     q     = sp.get('q')    ?? '';
     verif = sp.get('verif') ?? 'all';
+    act = sp.get('act') ?? 'all';
     sort  = sp.get('sort')  ?? 'best';
     showThin = sp.get('thin') === '1';
     const rawCats = sp.get('cat');
@@ -49,6 +51,7 @@
     if (cats.length) url.searchParams.set('cat', cats.join(',')); else url.searchParams.delete('cat');
     if (projs.length) url.searchParams.set('project', projs.join(',')); else url.searchParams.delete('project');
     if (verif !== 'all') url.searchParams.set('verif', verif); else url.searchParams.delete('verif');
+    if (act !== 'all') url.searchParams.set('act', act); else url.searchParams.delete('act');
     if (sort !== 'best') url.searchParams.set('sort', sort); else url.searchParams.delete('sort');
     if (showThin) url.searchParams.set('thin', '1'); else url.searchParams.delete('thin');
     goto(url.toString(), { replaceState: true, keepFocus: true, noScroll: true });
@@ -73,6 +76,18 @@
     { value: 'outdated',          label: 'Outdated' },
     { value: 'unknown',           label: 'Not analysed' },
   ] as const;
+
+  // ── Actionability (triage) options ───────────────────────────────────────
+  const ACT_OPTIONS = [
+    { value: 'all',            label: 'All' },
+    { value: 'apply-now',      label: 'Apply now' },
+    { value: 'evaluate-later', label: 'Evaluate later' },
+    { value: 'reference-only', label: 'Reference' },
+    { value: 'skip',           label: 'Saved' },
+    { value: 'untriaged',      label: 'Not triaged' },
+  ] as const;
+  const actColor = (v: string): string =>
+    ({ 'apply-now': '#12924a', 'evaluate-later': '#0b8ea3', 'reference-only': '#a06a2c', skip: '#7d8896', untriaged: '#9aa0a6' })[v] ?? '#7d8896';
 
   // ── Sort options — shaped for SUI Select (id + label) ───────────────────
   const SORT_OPTIONS: SelectItem[] = [
@@ -101,6 +116,7 @@
     if (cats.length && !cats.includes(v.category)) return false;
     if (projs.length && !projs.some((p) => (v.appliesTo ?? []).includes(p))) return false;
     if (verif !== 'all' && v.verification !== verif) return false;
+    if (act !== 'all' && v.actionability !== act) return false;
     return true;
   }
 
@@ -154,6 +170,7 @@
     cats  = [];
     projs = [];
     verif = 'all';
+    act   = 'all';
     sort  = 'best';
     showThin = false;
     syncUrl();
@@ -180,7 +197,7 @@
   }
 
   const hasFilters = $derived(
-    q.trim() !== '' || cats.length > 0 || projs.length > 0 || verif !== 'all' || sort !== 'best' || showThin
+    q.trim() !== '' || cats.length > 0 || projs.length > 0 || verif !== 'all' || act !== 'all' || sort !== 'best' || showThin
   );
 </script>
 
@@ -278,6 +295,26 @@
       >
         {#if opt.value !== 'all'}
           <span class="verif-dot" style="background:{verifColor(opt.value)}" aria-hidden="true"></span>
+        {/if}
+        {opt.label}
+      </button>
+    {/each}
+  </div>
+
+  <!-- Actionability (triage) filter -->
+  <div class="verif-pills" role="group" aria-label="Filter by actionability">
+    {#each ACT_OPTIONS as opt}
+      {@const active = act === opt.value}
+      <button
+        class="verif-pill"
+        class:active
+        type="button"
+        aria-pressed={active}
+        style={opt.value !== 'all' ? `--pill-color:${actColor(opt.value)}` : ''}
+        onclick={() => { act = opt.value; syncUrl(); }}
+      >
+        {#if opt.value !== 'all'}
+          <span class="verif-dot" style="background:{actColor(opt.value)}" aria-hidden="true"></span>
         {/if}
         {opt.label}
       </button>

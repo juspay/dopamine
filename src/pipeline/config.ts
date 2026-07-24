@@ -51,6 +51,7 @@ export const CONFIG = {
     DIGEST_STATE: path.resolve("videos", "digest_state.json"),
     PROJECT_MAPPINGS: path.resolve("videos", "project_mappings.json"),
     PROJECT_BRIEFS: path.resolve("videos", "project_briefs.json"),
+    TRIAGE: path.resolve("videos", "triage.json"),
   },
 
   OUTPUT: {
@@ -77,6 +78,8 @@ export const CONFIG = {
   MAP_MODEL: process.env.MAP_MODEL ?? "gemini-2.5-flash",
 
   // Per-project action brief (synthesize mapped learnings → concrete actions).
+  // Actionability triage (runs before the apply-loop; text-only, like digest/mapper).
+  TRIAGE_MODEL: process.env.TRIAGE_MODEL ?? "gemini-2.5-flash",
   BRIEF_MODEL: process.env.BRIEF_MODEL ?? "gemini-2.5-flash",
   // `|| 1` guards NaN (non-numeric env) and 0, so the min-mappings gate is never
   // silently disabled.

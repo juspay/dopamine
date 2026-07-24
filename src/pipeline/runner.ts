@@ -25,6 +25,7 @@ import { runVerifierAgent } from "../agents/verifier.js";
 import { runDigestAgent } from "../agents/digest.js";
 import { runProjectMapper } from "../agents/project-mapper.js";
 import { runProjectBriefAgent } from "../agents/project-brief.js";
+import { runTriageAgent } from "../agents/triage.js";
 import { CONFIG } from "../pipeline/config.js";
 import { type LaneItem, acquireAll } from "../pipeline/lanes.js";
 import { loadState } from "../pipeline/state.js";
@@ -99,22 +100,23 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   //   1  Asset acquisition          (per-item frames/captions via lanes)
   //   2  Properties extraction
   //   3  Classification
-  //   4  Knowledge extraction
-  //   5  Link extraction
-  //   6  Link resolution
-  //   7  Catalog generation       \
-  //   8  Folder organization       > parallel group "post-classify"
-  //   9  Markdown generation      /
-  //  10  Content analysis
-  //  11  Research & verification
-  //  12  Implementation testing
-  //  13  Verification synthesis
-  //  14  Knowledge base enrichment
-  //  15  Dashboard build           ← reads ALL state including verifications
-  //  16  Search index              ← refreshes videos/search.db for the MCP server
-  //  17  Project mapping           ← maps learnings to projects (hybrid embed + LLM judge)
-  //  18  Project brief             ← synthesizes each project's learnings into actions
-  //  19  Digest                    ← LAST: pushes top new learnings via Shooter-compatible notify
+  //   4  Triage                    ← actionability tier; gates the apply-loop below
+  //   5  Knowledge extraction
+  //   6  Link extraction
+  //   7  Link resolution
+  //   8  Catalog generation       \
+  //   9  Folder organization       > parallel group "post-classify"
+  //  10  Markdown generation      /
+  //  11  Content analysis
+  //  12  Research & verification
+  //  13  Implementation testing
+  //  14  Verification synthesis
+  //  15  Knowledge base enrichment
+  //  16  Dashboard build           ← reads ALL state including verifications
+  //  17  Search index              ← refreshes videos/search.db for the MCP server
+  //  18  Project mapping           ← maps learnings to projects (hybrid embed + LLM judge)
+  //  19  Project brief             ← synthesizes each project's learnings into actions
+  //  20  Digest                    ← LAST: pushes top new learnings via Shooter-compatible notify
   // ---------------------------------------------------------------------------
   // Lane assets acquired in step 1, consumed by steps 3-5 (read at call time).
   let laneItems: LaneItem[] = [];
@@ -151,29 +153,31 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     { name: "Asset acquisition", run: () => runAcquisitionStep() }, //  1
     { name: "Properties extraction", run: () => runPropertiesAgent() }, //  2
     { name: "Classification", run: () => runClassifierAgent(neurolink, laneItems) }, //  3
-    { name: "Knowledge extraction", run: () => runKnowledgeAgent(neurolink, laneItems) }, //  4
-    { name: "Link extraction", run: () => runLinkExtractAgent(neurolink, laneItems) }, //  5
-    { name: "Link resolution", run: () => runLinkResolverAgent(neurolink) }, //  6
-    { name: "Catalog generation", run: () => runCatalogAgent(), parallelGroup: "post-classify" }, //  7
-    { name: "Folder organization", run: () => runOrganizerAgent(), parallelGroup: "post-classify" }, //  8
-    { name: "Markdown generation", run: () => runMarkdownAgent(), parallelGroup: "post-classify" }, //  9
-    // Verification pipeline
-    { name: "Content analysis", run: () => runAnalyzerAgent(neurolink) }, // 10
-    { name: "Research & verification", run: () => runResearchAgent(neurolink) }, // 11
-    { name: "Implementation testing", run: () => runImplementerAgent() }, // 12
-    { name: "Verification synthesis", run: () => runVerifierAgent(neurolink) }, // 13
-    { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() }, // 14
+    // Triage decides each video's actionability tier; gates the apply-loop below
+    { name: "Triage", run: () => runTriageAgent(neurolink) }, //  4
+    { name: "Knowledge extraction", run: () => runKnowledgeAgent(neurolink, laneItems) }, //  5
+    { name: "Link extraction", run: () => runLinkExtractAgent(neurolink, laneItems) }, //  6
+    { name: "Link resolution", run: () => runLinkResolverAgent(neurolink) }, //  7
+    { name: "Catalog generation", run: () => runCatalogAgent(), parallelGroup: "post-classify" }, //  8
+    { name: "Folder organization", run: () => runOrganizerAgent(), parallelGroup: "post-classify" }, //  9
+    { name: "Markdown generation", run: () => runMarkdownAgent(), parallelGroup: "post-classify" }, // 10
+    // Verification pipeline (gated to apply-now/evaluate-later tiers)
+    { name: "Content analysis", run: () => runAnalyzerAgent(neurolink) }, // 11
+    { name: "Research & verification", run: () => runResearchAgent(neurolink) }, // 12
+    { name: "Implementation testing", run: () => runImplementerAgent() }, // 13
+    { name: "Verification synthesis", run: () => runVerifierAgent(neurolink) }, // 14
+    { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() }, // 15
     // Dashboard build runs late so verification scores land in the same run
-    { name: "Dashboard build", run: () => runDashboardAgent() }, // 15  -- reads verifications.json
+    { name: "Dashboard build", run: () => runDashboardAgent() }, // 16  -- reads verifications.json
     // Search index runs after dashboard build so the MCP corpus reflects this run
-    { name: "Search index", run: () => runSearchIndexer() }, // 16
+    { name: "Search index", run: () => runSearchIndexer() }, // 17
     // Project mapping reads the fresh embeddings to map learnings to projects
-    { name: "Project mapping", run: () => runProjectMapper(neurolink) }, // 17
+    { name: "Project mapping", run: () => runProjectMapper(neurolink) }, // 18
     // Project brief synthesizes each project's mapped learnings into actions
-    { name: "Project brief", run: () => runProjectBriefAgent(neurolink) }, // 18
+    { name: "Project brief", run: () => runProjectBriefAgent(neurolink) }, // 19
 
     // Digest runs LAST — it reads the fresh search index to push new learnings
-    { name: "Digest", run: () => runDigestAgent(neurolink) }, // 19
+    { name: "Digest", run: () => runDigestAgent(neurolink) }, // 20
   ];
 
   const startStep = options.startStep ?? Number.parseInt(process.env.START_STEP ?? "0", 10);
@@ -401,26 +405,27 @@ Step index map (0-indexed, for use with --start / --end / START_STEP / END_STEP)
    1  Video download            (IG scraper — requires valid session)
    2  Properties extraction
    3  Classification
-   4  Knowledge extraction
-   5  Link extraction
-   6  Link resolution
-   7  Catalog generation        \
-   8  Folder organization        > parallel group "post-classify" (--parallel)
-   9  Markdown generation       /
-  10  Content analysis
-  11  Research & verification
-  12  Implementation testing
-  13  Verification synthesis
-  14  Knowledge base enrichment
-  15  Dashboard build           (reads verifications.json so scores are current)
-  16  Search index              (refreshes videos/search.db for the dopamine-kb MCP server)
-  17  Project mapping           (maps learnings to projects.json via hybrid embed + LLM judge)
-  18  Project brief             (synthesizes each project's mapped learnings into actions)
-  19  Digest                    (runs LAST — pushes top new learnings to a Shooter-compatible endpoint)
+   4  Triage                    (actionability tier; gates the apply-loop)
+   5  Knowledge extraction
+   6  Link extraction
+   7  Link resolution
+   8  Catalog generation        \
+   9  Folder organization        > parallel group "post-classify" (--parallel)
+  10  Markdown generation       /
+  11  Content analysis
+  12  Research & verification
+  13  Implementation testing
+  14  Verification synthesis
+  15  Knowledge base enrichment
+  16  Dashboard build           (reads verifications.json so scores are current)
+  17  Search index              (refreshes videos/search.db for the dopamine-kb MCP server)
+  18  Project mapping           (maps learnings to projects.json via hybrid embed + LLM judge)
+  19  Project brief             (synthesizes each project's mapped learnings into actions)
+  20  Digest                    (runs LAST — pushes top new learnings to a Shooter-compatible endpoint)
 
-NOTE: Steps appended after the search index — Project mapping (17), Project brief
-(18), Digest (19) — so the pipeline now has 20 steps (0-19). END_STEP is exclusive:
-use END_STEP=17 to stop after the search index, or omit it to run everything.
+NOTE: Triage (4) now gates the apply-loop; Project mapping (18), Project brief (19),
+and Digest (20) run last — so the pipeline has 21 steps (0-20). END_STEP is exclusive:
+use END_STEP=18 to stop after the search index, or omit it to run everything.
 
 Environment variables:
   START_STEP                 Same as --start

@@ -12,7 +12,8 @@ import { blobToVector, hasSearchSchema, openSearchDb, vectorToBlob } from "../se
 import { cosineSim } from "../search/rank.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { exponentialBackoff } from "../utils/rate-limit.js";
-import { type IdeaVideo } from "./ideas-writer.js";
+import type { IdeaVideo } from "./ideas-writer.js";
+import { loadTriageTiers, makeApplyGate } from "./triage.js";
 
 const REASON_MAX = 140;
 
@@ -333,7 +334,11 @@ export async function runProjectMapper(neurolink: NeuroLink | null, overrides: M
     const hash = portfolioHash(projects);
     const state = loadMappingsFile(mappingsPath, hash);
     const projectVecs = await embedProjects(db, projects, embed, model);
-    const videos = loadJudgeVideos(db, model);
+    // Triage gate: only apply-now / evaluate-later videos are candidates for
+    // mapping — personal/entertainment content never reaches the judge, so it
+    // can't be rationalized onto a project. No-op until triage has run.
+    const applyGate = makeApplyGate(await loadTriageTiers());
+    const videos = loadJudgeVideos(db, model).filter((v) => applyGate(v.id));
     const judge = overrides.judge ?? (neurolink ? neurolinkJudge(neurolink) : null);
 
     // Each checkpoint rewrites BOTH the table and the JSON so they never drift —
@@ -347,6 +352,21 @@ export async function runProjectMapper(neurolink: NeuroLink | null, overrides: M
         mappings: state.mappings,
       });
     };
+    // Authoritative gate: drop mappings already written for videos the gate now
+    // excludes (re-triaged to skip/reference-only, or predating triage), so a
+    // re-triage retires the spurious mappings the triage feature was built to
+    // eliminate instead of leaving them in the dashboard/briefs. No-op on an
+    // empty tier map (applyGate admits everything until triage has run).
+    let prunedMappings = 0;
+    for (const id of Object.keys(state.mappings)) {
+      if (!applyGate(id)) {
+        delete state.mappings[id];
+        delete state.videoHashes[id];
+        prunedMappings++;
+      }
+    }
+    if (prunedMappings > 0) console.log(`  Project mapping: pruned ${prunedMappings} stale mapping(s) now gated out.`);
+
     const judged = await judgeVideos(videos, projects, projectVecs, state, judge, flush);
     await flush();
 
