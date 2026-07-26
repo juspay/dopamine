@@ -6,7 +6,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
 import { acquireLock, releaseLock } from "../pipeline/lock.js";
-import { MapJudgeSchema } from "../schemas/mapping.js";
+import { MapJudgeSchema, MapVerdictSchema } from "../schemas/mapping.js";
 import { type Project, loadProjects, portfolioHash, projectDoc, projectHash } from "../schemas/projects.js";
 import { blobToVector, hasSearchSchema, openSearchDb, vectorToBlob } from "../search/db.js";
 import { cosineSim } from "../search/rank.js";
@@ -43,8 +43,17 @@ export interface ProjectMapping {
 /** videoId → mappings (empty array = judged, nothing applied — still "processed"). */
 export type MappingSet = Record<string, ProjectMapping[]>;
 
+/** Bump when judging behaviour changes (candidate selection, prompt, parsing,
+ *  token budget) so verdicts cached under the old behaviour are re-judged.
+ *  Without this, a video
+ *  recorded as "nothing applies" stays that way until its own content changes —
+ *  which is how the truncation bug's empty results would have persisted. */
+export const JUDGE_VERSION = 2;
+
 export interface ProjectMappingsFile {
   portfolioHash: string;
+  /** JUDGE_VERSION that produced these verdicts; a mismatch invalidates them. */
+  judgeVersion?: number;
   /** videoId → search-index doc hash at judge time; a change re-judges the video. */
   videoHashes: Record<string, string>;
   mappings: MappingSet;
@@ -59,12 +68,65 @@ export interface ProjectVector {
 // Pure pieces
 // ---------------------------------------------------------------------------
 
-/** Top-K projects by cosine similarity above a floor. */
-export function prefilter(videoVec: ArrayLike<number>, projects: ProjectVector[], topK: number, min: number): string[] {
+/** Corpus-wide mean and spread of one project's similarity to every video. */
+export interface ProjectBaseline {
+  mean: number;
+  sd: number;
+}
+export type ProjectBaselines = Record<string, ProjectBaseline>;
+
+/**
+ * How close each project sits to the corpus as a whole.
+ *
+ * Embedding similarities are not comparable across projects. Measured over 227
+ * eligible videos, per-project mean cosine ranged 0.558 (WorkForge) to 0.607
+ * (Curator) while each project's own spread was only sd≈0.03 — so a project's
+ * baseline offset outweighed the entire relevance signal, and ranking by raw
+ * cosine mostly ranked projects by how central their vector is. Curator was
+ * offered as a candidate for 84% of the corpus and WorkForge for 4%, which
+ * reflects vector centrality, not what those videos were about.
+ *
+ * Subtracting each project's own baseline makes the scores comparable.
+ */
+export function projectBaselines(videoVecs: ArrayLike<number>[], projects: ProjectVector[]): ProjectBaselines {
+  const out: ProjectBaselines = {};
+  for (const p of projects) {
+    const sims = videoVecs.map((v) => cosineSim(v, p.vector));
+    const mean = sims.reduce((a, b) => a + b, 0) / sims.length;
+    const variance = sims.reduce((a, b) => a + (b - mean) ** 2, 0) / sims.length;
+    out[p.name] = { mean, sd: Math.sqrt(variance) };
+  }
+  return out;
+}
+
+/**
+ * Top-K projects a video is closest to, above a floor.
+ *
+ * With `baselines`, a project scores by how many standard deviations above its
+ * own corpus baseline this video sits, and `min` is read in those units — a
+ * video has to be unusually close to a project, not merely close in absolute
+ * terms. Without them it falls back to raw cosine, since the standardisation
+ * needs a corpus large enough for the spread to mean anything.
+ */
+export function prefilter(
+  videoVec: ArrayLike<number>,
+  projects: ProjectVector[],
+  topK: number,
+  min: number,
+  baselines?: ProjectBaselines,
+): string[] {
   return projects
-    .map((p) => ({ name: p.name, sim: cosineSim(videoVec, p.vector) }))
-    .filter((p) => p.sim >= min)
-    .sort((a, b) => b.sim - a.sim)
+    .map((p) => {
+      const sim = cosineSim(videoVec, p.vector);
+      const base = baselines?.[p.name];
+      // sd of 0 means every video is equidistant from this project, so the
+      // standardised score is undefined — leave it on the raw scale rather
+      // than dividing by zero.
+      const score = base && base.sd > 0 ? (sim - base.mean) / base.sd : sim;
+      return { name: p.name, score };
+    })
+    .filter((p) => p.score >= min)
+    .sort((a, b) => b.score - a.score)
     .slice(0, topK)
     .map((p) => p.name);
 }
@@ -91,11 +153,18 @@ function truncate(text: string, max: number): string {
  * the project_mappings primary key on write.
  */
 export function parseJudgement(judge: unknown, candidateNames: string[]): ProjectMapping[] {
-  const parsed = MapJudgeSchema.safeParse(judge);
-  if (!parsed.success) return [];
+  // Validate PER VERDICT, not over the whole payload. The strict object schema
+  // is all-or-nothing: a single verdict missing `reason` used to discard every
+  // other verdict for that video, including valid applies:true ones — which is
+  // how ~93% of positive judgements were being silently lost.
+  const results = (judge as { results?: unknown })?.results;
+  if (!Array.isArray(results)) return [];
   const out: ProjectMapping[] = [];
   const seen = new Set<string>();
-  for (const r of parsed.data.results) {
+  for (const raw of results) {
+    const verdict = MapVerdictSchema.safeParse(raw);
+    if (!verdict.success) continue;
+    const r = verdict.data;
     if (!r.applies) continue;
     const match = candidateNames.find((n) => n.toLowerCase() === r.project.toLowerCase());
     if (!match || seen.has(match.toLowerCase())) continue;
@@ -119,16 +188,40 @@ export interface JudgeVideo {
 
 export function judgePrompt(video: JudgeVideo, projects: Project[]): string {
   return [
-    "You decide which of the listed projects a saved-video learning is genuinely useful for.",
-    "Applies means the learning could realistically inform or improve that specific project — not merely share a topic.",
-    "For EACH project return applies (boolean), confidence (high|medium|low), and a reason (<140 chars, concrete).",
+    "Decide, for each project, whether this saved-video learning would actually change what its maintainer builds.",
+    "",
+    "Default to applies=false. The bar is not 'related to' — it is 'I would open the repo because of this'.",
+    "",
+    "REJECT (applies=false) when the only link is:",
+    "  - a shared language, framework, or platform ('both use JavaScript', 'both are SvelteKit')",
+    "  - a shared broad topic ('both involve AI', 'both are developer tools')",
+    "  - subject matter the project merely PROCESSES or INGESTS rather than is built from",
+    "  - a generic best practice that would apply equally to any software project",
+    "  - a tool the project could theoretically adopt but has no stated need for",
+    "",
+    "ACCEPT (applies=true) only when you can name the concrete thing that changes: a specific",
+    "technique to adopt, a named tool to install, a defect to avoid, or a decision to revisit.",
+    "If your reason could be copy-pasted onto a different project unchanged, it is not specific enough — reject.",
+    "",
+    "CONFIDENCE — how sure you are of the verdict itself, NOT how strong the link is.",
+    "A weak link is an applies=false, not a low-confidence applies=true.",
+    "  high   = you would defend this call; another reviewer would reach the same one",
+    "  medium = you believe it, but a reasonable reviewer could disagree",
+    "  low    = you lean toward this verdict but are genuinely unsure",
+    "Prefer low over flipping a borderline call — a low verdict is recorded and",
+    "filtered separately downstream, so answering honestly costs nothing.",
+    "",
+    "For EACH project return applies (boolean), confidence (high|medium|low), and reason (<140 chars).",
+    "The reason must state the SPECIFIC change, or — when rejecting — why the apparent link is superficial.",
     "",
     `LEARNING: ${video.title}`,
     `Takeaways: ${video.takeaways.slice(0, 5).join(" | ") || "-"}`,
     `Tools: ${video.toolNames.join(", ") || "-"}`,
     "",
     "PROJECTS:",
-    ...projects.map((p) => `- ${p.name}: ${p.description}`),
+    ...projects.map(
+      (p) => `- ${p.name}: ${p.description}${p.avoid ? `\n    NOT applicable merely because: ${p.avoid}` : ""}`,
+    ),
   ].join("\n");
 }
 
@@ -246,8 +339,13 @@ interface LoadedMappings {
 function loadMappingsFile(mappingsPath: string, hash: string): LoadedMappings {
   try {
     const parsed = JSON.parse(fs.readFileSync(mappingsPath, "utf8")) as ProjectMappingsFile;
-    // Portfolio changed → discard old verdicts and re-map from scratch.
+    // Portfolio changed, or the verdicts predate the current judging behaviour
+    // → discard and re-map from scratch.
     if (parsed.portfolioHash !== hash || typeof parsed.mappings !== "object") return { mappings: {}, videoHashes: {} };
+    if ((parsed.judgeVersion ?? 1) !== JUDGE_VERSION) {
+      console.log(`  Judge version changed (${parsed.judgeVersion ?? 1} → ${JUDGE_VERSION}) — re-judging all videos.`);
+      return { mappings: {}, videoHashes: {} };
+    }
     return { mappings: parsed.mappings, videoHashes: parsed.videoHashes ?? {} };
   } catch {
     return { mappings: {}, videoHashes: {} };
@@ -271,7 +369,11 @@ function neurolinkJudge(neurolink: NeuroLink): JudgeFn {
           schema: MapJudgeSchema,
           output: { format: "json" },
           disableTools: true,
-          maxTokens: 1024,
+          // MAP_MODEL is a thinking model: reasoning tokens are drawn from this
+          // same budget, so a low cap starves the actual JSON. Measured at 1024,
+          // only 1 of 10 responses was schema-valid (avg 126 chars, truncated
+          // mid-object); at 4096 it was 10 of 10. Do not lower without re-measuring.
+          maxTokens: 4096,
           timeout: "120s",
         });
         return safeJsonParse(response.content);
@@ -307,10 +409,22 @@ async function judgeVideos(
   flush: () => Promise<void>,
 ): Promise<number> {
   const { mappings, videoHashes } = state;
+  // Baselines come from every loaded video, not just the unjudged ones, so the
+  // threshold means the same thing on an incremental run as on a full rebuild.
+  // Below the floor the sample is too small for a spread to be meaningful, so
+  // we stay on raw cosine.
+  const useBaselines = videos.length >= CONFIG.MAP_BASELINE_MIN_VIDEOS;
+  const baselines = useBaselines
+    ? projectBaselines(
+        videos.map((v) => v.vector),
+        projectVecs,
+      )
+    : undefined;
+  const floor = useBaselines ? CONFIG.MAP_PREFILTER_MIN_Z : CONFIG.MAP_PREFILTER_MIN;
   let judged = 0;
   for (const video of videos) {
     if (video.id in mappings && videoHashes[video.id] === video.docHash) continue; // unchanged, already judged
-    const candidates = prefilter(video.vector, projectVecs, CONFIG.MAP_PREFILTER_TOPK, CONFIG.MAP_PREFILTER_MIN);
+    const candidates = prefilter(video.vector, projectVecs, CONFIG.MAP_PREFILTER_TOPK, floor, baselines);
     if (candidates.length === 0 || judge === null) {
       mappings[video.id] = [];
       videoHashes[video.id] = video.docHash;
@@ -383,6 +497,7 @@ export async function runProjectMapper(neurolink: NeuroLink | null, overrides: M
       writeMappingsTable(db, state.mappings);
       await saveMappingsFile(mappingsPath, {
         portfolioHash: hash,
+        judgeVersion: JUDGE_VERSION,
         videoHashes: state.videoHashes,
         mappings: state.mappings,
       });

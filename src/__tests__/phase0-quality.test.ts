@@ -134,3 +134,26 @@ describe("parseJudgement lone-token reasons", () => {
     expect(parseJudgement(j("authentication-middleware-reuse"), ["P"])).toHaveLength(1);
   });
 });
+
+describe("parseJudgement resilience (recall)", () => {
+  const good = { project: "A", applies: true, confidence: "high", reason: "shares the scraping stack" };
+  const malformed = { project: "B", applies: true }; // truncated: no confidence/reason
+
+  it("keeps a valid verdict even when a sibling verdict is malformed", () => {
+    // Regression: the whole-object schema discarded every verdict when one was
+    // malformed, losing ~93% of the judge's positive answers.
+    const out = parseJudgement({ results: [good, malformed] }, ["A", "B"]);
+    expect(out).toHaveLength(1);
+    expect(out[0].project).toBe("A");
+  });
+
+  it("keeps a valid verdict that follows a malformed one", () => {
+    expect(parseJudgement({ results: [malformed, good] }, ["A", "B"])).toHaveLength(1);
+  });
+
+  it("returns nothing for a non-array or absent results payload", () => {
+    expect(parseJudgement({ results: "nope" }, ["A"])).toEqual([]);
+    expect(parseJudgement({}, ["A"])).toEqual([]);
+    expect(parseJudgement(null, ["A"])).toEqual([]);
+  });
+});

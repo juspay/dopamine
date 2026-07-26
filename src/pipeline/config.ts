@@ -77,7 +77,28 @@ export const CONFIG = {
   // Project mapping (hybrid embed-prefilter → LLM judge).
   PROJECTS_CONFIG: path.resolve("projects.json"),
   MAP_PREFILTER_TOPK: Number.parseInt(process.env.MAP_PREFILTER_TOPK ?? "4", 10),
+  /** Raw-cosine floor. Only used on a corpus too small to standardise (see below). */
   MAP_PREFILTER_MIN: Number.parseFloat(process.env.MAP_PREFILTER_MIN ?? "0.55"),
+  /**
+   * Prefilter floor in standard deviations above a project's own baseline.
+   * The raw floor passed 3.78 of a possible 4 candidates per video, so it was
+   * not filtering at all. Swept over one 40-video sample:
+   *
+   *   z      videos mapped   mappings   projects/video   judged without an LLM
+   *   0.50   21/40           40         1.90             14/40
+   *   0.75   19/40           32         1.68             17/40
+   *   1.00   18/40           30         1.67             20/40
+   *
+   * Past 0.75 the multi-project spread stops improving, so the extra tightening
+   * buys cleaner individual verdicts rather than fewer of them: at 1.0 a
+   * terminal-monitor video maps to Shooter alone and an AI-gateway video to
+   * Neurolink alone, where 0.5 gave each of them four projects. 0.75 and 1.0
+   * are within sample noise of each other on volume — this is the knob to
+   * reach for if mapping coverage matters more than per-mapping precision.
+   */
+  MAP_PREFILTER_MIN_Z: Number.parseFloat(process.env.MAP_PREFILTER_MIN_Z ?? "1.0"),
+  /** Below this many videos a per-project spread is noise, so ranking stays on raw cosine. */
+  MAP_BASELINE_MIN_VIDEOS: Number.parseInt(process.env.MAP_BASELINE_MIN_VIDEOS ?? "30", 10),
   MAP_MODEL: process.env.MAP_MODEL ?? "gemini-2.5-flash",
 
   // Actionability triage (runs before the apply-loop; text-only, like digest/mapper).

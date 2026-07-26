@@ -3,10 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  JUDGE_VERSION,
   type ProjectMappingsFile,
   type ProjectVector,
   parseJudgement,
   prefilter,
+  projectBaselines,
   runProjectMapper,
 } from "../agents/project-mapper.js";
 import { openSearchDb } from "../search/db.js";
@@ -24,6 +26,53 @@ describe("prefilter", () => {
   });
   it("respects topK", () => {
     expect(prefilter([1, 1, 1], projects, 2, 0.1)).toHaveLength(2);
+  });
+});
+
+describe("prefilter with corpus baselines", () => {
+  // "Hub" sits between every corpus vector, so it beats the specialists on raw
+  // cosine for every input — the real failure, where one project was offered
+  // for 84% of the corpus and another for 4% purely on vector centrality.
+  const projects: ProjectVector[] = [
+    { name: "Hub", vector: Float32Array.from([1, 1, 1]) },
+    { name: "Specialist", vector: Float32Array.from([1, 0, 0]) },
+  ];
+  const corpus = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+    [1, 1, 0],
+  ];
+
+  it("raw cosine ranks the hub above the project the video is actually about", () => {
+    expect(prefilter([1, 0, 0], projects, 2, 0)).toEqual(["Specialist", "Hub"]);
+    // …and the hub still clears the floor for a video with nothing in common
+    // with it beyond being in the corpus at all.
+    expect(prefilter([0, 1, 0], projects, 2, 0.5)).toEqual(["Hub"]);
+  });
+
+  it("standardising against each project's own baseline demotes the hub", () => {
+    const baselines = projectBaselines(corpus, projects);
+    expect(baselines.Hub.mean).toBeGreaterThan(baselines.Specialist.mean);
+    // The [0,1,0] video is no closer to Hub than the corpus average is, so it
+    // no longer scores as a match at all.
+    expect(prefilter([0, 1, 0], projects, 2, 0.5, baselines)).not.toContain("Hub");
+    // The specialist's own video is still an unusually good match for it.
+    expect(prefilter([1, 0, 0], projects, 2, 0.5, baselines)[0]).toBe("Specialist");
+  });
+
+  it("falls back to the raw scale for a project with no spread", () => {
+    // Every corpus vector equidistant → sd 0 → standardising is undefined.
+    const flat: ProjectVector[] = [{ name: "Flat", vector: Float32Array.from([1, 0, 0]) }];
+    const baselines = projectBaselines(
+      [
+        [1, 0, 0],
+        [1, 0, 0],
+      ],
+      flat,
+    );
+    expect(baselines.Flat.sd).toBe(0);
+    expect(prefilter([1, 0, 0], flat, 2, 0.5, baselines)).toEqual(["Flat"]);
   });
 });
 
@@ -226,6 +275,34 @@ describe("runProjectMapper", () => {
     );
     await runProjectMapper(null, { ...p, embed: projectEmbed, judge });
     expect(calls).toBeGreaterThan(first); // portfolio changed → re-mapped
+  });
+
+  it("re-judges everything when the cached verdicts predate the current judge version", async () => {
+    const p = paths();
+    await seedDb(p.dbPath);
+    await fs.writeFile(p.projectsPath, JSON.stringify(PROJECTS));
+    let calls = 0;
+    const judge = async (prompt: string) => {
+      calls++;
+      return {
+        results: ["Scraper", "Kitchen"]
+          .filter((n) => prompt.includes(`- ${n}:`))
+          .map((n) => ({ project: n, applies: true, confidence: "high", reason: `applies to ${n} directly` })),
+      };
+    };
+    await runProjectMapper(null, { ...p, embed: projectEmbed, judge });
+    const first = calls;
+
+    // Age the file to the previous judge version, leaving every content hash
+    // intact. Nothing else about the inputs changed, so only the version bump
+    // can trigger a re-judge — this is what rescues videos cached as "nothing
+    // applies" by a judge that was silently dropping its own verdicts.
+    const aged = JSON.parse(await fs.readFile(p.mappingsPath, "utf8")) as ProjectMappingsFile;
+    expect(aged.judgeVersion).toBe(JUDGE_VERSION);
+    await fs.writeFile(p.mappingsPath, JSON.stringify({ ...aged, judgeVersion: JUDGE_VERSION - 1 }));
+
+    await runProjectMapper(null, { ...p, embed: projectEmbed, judge });
+    expect(calls).toBeGreaterThan(first);
   });
 
   it("re-judges a video whose search-index content hash changed", async () => {
