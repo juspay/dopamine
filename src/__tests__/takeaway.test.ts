@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { KnowledgeSchema, takeawayText } from "../schemas/knowledge.js";
+import { describe, expect, it } from "vitest";
+import { KnowledgeSchema, takeawayText, takeawayTitleText } from "../schemas/knowledge.js";
 
 describe("takeawayText", () => {
   it("prefixes the timestamp when present", () => {
@@ -15,6 +15,23 @@ describe("takeawayText", () => {
     expect(takeawayText(undefined)).toBe("");
     expect(takeawayText(null)).toBe("");
     expect(takeawayText({})).toBe("");
+  });
+});
+
+describe("takeawayTitleText", () => {
+  it("never includes the timestamp prefix", () => {
+    expect(takeawayTitleText({ timestamp: "0:05", takeaway: "Use X" })).toBe("Use X");
+  });
+  it("is empty when the takeaway text is empty, even with a timestamp (regression: title leaked '[0:00] ')", () => {
+    expect(takeawayTitleText({ timestamp: "0:00", takeaway: "" })).toBe("");
+  });
+  it("passes a legacy string through unchanged (backward-compat)", () => {
+    expect(takeawayTitleText("Use X")).toBe("Use X");
+  });
+  it("tolerates null / undefined / partial objects", () => {
+    expect(takeawayTitleText(undefined)).toBe("");
+    expect(takeawayTitleText(null)).toBe("");
+    expect(takeawayTitleText({})).toBe("");
   });
 });
 

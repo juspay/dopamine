@@ -9,7 +9,7 @@ import { normalizeToolUrl } from "../dashboard/data-builder.js";
 import { deriveTitle } from "../dashboard/title.js";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
-import { type Takeaway, takeawayText } from "../schemas/knowledge.js";
+import { type Takeaway, takeawayText, takeawayTitleText } from "../schemas/knowledge.js";
 import { exponentialBackoff } from "../utils/rate-limit.js";
 import { makeVideoId } from "../utils/video-id.js";
 import { openSearchDb, vectorToBlob } from "./db.js";
@@ -222,7 +222,11 @@ function resolveVerification(anEntry: AnalysisEntry | undefined, verifEntry: Ver
 function buildRecord(inputs: RecordInputs): SearchRecord {
   const { filename, catEntry, classEntry, kbEntry, anEntry, verifEntry, resEntry, linksEntry } = inputs;
 
-  const title = deriveTitle(catEntry?.description, takeawayText(kbEntry?.key_takeaways?.[0]), classEntry?.description);
+  const title = deriveTitle(
+    catEntry?.description,
+    takeawayTitleText(kbEntry?.key_takeaways?.[0]),
+    classEntry?.description,
+  );
   const category = classEntry?.category ?? kbEntry?.category ?? catEntry?.category ?? "Other";
   const creator = classEntry?.username ?? kbEntry?.username ?? catEntry?.instagram_user ?? "";
   const code = classEntry?.code ?? null;

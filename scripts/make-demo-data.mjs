@@ -8,6 +8,19 @@ import path from "node:path";
 // like production, not hand-faked. Requires `npm run build` first.
 import { qualityScore, tierOf } from "../dist/dashboard/quality.js";
 
+// Demo actionability tier, mirroring src/schemas/triage.ts. Derived from the
+// synthetic video's own signals so the dashboard's triage filter has a
+// realistic spread to render.
+const APPLY_CATEGORIES = new Set(["Tech & Coding", "AI & Machine Learning"]);
+function demoActionability(seed, tier) {
+  if (tier === "thin") return "untriaged";
+  if (APPLY_CATEGORIES.has(seed.category)) {
+    return seed.implementability >= 7 ? "apply-now" : "evaluate-later";
+  }
+  // usefulness is the analyzer's vocabulary: highly_useful | useful | somewhat_useful | ""
+  return seed.usefulness === "" || seed.usefulness === "somewhat_useful" ? "skip" : "reference-only";
+}
+
 // One synthetic project so the demo exercises project mapping (→ chips, facet).
 const DEMO_PROJECT = "Notes Assistant";
 
@@ -216,6 +229,8 @@ const detail = (s, i) => {
     appliesTo,
     quality: qualityScore(qi),
     tier: tierOf(qi),
+    actionability: demoActionability(s, tierOf(qi)),
+    thinReason: tierOf(qi) === "thin" ? "extraction-empty" : null,
     code: "",
     pk: null,
     caption: `${s.title}. Demo content for the Dopamine dashboard — not a real post.`,
@@ -280,6 +295,8 @@ const indexRecord = (d) => ({
   appliesTo: d.appliesTo,
   quality: d.quality,
   tier: d.tier,
+  actionability: d.actionability,
+  thinReason: d.thinReason,
 });
 
 const meta = {
@@ -306,6 +323,7 @@ const facets = {
   tags: [...tally(details.flatMap((d) => d.tags)).entries()].map(([name, count]) => ({ name, count })),
   topics: [...tally(details.flatMap((d) => d.topics)).entries()].map(([name, count]) => ({ name, count })),
   projects: [...tally(details.flatMap((d) => d.appliesTo)).entries()].map(([name, count]) => ({ name, count })),
+  actionability: [...tally(details.map((d) => d.actionability)).entries()].map(([name, count]) => ({ name, count })),
 };
 
 const tools = details.flatMap((d) =>

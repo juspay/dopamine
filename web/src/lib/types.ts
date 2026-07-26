@@ -12,6 +12,9 @@ export type Tier = "featured" | "standard" | "thin";
 // (kept distinct from a real reference-only verdict).
 export type ActionabilityTier = "apply-now" | "evaluate-later" | "reference-only" | "skip" | "untriaged";
 
+// Why a thin video is thin (mirrors src/dashboard/data-builder.ts). Null unless tier==='thin'.
+export type ThinReason = "classification-failed" | "extraction-empty" | "not-extracted" | "low-signal";
+
 export interface IndexRecord {
   id: string;
   title: string;
@@ -33,6 +36,7 @@ export interface IndexRecord {
   quality: number;
   tier: Tier;
   actionability: ActionabilityTier;
+  thinReason: ThinReason | null;
 }
 
 export interface ActionableItem {
@@ -122,8 +126,14 @@ export interface BriefAction {
   title: string;
   detail: string;
   basedOn: string[];
+  /** Drawn from a single learning — a hunch, not a corroborated recommendation.
+   *  Absent on briefs generated before the flag existed; read via isExploratory. */
+  exploratory?: boolean;
 }
-export type Briefs = Record<string, { actions: BriefAction[] }>;
+export type Briefs = Record<string, { actions: BriefAction[]; sourceCount?: number }>;
+
+/** Tolerant of briefs written before `exploratory` was stamped. */
+export const isExploratory = (a: BriefAction): boolean => a.exploratory ?? a.basedOn.length < 2;
 
 export interface IndexFile {
   meta: Meta;

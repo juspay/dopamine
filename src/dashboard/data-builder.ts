@@ -18,8 +18,8 @@ import path from "node:path";
 import type { CatalogRecord } from "../agents/catalog.js";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
-import type { ProjectBriefs } from "../schemas/brief.js";
-import { type Takeaway, takeawayText } from "../schemas/knowledge.js";
+import { type ProjectBriefs, briefSourceCount } from "../schemas/brief.js";
+import { type Takeaway, takeawayText, takeawayTitleText } from "../schemas/knowledge.js";
 import { type ActionabilityDisplay, type TriageFile, type Tier as TriageTier, UNTRIAGED } from "../schemas/triage.js";
 import type { MetadataEntry, VideoProperties } from "../types/index.js";
 import { makeVideoId } from "../utils/video-id.js";
@@ -64,6 +64,8 @@ interface IndexRecord {
   quality: number;
   tier: Tier;
   actionability: ActionabilityDisplay;
+  /** Populated only when tier==='thin'; null otherwise. */
+  thinReason: ThinReason | null;
 }
 
 interface ActionableItem {
@@ -110,6 +112,43 @@ interface VideoDetail extends IndexRecord {
   videoPath: string | null;
   resolution: string;
   fileSizeMb: number;
+}
+
+/** Why a thin video is thin. The pipeline already knows — classification threw,
+ *  extraction ran but yielded nothing, or extraction never ran — but until now
+ *  it dropped that on the floor, so the UI could only say "low quality". */
+export type ThinReason = "classification-failed" | "extraction-empty" | "not-extracted" | "low-signal";
+
+interface ThinKnowledgeView {
+  low_content?: boolean;
+  error?: string;
+  transcript?: unknown;
+  visual_description?: unknown;
+  key_takeaways?: unknown[];
+  topics?: unknown[];
+}
+
+/** Did extraction actually yield anything? knowledge.ts preserves prior content
+ *  when a retry fails, so `error` alone does not mean the record is empty. */
+function hasExtractedContent(kb: ThinKnowledgeView): boolean {
+  const text = (v: unknown): boolean => typeof v === "string" && v.trim() !== "";
+  return (
+    text(kb.transcript) ||
+    text(kb.visual_description) ||
+    (Array.isArray(kb.key_takeaways) && kb.key_takeaways.length > 0) ||
+    (Array.isArray(kb.topics) && kb.topics.length > 0)
+  );
+}
+
+export function thinReasonFor(cls: { error?: string } | undefined, kb: ThinKnowledgeView | undefined): ThinReason {
+  if (cls?.error) return "classification-failed";
+  if (kb === undefined) return "not-extracted";
+  if (kb.low_content) return "extraction-empty";
+  // An error on a record that still holds real content is a retry marker, not
+  // an empty extraction — saying "found little content" would contradict the
+  // transcript rendered directly below it on the page.
+  if (kb.error) return hasExtractedContent(kb) ? "low-signal" : "extraction-empty";
+  return "low-signal"; // extraction succeeded; the content itself carries little
 }
 
 interface CategoryFacet {
@@ -191,6 +230,9 @@ interface ClassificationEntry {
   description?: string;
   language?: string;
   mood?: string;
+  /** Set when classification itself failed; explains an otherwise-mysterious
+   *  empty record (see thinReasonFor). */
+  error?: string;
 }
 
 interface KnowledgeEntry {
@@ -204,6 +246,7 @@ interface KnowledgeEntry {
   key_takeaways?: Takeaway[];
   topics?: string[];
   low_content?: boolean;
+  error?: string;
 }
 
 interface AnalysisItemRaw {
@@ -432,7 +475,7 @@ export async function buildDashboardData(): Promise<void> {
 
     const title = deriveTitle(
       catEntry?.description,
-      takeawayText(kbEntry?.key_takeaways?.[0]),
+      takeawayTitleText(kbEntry?.key_takeaways?.[0]),
       classEntry?.description,
     );
 
@@ -555,6 +598,7 @@ export async function buildDashboardData(): Promise<void> {
     const quality = qualityScore(qi);
     const tier = tierOf(qi);
     const actionability: ActionabilityDisplay = triageById.get(id) ?? UNTRIAGED;
+    const thinReason = tier === "thin" ? thinReasonFor(classEntry, kbEntry) : null;
 
     normalized.push({
       _filename: filename,
@@ -581,6 +625,7 @@ export async function buildDashboardData(): Promise<void> {
       quality,
       tier,
       actionability,
+      thinReason,
       code: code ?? "",
       pk,
       caption,
@@ -668,6 +713,7 @@ export async function buildDashboardData(): Promise<void> {
     quality: v.quality,
     tier: v.tier,
     actionability: v.actionability,
+    thinReason: v.thinReason,
   }));
 
   const indexFile: IndexFile = { meta, videos: indexRecords };
@@ -705,6 +751,7 @@ export async function buildDashboardData(): Promise<void> {
       quality: v.quality,
       tier: v.tier,
       actionability: v.actionability,
+      thinReason: v.thinReason,
       code: v.code,
       pk: v.pk,
       caption: v.caption,
@@ -843,7 +890,9 @@ export async function buildDashboardData(): Promise<void> {
 
   // Per-project action briefs (public shape: drop the internal hash/generatedAt).
   const briefsPublic = Object.fromEntries(
-    Object.entries(projectBriefs).map(([name, b]) => [name, { actions: b.actions }]),
+    // sourceCount rides along so the UI can mark a single-learning brief as
+    // exploratory rather than rendering it like a corroborated recommendation.
+    Object.entries(projectBriefs).map(([name, b]) => [name, { actions: b.actions, sourceCount: briefSourceCount(b) }]),
   );
   await fs.writeFile(path.join(dataDir, "briefs.json"), JSON.stringify(briefsPublic), "utf8");
 

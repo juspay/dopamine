@@ -48,7 +48,7 @@ describe("parseJudgement", () => {
     const r = parseJudgement(
       {
         results: [
-          { project: "Alpha", applies: true, confidence: "high", reason: "first" },
+          { project: "Alpha", applies: true, confidence: "high", reason: "first verdict" },
           { project: "alpha", applies: true, confidence: "low", reason: "dup case-variant" },
           { project: "Alpha", applies: true, confidence: "medium", reason: "literal dup" },
         ],
@@ -61,6 +61,40 @@ describe("parseJudgement", () => {
 
   it("returns [] on malformed output", () => {
     expect(parseJudgement({ nope: 1 }, ["A"])).toEqual([]);
+  });
+
+  it("truncates a long reason on a word boundary, not mid-word", () => {
+    // Real judge output that used to clip mid-word ("discoverabilit…") once
+    // past REASON_MAX — see videos/project_mappings.json for the original bug.
+    const original =
+      "Dopamine includes a SvelteKit dashboard, which is a new website. Technical SEO for sitemaps, GSC, and link previews will aid discoverability, ranking, and shareability of the public snapshot substantially over time.";
+    const r = parseJudgement({ results: [{ project: "A", applies: true, confidence: "high", reason: original }] }, [
+      "A",
+    ]);
+    const reason = r[0].reason;
+    expect(reason.length).toBeLessThanOrEqual(140);
+    expect(reason.endsWith("…")).toBe(true);
+    // whatever we kept must be an exact, unbroken prefix of the original text —
+    // i.e. the cut landed on a space, not mid-token.
+    const kept = reason.slice(0, -1).trimEnd();
+    expect(original.startsWith(kept)).toBe(true);
+    const nextChar = original[kept.length];
+    expect(nextChar === " " || nextChar === undefined).toBe(true);
+  });
+
+  it("drops a mapping with an empty or single-fragment reason instead of surfacing junk", () => {
+    const r = parseJudgement(
+      {
+        results: [
+          { project: "A", applies: true, confidence: "high", reason: "Can" },
+          { project: "B", applies: true, confidence: "medium", reason: "" },
+          { project: "C", applies: true, confidence: "high", reason: "Shares the same auth flow as the checkout SDK" },
+        ],
+      },
+      ["A", "B", "C"],
+    );
+    expect(r).toHaveLength(1);
+    expect(r[0].project).toBe("C");
   });
 });
 
@@ -176,7 +210,7 @@ describe("runProjectMapper", () => {
       return {
         results: ["Scraper", "Kitchen"]
           .filter((n) => prompt.includes(`- ${n}:`))
-          .map((n) => ({ project: n, applies: true, confidence: "high", reason: "x" })),
+          .map((n) => ({ project: n, applies: true, confidence: "high", reason: `applies to ${n} directly` })),
       };
     };
     await runProjectMapper(null, { ...p, embed: projectEmbed, judge });
@@ -204,7 +238,7 @@ describe("runProjectMapper", () => {
       return {
         results: ["Scraper", "Kitchen"]
           .filter((n) => prompt.includes(`- ${n}:`))
-          .map((n) => ({ project: n, applies: true, confidence: "high", reason: "x" })),
+          .map((n) => ({ project: n, applies: true, confidence: "high", reason: `applies to ${n} directly` })),
       };
     };
     await runProjectMapper(null, { ...p, embed: projectEmbed, judge });
@@ -228,7 +262,7 @@ describe("runProjectMapper", () => {
       return {
         results: ["Scraper", "Kitchen"]
           .filter((n) => prompt.includes(`- ${n}:`))
-          .map((n) => ({ project: n, applies: true, confidence: "high", reason: "x" })),
+          .map((n) => ({ project: n, applies: true, confidence: "high", reason: `applies to ${n} directly` })),
       };
     };
 
@@ -246,6 +280,10 @@ describe("runProjectMapper", () => {
 
     const after = JSON.parse(await fs.readFile(p.mappingsPath, "utf8")) as ProjectMappingsFile;
     expect(after.mappings.b_2).toBeUndefined(); // pruned — gated out
+    // videoHashes must be pruned in lockstep: a leftover hash would resurrect
+    // b_2 as "already judged" if it were ever re-admitted.
+    expect(after.videoHashes.b_2).toBeUndefined();
+    expect(after.videoHashes.a_1).toBeDefined();
     expect(after.mappings.a_1.map((m) => m.project)).toEqual(["Scraper"]); // apply-tier survives
     expect(judged).toEqual([]); // nothing re-judged: a_1 unchanged, b_2 excluded
 

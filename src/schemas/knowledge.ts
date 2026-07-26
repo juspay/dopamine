@@ -59,3 +59,12 @@ export function takeawayText(t: Takeaway | null | undefined): string {
   const text = t.takeaway ?? "";
   return t.timestamp ? `[${t.timestamp}] ${text}` : text;
 }
+
+/** Plain takeaway text with no timestamp prefix — for title derivation, where a
+ *  "[0:00] " display prefix would leak into the title and an empty takeaway must
+ *  read as empty (not as a truthy "[0:00] " string) so callers fall through to
+ *  the next title source. Backward-compatible with legacy string takeaways. */
+export function takeawayTitleText(t: Takeaway | null | undefined): string {
+  if (t == null) return "";
+  return typeof t === "string" ? t : (t.takeaway ?? "");
+}

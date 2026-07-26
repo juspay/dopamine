@@ -35,7 +35,10 @@ export const CONFIG = {
   STATE: {
     METADATA: path.resolve("videos", "metadata.json"),
     METADATA_INCOMING: path.resolve("videos", "metadata.incoming.json"),
-    KNOWN_PKS: path.resolve("videos", "known_pks.json"),
+    // NOTE: videos/known_pks.json is deliberately absent here. It is live state,
+    // but owned by the Python collectors (scripts/download_videos.py,
+    // scripts/collect_saved_gallerydl.py), which hardcode the path. No TS code
+    // reads it — do not delete the file, and do not re-add a constant nothing uses.
     YOUTUBE_KNOWN_IDS: path.resolve("videos", "youtube_known_ids.json"),
     PROPERTIES: path.resolve("videos", "video_properties.json"),
     CLASSIFICATIONS: path.resolve("videos", "classifications.json"),
@@ -77,12 +80,16 @@ export const CONFIG = {
   MAP_PREFILTER_MIN: Number.parseFloat(process.env.MAP_PREFILTER_MIN ?? "0.55"),
   MAP_MODEL: process.env.MAP_MODEL ?? "gemini-2.5-flash",
 
-  // Per-project action brief (synthesize mapped learnings → concrete actions).
   // Actionability triage (runs before the apply-loop; text-only, like digest/mapper).
   TRIAGE_MODEL: process.env.TRIAGE_MODEL ?? "gemini-2.5-flash",
+  // Per-project action brief (synthesize mapped learnings → concrete actions).
   BRIEF_MODEL: process.env.BRIEF_MODEL ?? "gemini-2.5-flash",
-  // `|| 1` guards NaN (non-numeric env) and 0, so the min-mappings gate is never
-  // silently disabled.
+  // Deliberately 1, not 2. Raising it would suppress most projects' briefs
+  // outright while mapping recall is still low, trading a visible-but-labelled
+  // hunch for no output at all. Single-source briefs are instead marked
+  // `exploratory` (see schemas/brief.ts) so they read as hunches. Revisit once
+  // mapping precision work lands and projects routinely clear several learnings.
+  // `|| 1` guards NaN (non-numeric env) and 0, so the gate is never silently disabled.
   BRIEF_MIN_MAPPINGS: Math.max(1, Number.parseInt(process.env.BRIEF_MIN_MAPPINGS ?? "1", 10) || 1),
 
   VERTEX_PROJECT: process.env.VERTEX_PROJECT ?? "your-gcp-project-id",

@@ -128,3 +128,20 @@ export function verifLabel(score: string): string {
 export function verifColor(score: string): string {
   return VERIF_COLOR[score] ?? 'var(--neutral)';
 }
+
+/** Plain-language reason a learning is thin, so an empty page explains itself
+ *  instead of just looking broken. */
+export function thinReasonLabel(reason: string | null): string {
+  switch (reason) {
+    case "classification-failed":
+      return "Classification failed for this video — it was never processed.";
+    case "not-extracted":
+      return "Knowledge extraction has not run for this video yet.";
+    case "extraction-empty":
+      return "Extraction ran but found little content in this video.";
+    case "low-signal":
+      return "This video was processed, but carries little actionable content.";
+    default:
+      return "";
+  }
+}

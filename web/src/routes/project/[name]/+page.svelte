@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { getVideos, isIndexLoaded, loadBriefs, getBriefs, getById } from '$lib/data.svelte.js';
+  import { isExploratory } from '$lib/types.js';
   import VideoGrid from '$lib/components/VideoGrid.svelte';
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
@@ -20,6 +21,13 @@
   const brief = $derived(
     Object.entries(getBriefs()).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1] ?? null
   );
+
+  // A brief resting on one learning is a hunch, not a corroborated recommendation —
+  // surfaced explicitly so it never reads with the weight of a multi-source brief.
+  const briefSources = $derived(
+    brief ? (brief.sourceCount ?? new Set(brief.actions.flatMap((a) => a.basedOn)).size) : 0
+  );
+  const briefIsExploratory = $derived(briefSources <= 1);
 
   // Resolve a source-learning id to a human title for the "Based on" links.
   const titleOf = $derived((id: string) => getById(id)?.title ?? id);
@@ -48,11 +56,19 @@
 
   {#if loaded && brief && brief.actions.length}
     <section class="actions">
-      <h2 class="actions-title">Actions to try</h2>
+      <div class="actions-head">
+        <h2 class="actions-title">Actions to try</h2>
+        {#if briefIsExploratory}
+          <span class="exploratory-badge">Exploratory — one learning</span>
+        {/if}
+      </div>
       <ol class="action-list">
         {#each brief.actions as action}
           <li class="action">
-            <p class="action-head">{action.title}</p>
+            <p class="action-head">
+              {action.title}
+              {#if !briefIsExploratory && isExploratory(action)}<span class="hunch-tag">hunch</span>{/if}
+            </p>
             <p class="action-detail">{action.detail}</p>
             {#if action.basedOn.length}
               <p class="based-on">
@@ -75,6 +91,30 @@
 </div>
 
 <style>
+  .actions-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .exploratory-badge,
+  .hunch-tag {
+    font-size: var(--fs-0);
+    font-weight: var(--fw-medium);
+    line-height: var(--lh-normal);
+    color: #a06a2c;
+    border: 1px dashed #a06a2c;
+    border-radius: var(--radius-pill);
+    padding: 0 var(--space-2);
+    white-space: nowrap;
+  }
+
+  .hunch-tag {
+    margin-left: var(--space-1);
+    opacity: 0.85;
+  }
+
   .project-page {
     display: flex;
     flex-direction: column;

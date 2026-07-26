@@ -104,20 +104,39 @@
   // learnings first, thin tail last.
   const TIER_RANK: Record<string, number> = { featured: 0, standard: 1, thin: 2 };
 
-  // Base filters — everything EXCEPT the quality floor. Shared by the list and
-  // the hidden-thin counter so the two can never drift apart.
-  function matchesBase(v: IndexRecord): boolean {
+  // Every base filter EXCEPT category — so the category chips can count what
+  // they would actually add without counting themselves out.
+  function matchesExceptCategory(v: IndexRecord): boolean {
     const needle = q.trim().toLowerCase();
     if (needle) {
       const haystack = [v.title, v.username, v.fullName, v.category, v.subcategory, ...v.tags]
         .join(' ').toLowerCase();
       if (!haystack.includes(needle)) return false;
     }
-    if (cats.length && !cats.includes(v.category)) return false;
     if (projs.length && !projs.some((p) => (v.appliesTo ?? []).includes(p))) return false;
     if (verif !== 'all' && v.verification !== verif) return false;
     if (act !== 'all' && v.actionability !== act) return false;
     return true;
+  }
+
+  // Chip counts are computed against the LIVE filter state — every other active
+  // filter plus the quality floor — so a chip's number is what clicking it
+  // actually yields. A build-time facet total can't know any of that.
+  const categoryCounts = $derived.by(() => {
+    const m = new Map<string, number>();
+    for (const v of all) {
+      if (!showThin && v.tier === 'thin') continue;
+      if (!matchesExceptCategory(v)) continue;
+      m.set(v.category, (m.get(v.category) ?? 0) + 1);
+    }
+    return m;
+  });
+
+  // Base filters — everything EXCEPT the quality floor. Shared by the list and
+  // the hidden-thin counter so the two can never drift apart.
+  function matchesBase(v: IndexRecord): boolean {
+    if (cats.length && !cats.includes(v.category)) return false;
+    return matchesExceptCategory(v);
   }
 
   const filtered = $derived((): IndexRecord[] => {
@@ -253,6 +272,7 @@
     <div class="cat-chips" role="group" aria-label="Filter by category">
       {#each allCategories as cat}
         {@const active = cats.includes(cat)}
+        {@const count = categoryCounts.get(cat)}
         <button
           class="cat-chip"
           class:active
@@ -260,7 +280,7 @@
           aria-pressed={active}
           style="--chip-color:{catColor(cat)};--chip-bg:{catBg(cat)}"
           onclick={() => toggleCat(cat)}
-        >{cat}</button>
+        >{cat}<span class="cat-chip-count">{count ?? 0}</span></button>
       {/each}
     </div>
   {/if}
@@ -489,6 +509,13 @@
     border-color: var(--chip-color, var(--accent));
     opacity: 1;
     filter: brightness(1.1);
+  }
+
+  .cat-chip-count {
+    margin-left: var(--space-1);
+    font-size: var(--fs-0);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.7;
   }
 
   /* ── Verification pills ────────────────────────────────── */
