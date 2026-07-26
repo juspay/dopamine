@@ -17,6 +17,21 @@ import { loadTriageTiers, makeApplyGate } from "./triage.js";
 
 const REASON_MAX = 140;
 
+/** Minimum length for a single-token reason to count as substantive. */
+const LONE_TOKEN_MIN = 20;
+
+/** A genuine rationale is at least a short phrase. The observed degenerate
+ *  outputs were "" and the bare word "Can" — a hollow reason signals the
+ *  verdict itself is unreliable, so the mapping is dropped rather than
+ *  surfaced. Not a plain character floor: terse but real reasons ("Same tech",
+ *  "Shared auth flow") must survive, which a 10-char cutoff would have eaten.
+ *  A lone token still passes if it is long enough to carry meaning. */
+function isDegenerateReason(reason: string): boolean {
+  const words = reason.split(/\s+/).filter(Boolean).length;
+  if (words === 0) return true;
+  return words < 2 && reason.length < LONE_TOKEN_MIN;
+}
+
 export type Confidence = "high" | "medium" | "low";
 
 export interface ProjectMapping {
@@ -54,8 +69,19 @@ export function prefilter(videoVec: ArrayLike<number>, projects: ProjectVector[]
     .map((p) => p.name);
 }
 
+/** Truncate on a word boundary where one is reasonably close, so a reason
+ * never gets clipped mid-word (e.g. "discoverabilit…"). Falls back to a hard
+ * cut when the tail has no space to break on (e.g. one long unbroken token). */
 function truncate(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+  if (text.length <= max) return text;
+  // Cut by code point, not UTF-16 unit, so an emoji straddling the boundary is
+  // never split into a lone surrogate.
+  const sliced = Array.from(text)
+    .slice(0, max - 1)
+    .join("");
+  const lastSpace = sliced.lastIndexOf(" ");
+  const cut = lastSpace > max * 0.6 ? sliced.slice(0, lastSpace) : sliced;
+  return `${cut.trimEnd()}…`;
 }
 
 /**
@@ -73,8 +99,13 @@ export function parseJudgement(judge: unknown, candidateNames: string[]): Projec
     if (!r.applies) continue;
     const match = candidateNames.find((n) => n.toLowerCase() === r.project.toLowerCase());
     if (!match || seen.has(match.toLowerCase())) continue;
+    const reason = r.reason.trim();
+    // Mark the project seen BEFORE the quality check, so a degenerate first
+    // verdict for a project can't be silently replaced by a later duplicate —
+    // the model's first answer for a project is the one that counts.
     seen.add(match.toLowerCase());
-    out.push({ project: match, confidence: r.confidence, reason: truncate(r.reason.trim(), REASON_MAX) });
+    if (isDegenerateReason(reason)) continue;
+    out.push({ project: match, confidence: r.confidence, reason: truncate(reason, REASON_MAX) });
   }
   return out;
 }

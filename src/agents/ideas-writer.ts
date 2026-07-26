@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ProjectBriefs } from "../schemas/brief.js";
+import { type BriefAction, type ProjectBriefs, isExploratoryAction } from "../schemas/brief.js";
 import type { Project } from "../schemas/projects.js";
 
 /** A learning as consumed by the brief agent (kept here as the shared shape). */
@@ -70,6 +70,12 @@ function projectSlug(name: string): string {
   return name.replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
+/** Bump whenever briefSection's rendering changes. The brief hash covers only
+ *  the underlying learnings, so without this a region written by an older
+ *  renderer is considered current forever and never picks up the new format. */
+const RENDER_VERSION = 2;
+const regionHash = (briefHash: string): string => `${briefHash}.r${RENDER_VERSION}`;
+
 const briefStart = (slug: string, hash: string): string => `<!-- dopamine:brief:${slug}:start:${hash} -->`;
 const briefEnd = (slug: string): string => `<!-- dopamine:brief:${slug}:end -->`;
 /** Match THIS project's brief region (any hash) so a changed brief replaces it. */
@@ -77,8 +83,15 @@ function briefRegionRe(slug: string): RegExp {
   return new RegExp(`<!-- dopamine:brief:${slug}:start:[^>]*-->[\\s\\S]*?<!-- dopamine:brief:${slug}:end -->`);
 }
 
-function briefSection(actions: { title: string; detail: string }[], slug: string, hash: string): string {
-  const body = actions.map((a, i) => `${i + 1}. **${mdSafe(a.title)}** — ${mdSafe(a.detail)}`).join("\n");
+function briefSection(actions: BriefAction[], slug: string, hash: string): string {
+  const body = actions
+    .map((a, i) => {
+      // A single-source action is flagged inline so IDEAS.md never reads like
+      // the whole corpus backs a one-video hunch.
+      const tag = isExploratoryAction(a) ? " _(exploratory — single source)_" : "";
+      return `${i + 1}. **${mdSafe(a.title)}**${tag} — ${mdSafe(a.detail)}`;
+    })
+    .join("\n");
   return [briefStart(slug, hash), "", "## What to try (from Dopamine)", "", body, "", briefEnd(slug)].join("\n");
 }
 
@@ -125,8 +138,8 @@ export async function writeBriefIdeas(
       continue;
     }
 
-    if (existing.includes(briefStart(slug, brief.hash))) continue; // already current
-    const section = briefSection(brief.actions, slug, brief.hash);
+    if (existing.includes(briefStart(slug, regionHash(brief.hash)))) continue; // already current
+    const section = briefSection(brief.actions, slug, regionHash(brief.hash));
     const next = region.test(existing)
       ? existing.replace(region, section)
       : `${(existing === "" ? IDEAS_HEADER : existing).trimEnd()}\n\n${section}\n`;

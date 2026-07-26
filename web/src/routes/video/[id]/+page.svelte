@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { loadDetail } from '$lib/data.svelte.js';
-  import { fmtDate, fmtNumber, fmtDuration, igUrl } from '$lib/format.js';
+  import { fmtDate, fmtNumber, fmtDuration, igUrl, thinReasonLabel } from '$lib/format.js';
   import type { VideoDetail, LinkItem } from '$lib/types.js';
 
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
@@ -143,6 +143,10 @@
           {/if}
         </div>
 
+        {#if detail.tier === 'thin' && detail.thinReason}
+          <p class="thin-note">{thinReasonLabel(detail.thinReason)}</p>
+        {/if}
+
         <!-- Section nav -->
         <SectionNav {sections} />
 
@@ -276,6 +280,15 @@
 </div>
 
 <style>
+  .thin-note {
+    margin: 0 0 var(--space-4);
+    padding: var(--space-2) var(--space-3);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md, 8px);
+    color: var(--muted);
+    font-size: var(--fs-0);
+  }
+
   .video-page {
     display: flex;
     flex-direction: column;

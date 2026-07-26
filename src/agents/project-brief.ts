@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import type { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
 import type { BriefAction, ProjectBriefs } from "../schemas/brief.js";
-import { BriefLLMSchema } from "../schemas/brief.js";
+import { BriefLLMSchema, CORROBORATION_MIN } from "../schemas/brief.js";
 import { type Project, loadProjects } from "../schemas/projects.js";
 import { hasSearchSchema, openSearchDb } from "../search/db.js";
 import { safeJsonParse } from "../utils/json-repair.js";
@@ -117,10 +117,12 @@ export function parseBrief(raw: unknown, knownIds: Set<string>): BriefAction[] {
     const ids = Array.isArray(basedOn)
       ? basedOn.filter((x): x is string => typeof x === "string" && knownIds.has(x))
       : [];
+    const dedupedIds = [...new Set(ids)];
     out.push({
       title: trimmedTitle.slice(0, TITLE_MAX),
       detail: trimmedDetail.slice(0, DETAIL_MAX),
-      basedOn: [...new Set(ids)],
+      basedOn: dedupedIds,
+      exploratory: dedupedIds.length < CORROBORATION_MIN,
     });
     if (out.length >= MAX_ACTIONS) break;
   }
@@ -163,7 +165,15 @@ export async function runProjectBrief(d: BriefDeps): Promise<ProjectBriefs> {
     try {
       const raw = await d.generate(briefPrompt(project, learnings));
       const actions = parseBrief(raw, new Set(learnings.map((l) => l.id)));
-      out[project.name] = { hash, generatedAt: d.now(), actions };
+      // Count the learnings the actions actually CITE, not the candidates the
+      // model was offered — the same quantity briefSourceCount() derives for
+      // briefs written before this field existed, so both paths agree.
+      out[project.name] = {
+        hash,
+        generatedAt: d.now(),
+        actions,
+        sourceCount: new Set(actions.flatMap((a) => a.basedOn)).size,
+      };
     } catch (err) {
       // One project's LLM/parse failure must not discard the whole run — keep
       // the last good brief for this project if we have one, and carry on.

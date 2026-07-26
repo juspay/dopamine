@@ -94,7 +94,14 @@ function buildContextPrompt(entry: KnowledgeEntry): string {
   return parts.join("\n");
 }
 
-export async function runAnalyzerAgent(neurolink: NeuroLink): Promise<void> {
+export interface AnalyzerOverrides {
+  /** Triage state to gate on. Overridable for the same reason the mapper's is:
+   *  the default is CWD-relative, so a test run from the repo root would
+   *  otherwise read real pipeline state and gate its fixtures out. */
+  triagePath?: string;
+}
+
+export async function runAnalyzerAgent(neurolink: NeuroLink, overrides: AnalyzerOverrides = {}): Promise<void> {
   console.log("\n=== AnalyzerAgent (Step 12) ===");
 
   // Load knowledge base
@@ -111,7 +118,7 @@ export async function runAnalyzerAgent(neurolink: NeuroLink): Promise<void> {
   // Triage gate: only apply-now / evaluate-later videos get analyzed (personal/
   // entertainment content never reaches actionable-item extraction). No-op until
   // triage has run.
-  const applyGate = makeApplyGate(await loadTriageTiers());
+  const applyGate = makeApplyGate(await loadTriageTiers(overrides.triagePath ?? CONFIG.STATE.TRIAGE));
 
   // Authoritative gate: retire analysis already written for videos the gate now
   // excludes (re-triaged to skip/reference-only, or predating triage), so a
