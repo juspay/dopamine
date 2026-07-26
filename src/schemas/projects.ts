@@ -5,6 +5,13 @@ export const ProjectSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   keywords: z.array(z.string()).default([]),
+  /**
+   * Subject matter this project merely PROCESSES or is adjacent to, which the
+   * judge must not mistake for applicability. A pipeline that ingests cooking
+   * videos is not improved by a cooking video; without this, its own
+   * description makes the whole corpus look relevant to it.
+   */
+  avoid: z.string().optional(),
   /** Absolute repo path; only projects with an existing path get IDEAS.md drops. */
   path: z.string().optional(),
 });
@@ -48,8 +55,12 @@ export function projectHash(p: Project): string {
  * re-map; the prefilter keeps the LLM cost proportional to plausible pairs.
  */
 export function portfolioHash(projects: Project[]): string {
+  // `avoid` belongs here but NOT in projectDoc: it changes what the judge is
+  // told (so cached mappings must be invalidated) while leaving the embedding
+  // alone — embedding it would pull the vector toward the very content it
+  // exists to reject.
   const normalized = [...projects]
-    .map((p) => ({ name: p.name, description: p.description, keywords: [...p.keywords].sort() }))
+    .map((p) => ({ name: p.name, description: p.description, keywords: [...p.keywords].sort(), avoid: p.avoid ?? "" }))
     .sort((a, b) => a.name.localeCompare(b.name));
   return crypto.createHash("sha256").update(JSON.stringify(normalized), "utf8").digest("hex");
 }

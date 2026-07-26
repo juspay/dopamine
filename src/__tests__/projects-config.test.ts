@@ -33,6 +33,23 @@ describe("projectDoc", () => {
   });
 });
 
+describe("avoid", () => {
+  // `avoid` names subject matter the project only ingests, so it has to reach
+  // the judge without reaching the embedding — embedding it would pull the
+  // vector toward the very content it exists to reject.
+  const base: Project = { name: "N", description: "D", keywords: ["k"] };
+  const withAvoid: Project = { ...base, avoid: "videos about cooking" };
+
+  it("stays out of the embedded doc", () => {
+    expect(projectDoc(withAvoid)).toBe(projectDoc(base));
+    expect(projectHash(withAvoid)).toBe(projectHash(base));
+  });
+
+  it("still invalidates cached verdicts via portfolioHash", () => {
+    expect(portfolioHash([withAvoid])).not.toBe(portfolioHash([base]));
+  });
+});
+
 describe("hashing", () => {
   it("projectHash changes only when the project's own doc changes", () => {
     const a = { name: "N", description: "D", keywords: ["k"] };
