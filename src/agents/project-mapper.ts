@@ -198,6 +198,10 @@ export interface MapperOverrides {
   projectsPath?: string;
   mappingsPath?: string;
   lockPath?: string;
+  /** Triage state to gate on. Overridable so a test never reads the real
+   *  CWD-relative videos/triage.json — an ambient file would silently gate the
+   *  fixture's video ids out of the run. */
+  triagePath?: string;
   embeddingModel?: string;
   embed?: EmbedFn;
   judge?: JudgeFn;
@@ -337,7 +341,7 @@ export async function runProjectMapper(neurolink: NeuroLink | null, overrides: M
     // Triage gate: only apply-now / evaluate-later videos are candidates for
     // mapping — personal/entertainment content never reaches the judge, so it
     // can't be rationalized onto a project. No-op until triage has run.
-    const applyGate = makeApplyGate(await loadTriageTiers());
+    const applyGate = makeApplyGate(await loadTriageTiers(overrides.triagePath ?? CONFIG.STATE.TRIAGE));
     const videos = loadJudgeVideos(db, model).filter((v) => applyGate(v.id));
     const judge = overrides.judge ?? (neurolink ? neurolinkJudge(neurolink) : null);
 

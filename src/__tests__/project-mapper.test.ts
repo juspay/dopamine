@@ -128,6 +128,11 @@ describe("runProjectMapper", () => {
     dbPath: path.join(tmpDir, "search.db"),
     projectsPath: path.join(tmpDir, "projects.json"),
     mappingsPath: path.join(tmpDir, "project_mappings.json"),
+    // Point triage at the (absent) tmpdir file so the apply gate stays a no-op.
+    // Without this the mapper reads the real CWD-relative videos/triage.json and
+    // gates every fixture video out — a failure CI can't reproduce, since that
+    // file is gitignored.
+    triagePath: path.join(tmpDir, "triage.json"),
     // the fixture seeds embeddings with "test-model"; the mapper only prefilters
     // videos embedded with this model so its vectors share the project space
     embeddingModel: "test-model",
@@ -211,6 +216,45 @@ describe("runProjectMapper", () => {
 
     await runProjectMapper(null, { ...p, embed: projectEmbed, judge });
     expect(calls).toBe(first + 1); // only a_1 re-judged; unchanged videos skipped
+  });
+
+  it("honours the triage gate: only apply-tier videos are judged, and gated-out mappings are pruned", async () => {
+    const p = paths();
+    await seedDb(p.dbPath);
+    await fs.writeFile(p.projectsPath, JSON.stringify(PROJECTS));
+    const judged: string[] = [];
+    const judge = async (prompt: string) => {
+      judged.push(prompt);
+      return {
+        results: ["Scraper", "Kitchen"]
+          .filter((n) => prompt.includes(`- ${n}:`))
+          .map((n) => ({ project: n, applies: true, confidence: "high", reason: "x" })),
+      };
+    };
+
+    // First pass, no triage file → gate is a no-op, everything is judged and mapped.
+    await runProjectMapper(null, { ...p, embed: projectEmbed, judge });
+    const before = JSON.parse(await fs.readFile(p.mappingsPath, "utf8")) as ProjectMappingsFile;
+    expect(before.mappings.a_1.map((m) => m.project)).toEqual(["Scraper"]);
+    expect(before.mappings.b_2.map((m) => m.project)).toEqual(["Kitchen"]);
+
+    // Now triage says b_2 is skip. Its existing mapping must be retired, not kept.
+    const entry = (tier: string) => ({ tier, confidence: "high", reason: "r", hash: "h" });
+    await fs.writeFile(p.triagePath, JSON.stringify({ a_1: entry("apply-now"), b_2: entry("skip") }));
+    judged.length = 0;
+    await runProjectMapper(null, { ...p, embed: projectEmbed, judge });
+
+    const after = JSON.parse(await fs.readFile(p.mappingsPath, "utf8")) as ProjectMappingsFile;
+    expect(after.mappings.b_2).toBeUndefined(); // pruned — gated out
+    expect(after.mappings.a_1.map((m) => m.project)).toEqual(["Scraper"]); // apply-tier survives
+    expect(judged).toEqual([]); // nothing re-judged: a_1 unchanged, b_2 excluded
+
+    const db = openSearchDb(p.dbPath, { readonly: true });
+    const rows = db.prepare("SELECT video_id FROM project_mappings ORDER BY video_id").all() as {
+      video_id: string;
+    }[];
+    db.close();
+    expect(rows).toEqual([{ video_id: "a_1" }]); // table reflects the prune too
   });
 
   it("no-ops without projects.json", async () => {
