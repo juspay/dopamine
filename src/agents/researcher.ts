@@ -37,11 +37,11 @@ export interface ResearchItemResult {
    */
   url_status: "live" | "dead" | "redirect" | "protected" | "server_error" | "no_url" | "timeout" | "error";
   url_checked: string;
-  github_info: string;       // stars, last commit, or "not_a_github_repo"
-  registry_info: string;     // factual data from npm/PyPI/GitHub APIs
-  web_research: string;      // free text from Gemini web search
+  github_info: string; // stars, last commit, or "not_a_github_repo"
+  registry_info: string; // factual data from npm/PyPI/GitHub APIs
+  web_research: string; // free text from Gemini web search
   claim_verification: string; // verified / unverified / partially_verified
-  alternatives: string;      // alternative tools/approaches found
+  alternatives: string; // alternative tools/approaches found
   last_checked: string;
 }
 
@@ -115,18 +115,31 @@ function isHallucinated(text: string): boolean {
     "Generated image using",
     "Generated image with",
   ];
-  return hallucinationPatterns.some(pattern => text.includes(pattern));
+  return hallucinationPatterns.some((pattern) => text.includes(pattern));
+}
+
+/**
+ * Whether a URL is actually served by `host`, rather than merely containing its
+ * name somewhere. A substring test says yes to https://evil.example/npmjs.com,
+ * so a hostile or malformed link could route an item down the wrong registry
+ * branch and have a package name parsed out of an unrelated path.
+ * Subdomains count, so registry.npmjs.org matches npmjs.org.
+ */
+export function isHost(url: string | null | undefined, host: string): boolean {
+  if (!url) return false;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === host || hostname.endsWith(`.${host}`);
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Query public package registries (npm, PyPI, GitHub) for factual metadata.
  * No AI involved — these are direct REST API calls.
  */
-async function checkPackageRegistry(
-  url: string,
-  name: string,
-  installCommand: string,
-): Promise<string> {
+async function checkPackageRegistry(url: string, name: string, installCommand: string): Promise<string> {
   const timeout = 10_000;
 
   // Helper to fetch JSON with a timeout
@@ -147,13 +160,13 @@ async function checkPackageRegistry(
   }
 
   // GitHub repo check
-  if (url && url.includes("github.com")) {
+  if (isHost(url, "github.com")) {
     try {
       const match = url.match(/github\.com\/([^/]+)\/([^/?#]+)/);
       if (match) {
         const [, owner, repo] = match;
         const cleanRepo = repo.replace(/\.git$/, "");
-        const data = await fetchJson(`https://api.github.com/repos/${owner}/${cleanRepo}`) as Record<string, unknown>;
+        const data = (await fetchJson(`https://api.github.com/repos/${owner}/${cleanRepo}`)) as Record<string, unknown>;
         const stars = data.stargazers_count ?? 0;
         const forks = data.forks_count ?? 0;
         const issues = data.open_issues_count ?? 0;
@@ -169,29 +182,35 @@ async function checkPackageRegistry(
   }
 
   // npm package check
-  const isNpm = (url && url.includes("npmjs.com")) ||
+  const isNpm =
+    isHost(url, "npmjs.com") ||
     (installCommand && (installCommand.includes("npm install") || installCommand.includes("npm i ")));
   if (isNpm) {
     try {
       // Extract package name from URL or install command
       let packageName = name;
-      if (url && url.includes("npmjs.com")) {
+      if (isHost(url, "npmjs.com")) {
         const match = url.match(/npmjs\.com\/package\/([^/?#]+)/);
         if (match) packageName = match[1];
       } else if (installCommand) {
         const match = installCommand.match(/npm\s+i(?:nstall)?\s+([^\s]+)/);
         if (match) packageName = match[1];
       }
-      const data = await fetchJson(`https://registry.npmjs.org/${packageName}`) as Record<string, unknown>;
+      const data = (await fetchJson(`https://registry.npmjs.org/${packageName}`)) as Record<string, unknown>;
       const latest = (data["dist-tags"] as Record<string, string> | undefined)?.latest ?? "unknown";
       const desc = (data.description as string | undefined) ?? "";
       const homepage = (data.homepage as string | undefined) ?? "";
       // Weekly downloads endpoint
       let downloads = "";
       try {
-        const dlData = await fetchJson(`https://api.npmjs.org/downloads/point/last-week/${packageName}`) as Record<string, unknown>;
+        const dlData = (await fetchJson(`https://api.npmjs.org/downloads/point/last-week/${packageName}`)) as Record<
+          string,
+          unknown
+        >;
         if (dlData.downloads) downloads = `, ${dlData.downloads}/week`;
-      } catch { /* optional */ }
+      } catch {
+        /* optional */
+      }
       return `npm: ${packageName} v${latest}${downloads}${desc ? " — " + desc.slice(0, 100) : ""}${homepage ? " (" + homepage + ")" : ""}`;
     } catch {
       // Fall through
@@ -200,19 +219,18 @@ async function checkPackageRegistry(
   }
 
   // PyPI package check
-  const isPypi = (url && url.includes("pypi.org")) ||
-    (installCommand && installCommand.includes("pip install"));
+  const isPypi = isHost(url, "pypi.org") || (installCommand && installCommand.includes("pip install"));
   if (isPypi) {
     try {
       let packageName = name;
-      if (url && url.includes("pypi.org")) {
+      if (isHost(url, "pypi.org")) {
         const match = url.match(/pypi\.org\/project\/([^/?#]+)/);
         if (match) packageName = match[1];
       } else if (installCommand) {
         const match = installCommand.match(/pip\s+install\s+([^\s]+)/);
         if (match) packageName = match[1];
       }
-      const data = await fetchJson(`https://pypi.org/pypi/${packageName}/json`) as Record<string, unknown>;
+      const data = (await fetchJson(`https://pypi.org/pypi/${packageName}/json`)) as Record<string, unknown>;
       const info = data.info as Record<string, unknown> | undefined;
       const version = info?.version ?? "unknown";
       const summary = info?.summary ? " — " + String(info.summary).slice(0, 100) : "";
@@ -226,16 +244,18 @@ async function checkPackageRegistry(
   return "";
 }
 
-
 /**
  * Build a research prompt for a batch of items.
  */
 function buildResearchPrompt(items: Array<{ name: string; type: string; url: string; description: string }>): string {
-  const itemDescriptions = items.map((item, i) =>
-    `${i + 1}. "${item.name}" (type: ${item.type})
+  const itemDescriptions = items
+    .map(
+      (item, i) =>
+        `${i + 1}. "${item.name}" (type: ${item.type})
    URL: ${item.url || "N/A"}
-   Description: ${item.description}`
-  ).join("\n\n");
+   Description: ${item.description}`,
+    )
+    .join("\n\n");
 
   return `Research the following tools/techniques and provide findings for each one.
 
@@ -258,7 +278,14 @@ Provide a detailed response for each item, clearly labeled by number. Include sp
 async function processBatch(
   neurolink: NeuroLink,
   filename: string,
-  items: Array<{ name: string; type: string; url: string; description: string; verification_steps: string[]; install_command?: string }>,
+  items: Array<{
+    name: string;
+    type: string;
+    url: string;
+    description: string;
+    verification_steps: string[];
+    install_command?: string;
+  }>,
 ): Promise<ResearchItemResult[]> {
   const results: ResearchItemResult[] = [];
   const now = new Date().toISOString();
@@ -266,10 +293,10 @@ async function processBatch(
   // 1. Check all URLs via the shared util (correct UA, 403→protected not dead,
   //    DNS errors→"error" not "dead").  checkUrls deduplicates internally.
   const urlMap = await checkUrls(
-    items.map(item => item.url),
+    items.map((item) => item.url),
     { timeoutMs: URL_TIMEOUT_MS, retries: 1 },
   );
-  const urlChecks = items.map(item => {
+  const urlChecks = items.map((item) => {
     const r = urlMap.get(item.url);
     return {
       status: (r?.status ?? "no_url") satisfies ResearchItemResult["url_status"],
@@ -279,28 +306,33 @@ async function processBatch(
 
   // 2. Query package registries in parallel (factual, no AI)
   const registryInfos = await Promise.all(
-    items.map(item => checkPackageRegistry(item.url, item.name, item.install_command ?? "").catch(() => ""))
+    items.map((item) => checkPackageRegistry(item.url, item.name, item.install_command ?? "").catch(() => "")),
   );
 
   // 3. Do web research via NeuroLink with Google Search grounding.
-  // output:{format:"text"} forces routing through the standard text path (instead of
-  // executeImageGeneration) on dual-mode image-preview models. enabledToolNames lets
-  // the model actually call websearchGrounding to fetch live data.
+  // output:{format:"text"} is what this step wants regardless, and it also kept
+  // dual-mode image-preview models off executeImageGeneration back when
+  // CONFIG.MODEL was one. enabledToolNames lets the model actually call
+  // websearchGrounding to fetch live data.
   let webResearchText = "";
-  const researchResult = await exponentialBackoff(async () => {
-    const response = await neurolink.generate({
-      input: {
-        text: buildResearchPrompt(items),
-      },
-      provider: "vertex",
-      model:    CONFIG.MODEL,
-      output:   { format: "text" },
-      enabledToolNames: ["websearchGrounding"],
-      maxTokens: 8192,
-      timeout: "180s",
-    });
-    return response.content;
-  }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
+  const researchResult = await exponentialBackoff(
+    async () => {
+      const response = await neurolink.generate({
+        input: {
+          text: buildResearchPrompt(items),
+        },
+        provider: "vertex",
+        model: CONFIG.MODEL,
+        output: { format: "text" },
+        enabledToolNames: ["websearchGrounding"],
+        maxTokens: 8192,
+        timeout: "180s",
+      });
+      return response.content;
+    },
+    CONFIG.MAX_RETRIES,
+    CONFIG.RETRY_BASE_DELAY_MS,
+  );
 
   if (researchResult.success) {
     webResearchText = researchResult.value;
@@ -327,7 +359,7 @@ async function processBatch(
 
     // Use real GitHub API data from registryInfo if available; fall back to text parsing
     let githubInfo = "not_a_github_repo";
-    if (item.url && item.url.includes("github.com")) {
+    if (isHost(item.url, "github.com")) {
       if (registryInfo) {
         githubInfo = registryInfo;
       } else {
@@ -342,7 +374,11 @@ async function processBatch(
       claimVerification = "verified";
     } else if (sectionLower.includes("partially") || sectionLower.includes("some")) {
       claimVerification = "partially_verified";
-    } else if (sectionLower.includes("outdated") || sectionLower.includes("deprecated") || sectionLower.includes("false")) {
+    } else if (
+      sectionLower.includes("outdated") ||
+      sectionLower.includes("deprecated") ||
+      sectionLower.includes("false")
+    ) {
       claimVerification = "unverified";
     }
 
@@ -411,11 +447,9 @@ function splitResearchByItem(text: string, count: number): string[] {
   }
 
   // Fallback: if we got no useful splits, just divide evenly
-  if (sections.every(s => s === text.trim()) && count > 1) {
+  if (sections.every((s) => s === text.trim()) && count > 1) {
     const chunkSize = Math.ceil(text.length / count);
-    return Array.from({ length: count }, (_, i) =>
-      text.slice(i * chunkSize, (i + 1) * chunkSize).trim()
-    );
+    return Array.from({ length: count }, (_, i) => text.slice(i * chunkSize, (i + 1) * chunkSize).trim());
   }
 
   return sections;
@@ -443,22 +477,20 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
   console.log("\n=== ResearchAgent (Step 13) ===");
 
   // Load analysis state
-  const analysisState = await loadState<Record<string, AnalysisEntry>>(
-    CONFIG.STATE.ANALYSIS, {}
-  );
+  const analysisState = await loadState<Record<string, AnalysisEntry>>(CONFIG.STATE.ANALYSIS, {});
 
   // Load existing research state (resume mode)
-  const researchState = await loadState<Record<string, ResearchEntry>>(
-    CONFIG.STATE.RESEARCH, {}
-  );
+  const researchState = await loadState<Record<string, ResearchEntry>>(CONFIG.STATE.RESEARCH, {});
 
   const entries = Object.entries(analysisState).filter(
-    ([, entry]) => !entry.error && entry.actionable_items.length > 0
+    ([, entry]) => !entry.error && entry.actionable_items.length > 0,
   );
 
   console.log(`Research: ${entries.length} videos with actionable items`);
 
-  let researched = 0, skipped = 0, errors = 0;
+  let researched = 0,
+    skipped = 0,
+    errors = 0;
 
   for (const [i, [filename, analysis]] of entries.entries()) {
     const logPrefix = `[${i + 1}/${entries.length}]`;
@@ -474,7 +506,7 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
     console.log(`  Items: ${analysis.actionable_items.length}`);
 
     try {
-      const allItems = analysis.actionable_items.map(item => ({
+      const allItems = analysis.actionable_items.map((item) => ({
         name: item.name,
         type: item.type,
         url: item.url,
@@ -506,8 +538,8 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
       };
       researched++;
 
-      const liveUrls = allResults.filter(r => r.url_status === "live" || r.url_status === "redirect").length;
-      const deadUrls = allResults.filter(r => r.url_status === "dead").length;
+      const liveUrls = allResults.filter((r) => r.url_status === "live" || r.url_status === "redirect").length;
+      const deadUrls = allResults.filter((r) => r.url_status === "dead").length;
       console.log(`  -> ${allResults.length} items researched, ${liveUrls} URLs live, ${deadUrls} dead`);
     } catch (err) {
       researchState[filename] = {

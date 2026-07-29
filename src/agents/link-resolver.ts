@@ -96,17 +96,16 @@ function tryResolveInstagramHandle(name: string, description: string): string | 
 }
 
 export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> {
-  const links = await loadState<Record<string, { links: LinkEntry[] }>>(
-    CONFIG.STATE.LINKS_V2, {}
-  );
+  const links = await loadState<Record<string, { links: LinkEntry[] }>>(CONFIG.STATE.LINKS_V2, {});
 
   // --- First pass: fix obvious cases without API ---
-  let fixedLocally = 0, removedGarbage = 0;
+  let fixedLocally = 0,
+    removedGarbage = 0;
   const needsApi: Array<{ fname: string; idx: number; link: LinkEntry }> = [];
 
   for (const [fname, entry] of Object.entries(links)) {
     // Filter out garbage entries (bad Gemini extractions) — process remaining in-place
-    const cleaned = (entry.links ?? []).filter(link => {
+    const cleaned = (entry.links ?? []).filter((link) => {
       if (isGarbageName(link.name)) {
         removedGarbage++;
         console.log(`Removed garbage: ${link.name}`);
@@ -148,7 +147,9 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
     if (!uniqueNames.has(key)) uniqueNames.set(key, link);
   }
 
-  console.log(`Removed garbage: ${removedGarbage}, Fixed locally: ${fixedLocally}, Unique names for API: ${uniqueNames.size}`);
+  console.log(
+    `Removed garbage: ${removedGarbage}, Fixed locally: ${fixedLocally}, Unique names for API: ${uniqueNames.size}`,
+  );
 
   // Build a reverse index: nameKey -> all (fname, idx) entries needing it
   const nameToEntries = new Map<string, Array<{ fname: string; idx: number }>>();
@@ -158,13 +159,18 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
     nameToEntries.get(key)!.push({ fname, idx });
   }
 
-  let resolvedCount = 0, failedCount = 0, saveEvery = 10, saveCounter = 0;
+  let resolvedCount = 0,
+    failedCount = 0,
+    saveEvery = 10,
+    saveCounter = 0;
 
   for (const [i, [nameKey, link]] of [...uniqueNames.entries()].entries()) {
     const context = [
       link.description ? `Description: ${link.description}` : "",
       link.url ? `Possible hint: ${link.url}` : "",
-    ].filter(Boolean).join(". ");
+    ]
+      .filter(Boolean)
+      .join(". ");
 
     const prompt =
       `What is the official website URL for "${link.name}"? ${context}. ` +
@@ -174,27 +180,33 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
 
     console.log(`\n[${i + 1}/${uniqueNames.size}] Resolving: ${link.name}`);
 
-    // Use the text-only gemini-2.5-flash here, not CONFIG.MODEL (image-preview).
-    // The image-preview model routes link-resolver prompts through executeImageGeneration
-    // which returns empty parts when Vertex's safety filter trips on benign descriptions
-    // (e.g. "Personal account inferred from filename" triggered "No content parts").
-    // 2.5-flash is text-only and bulletproof for this use case.
+    // Pinned to a text model rather than CONFIG.MODEL. Historically this was
+    // load-bearing: CONFIG.MODEL was an image-preview model that routed these
+    // prompts through executeImageGeneration and returned empty parts whenever
+    // Vertex's safety filter tripped on a benign description (e.g. "Personal
+    // account inferred from filename" → "No content parts"). CONFIG.MODEL is a
+    // text-capable model again, so the pin is now just insulation against it
+    // being pointed back at an image model.
     let resolved: string | null = null;
-    const r1 = await exponentialBackoff(async () => {
-      const response = await neurolink.generate({
-        input: { text: prompt },
-        provider: "vertex",
-        model:    "gemini-2.5-flash",
-        disableTools: true,
-        maxTokens: 256,
-        timeout: "30s",
-      });
-      const content = response.content.trim();
-      // Model may return "NONE" when it cannot find a URL — treat as failure
-      if (/^NONE$/i.test(content)) return null;
-      const match = content.match(/https?:\/\/[^\s<>"')]+/);
-      return match?.[0]?.replace(/\.$/, "") ?? null;
-    }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
+    const r1 = await exponentialBackoff(
+      async () => {
+        const response = await neurolink.generate({
+          input: { text: prompt },
+          provider: "vertex",
+          model: "gemini-2.5-flash",
+          disableTools: true,
+          maxTokens: 256,
+          timeout: "30s",
+        });
+        const content = response.content.trim();
+        // Model may return "NONE" when it cannot find a URL — treat as failure
+        if (/^NONE$/i.test(content)) return null;
+        const match = content.match(/https?:\/\/[^\s<>"')]+/);
+        return match?.[0]?.replace(/\.$/, "") ?? null;
+      },
+      CONFIG.MAX_RETRIES,
+      CONFIG.RETRY_BASE_DELAY_MS,
+    );
 
     if (r1.success && r1.value) {
       // Validate the resolved URL — the model must not have invented paths
