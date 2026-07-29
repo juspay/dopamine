@@ -44,11 +44,11 @@ export interface ProjectMapping {
 export type MappingSet = Record<string, ProjectMapping[]>;
 
 /** Bump when judging behaviour changes (candidate selection, prompt, parsing,
- *  token budget) so verdicts cached under the old behaviour are re-judged.
- *  Without this, a video
- *  recorded as "nothing applies" stays that way until its own content changes —
- *  which is how the truncation bug's empty results would have persisted. */
-export const JUDGE_VERSION = 2;
+ *  token budget, how confidence is assigned) so verdicts cached under the old
+ *  behaviour are re-judged. Without this, a video recorded as "nothing applies"
+ *  stays that way until its own content changes — which is how the truncation
+ *  bug's empty results would have persisted. */
+export const JUDGE_VERSION = 3;
 
 export interface ProjectMappingsFile {
   portfolioHash: string;
@@ -115,6 +115,24 @@ export function prefilter(
   min: number,
   baselines?: ProjectBaselines,
 ): string[] {
+  return prefilterScored(videoVec, projects, topK, min, baselines).map((p) => p.name);
+}
+
+/** A candidate and how far above the project's own baseline it scored. */
+export interface ScoredCandidate {
+  name: string;
+  score: number;
+}
+
+/** As `prefilter`, but keeps the score — the only measured evidence we have
+ *  about how well a video matches a project, and the basis for confidence. */
+export function prefilterScored(
+  videoVec: ArrayLike<number>,
+  projects: ProjectVector[],
+  topK: number,
+  min: number,
+  baselines?: ProjectBaselines,
+): ScoredCandidate[] {
   return projects
     .map((p) => {
       const sim = cosineSim(videoVec, p.vector);
@@ -127,9 +145,47 @@ export function prefilter(
     })
     .filter((p) => p.score >= min)
     .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .map((p) => p.name);
+    .slice(0, topK);
 }
+
+/**
+ * Confidence from measured evidence rather than the judge's self-report.
+ *
+ * The judge does not calibrate: across ~250 verdicts under three prompt
+ * rubrics and both enum orderings it never once returned "low", and its
+ * high/medium split is flat against the actual similarity — of the mappings
+ * in the weakest z-band 78% were called high, against 86% in the strongest.
+ * The standardised similarity, by contrast, is a real measurement, and it is
+ * already computed to choose candidates.
+ *
+ * Cut points are the observed quartiles over 130 live mappings (p25 1.25,
+ * median 1.50, p75 1.77), so a level names which quarter of the evidence a
+ * mapping falls in: bottom quarter low, middle half medium, top quarter high.
+ * All three bands are populated, which the judge's own labels never were.
+ *
+ * The quartiles rather than rounder numbers because `low` is a filter, not a
+ * note — appliesToFor drops it from the dashboard chips and project-brief
+ * gates actions at medium+. Simulated over the same 130 mappings:
+ *
+ *   cut points        high/med/low   videos keeping a chip   feeds briefs
+ *   2.00 / 1.50       21/ 44/ 65     45 of 80                65
+ *   1.75 / 1.25       36/ 61/ 33     66 of 80                97
+ *   2.50 / 1.75        3/ 33/ 94     30 of 80                36
+ *
+ * At 2.00/1.50 thirty-five videos lose every chip they have, which trades a
+ * dead confidence signal for a hole in coverage. The quartile split makes the
+ * filter mean something while leaving the mappings themselves visible.
+ */
+export function confidenceFromScore(score: number): Confidence {
+  if (score >= CONFIDENCE_HIGH_Z) return "high";
+  if (score >= CONFIDENCE_MEDIUM_Z) return "medium";
+  return "low";
+}
+
+/** p75 of observed mapping scores. */
+export const CONFIDENCE_HIGH_Z = 1.75;
+/** p25 of observed mapping scores. */
+export const CONFIDENCE_MEDIUM_Z = 1.25;
 
 /** Truncate on a word boundary where one is reasonably close, so a reason
  * never gets clipped mid-word (e.g. "discoverabilit…"). Falls back to a hard
@@ -152,7 +208,14 @@ function truncate(text: string, max: number): string {
  * (literal or case-variant), and a duplicate (video, project) pair would violate
  * the project_mappings primary key on write.
  */
-export function parseJudgement(judge: unknown, candidateNames: string[]): ProjectMapping[] {
+export function parseJudgement(
+  judge: unknown,
+  candidateNames: string[],
+  /** name → prefilter score. Where a score is known it decides confidence,
+   *  since the judge's own is uncorrelated with the evidence; without one
+   *  (older callers, tests) the judge's answer is used unchanged. */
+  scores?: Record<string, number>,
+): ProjectMapping[] {
   // Validate PER VERDICT, not over the whole payload. The strict object schema
   // is all-or-nothing: a single verdict missing `reason` used to discard every
   // other verdict for that video, including valid applies:true ones — which is
@@ -174,7 +237,9 @@ export function parseJudgement(judge: unknown, candidateNames: string[]): Projec
     // the model's first answer for a project is the one that counts.
     seen.add(match.toLowerCase());
     if (isDegenerateReason(reason)) continue;
-    out.push({ project: match, confidence: r.confidence, reason: truncate(reason, REASON_MAX) });
+    const score = scores?.[match];
+    const confidence = score === undefined ? r.confidence : confidenceFromScore(score);
+    out.push({ project: match, confidence, reason: truncate(reason, REASON_MAX) });
   }
   return out;
 }
@@ -424,15 +489,17 @@ async function judgeVideos(
   let judged = 0;
   for (const video of videos) {
     if (video.id in mappings && videoHashes[video.id] === video.docHash) continue; // unchanged, already judged
-    const candidates = prefilter(video.vector, projectVecs, CONFIG.MAP_PREFILTER_TOPK, floor, baselines);
+    const scored = prefilterScored(video.vector, projectVecs, CONFIG.MAP_PREFILTER_TOPK, floor, baselines);
+    const candidates = scored.map((c) => c.name);
     if (candidates.length === 0 || judge === null) {
       mappings[video.id] = [];
       videoHashes[video.id] = video.docHash;
       continue;
     }
+    const scores = Object.fromEntries(scored.map((c) => [c.name, c.score]));
     const candidateProjects = projects.filter((p) => candidates.includes(p.name));
     try {
-      mappings[video.id] = parseJudgement(await judge(judgePrompt(video, candidateProjects)), candidates);
+      mappings[video.id] = parseJudgement(await judge(judgePrompt(video, candidateProjects)), candidates, scores);
       videoHashes[video.id] = video.docHash;
       judged++;
       // Persist periodically so a crash mid-backfill resumes instead of restarting.
