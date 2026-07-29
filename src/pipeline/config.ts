@@ -63,13 +63,26 @@ export const CONFIG = {
     DASHBOARD: path.resolve("dashboard", "index.html"),
   },
 
-  MODEL: process.env.MODEL ?? "gemini-3.1-flash-image-preview",
+  /**
+   * The vision model every extraction agent runs on — classifier, knowledge,
+   * analyzer, researcher, verifier, link-extractor all send video frames here,
+   * so it must accept image input.
+   *
+   * Was `gemini-3.1-flash-image-preview`, which Vertex now answers with a hard
+   * 404 ("not found or your project does not have access to it") in region
+   * global. That is not a stale failure: every one of those six agents fails on
+   * every new video until this points at a live model, and 18 classifications
+   * in the corpus carry the InvalidModelError to show for it.
+   */
+  MODEL: process.env.MODEL ?? "gemini-2.5-flash",
   EMBEDDING_MODEL: process.env.EMBEDDING_MODEL ?? "gemini-embedding-001",
 
   // Daily digest push (Shooter-compatible /api/notify endpoint).
   DIGEST_TOP_N: Number.parseInt(process.env.DIGEST_TOP_N ?? "5", 10),
-  // Text-only model: CONFIG.MODEL (image-preview) returns free text / empty
-  // parts on text-only JSON prompts (same issue link-resolver works around).
+  // Kept as its own knob so the text-only steps can be pointed elsewhere
+  // without moving the vision model. It previously HAD to differ: CONFIG.MODEL
+  // was an image-preview model that returned free text or empty parts for
+  // text-only JSON prompts. That is no longer the reason they are separate.
   DIGEST_MODEL: process.env.DIGEST_MODEL ?? "gemini-2.5-flash",
   DIGEST_PUSH_URL:
     process.env.DIGEST_PUSH_URL ?? `http://localhost:${process.env.SHOOTER_LOCAL_PORT ?? "54006"}/api/notify`,

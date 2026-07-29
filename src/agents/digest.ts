@@ -332,7 +332,14 @@ function neurolinkGenerate(neurolink: NeuroLink): GenerateFn {
           schema: DigestSchema,
           output: { format: "json" },
           disableTools: true,
-          maxTokens: 1024,
+          // DIGEST_MODEL is a thinking model, so reasoning tokens come out of
+          // this same budget, and the output grows with DIGEST_TOP_N. Measured
+          // on a 10-item digest: at 1024, 3 of 4 responses were truncated
+          // mid-string and lost outright — DigestSchema.parse throws, every
+          // retry hits the same ceiling, and the digest is dropped rather than
+          // merely shortened. At 4096, 4 of 4 returned complete. The default
+          // top-N of 5 fits in 1024 today; this is the headroom for raising it.
+          maxTokens: 4096,
           timeout: "120s",
         });
         return DigestSchema.parse(safeJsonParse(response.content));
