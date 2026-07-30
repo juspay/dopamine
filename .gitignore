@@ -27,16 +27,18 @@ pnpm-lock.yaml
 
 # ──────────────────────────────────────────────
 # Retrieved third-party content & pipeline state — NEVER commit.
-# Regenerated locally by the pipeline. Only the synthetic demo dataset is
-# tracked (the demo_*.json files); see dashboard/data/README.md.
+# Regenerated locally by the pipeline. Nothing under dashboard/data/ is tracked:
+# `npm run dashboard:data` overwrites it with real scraped content, so tracking
+# any of it puts a corpus one `git add -A` away from a public push.
+# See dashboard/data/README.md.
 # ──────────────────────────────────────────────
 knowledge_base/
 videos/*.json
 videos/*.csv
 videos/*.db
 videos/*.db-*
-/dashboard/data/video/*
-!/dashboard/data/video/demo_*.json
+/dashboard/data/*
+!/dashboard/data/README.md
 
 # Personal project portfolio for mapping (the .example.json is tracked).
 projects.json
