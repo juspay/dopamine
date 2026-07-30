@@ -48,7 +48,7 @@ export type MappingSet = Record<string, ProjectMapping[]>;
  *  behaviour are re-judged. Without this, a video recorded as "nothing applies"
  *  stays that way until its own content changes — which is how the truncation
  *  bug's empty results would have persisted. */
-export const JUDGE_VERSION = 3;
+export const JUDGE_VERSION = 4;
 
 export interface ProjectMappingsFile {
   portfolioHash: string;
@@ -211,10 +211,11 @@ function truncate(text: string, max: number): string {
 export function parseJudgement(
   judge: unknown,
   candidateNames: string[],
-  /** name → prefilter score. Where a score is known it decides confidence,
-   *  since the judge's own is uncorrelated with the evidence; without one
-   *  (older callers, tests) the judge's answer is used unchanged. */
-  scores?: Record<string, number>,
+  /** name → prefilter score, the sole source of confidence. A candidate always
+   *  carries one; a missing score means bookkeeping drift, not a weak match, so
+   *  it lands in `low` — recorded, but filtered out of chips and brief actions
+   *  rather than silently promoted. */
+  scores: Record<string, number>,
 ): ProjectMapping[] {
   // Validate PER VERDICT, not over the whole payload. The strict object schema
   // is all-or-nothing: a single verdict missing `reason` used to discard every
@@ -237,8 +238,8 @@ export function parseJudgement(
     // the model's first answer for a project is the one that counts.
     seen.add(match.toLowerCase());
     if (isDegenerateReason(reason)) continue;
-    const score = scores?.[match];
-    const confidence = score === undefined ? r.confidence : confidenceFromScore(score);
+    const score = scores[match];
+    const confidence = score === undefined ? "low" : confidenceFromScore(score);
     out.push({ project: match, confidence, reason: truncate(reason, REASON_MAX) });
   }
   return out;
@@ -268,15 +269,11 @@ export function judgePrompt(video: JudgeVideo, projects: Project[]): string {
     "technique to adopt, a named tool to install, a defect to avoid, or a decision to revisit.",
     "If your reason could be copy-pasted onto a different project unchanged, it is not specific enough — reject.",
     "",
-    "CONFIDENCE — how sure you are of the verdict itself, NOT how strong the link is.",
-    "A weak link is an applies=false, not a low-confidence applies=true.",
-    "  high   = you would defend this call; another reviewer would reach the same one",
-    "  medium = you believe it, but a reasonable reviewer could disagree",
-    "  low    = you lean toward this verdict but are genuinely unsure",
-    "Prefer low over flipping a borderline call — a low verdict is recorded and",
-    "filtered separately downstream, so answering honestly costs nothing.",
+    "A weak link is an applies=false. There is no partial credit and nothing downstream",
+    "rescues a borderline accept — the strength of each accepted match is measured",
+    "separately, not taken from your answer. Judge only whether it applies at all.",
     "",
-    "For EACH project return applies (boolean), confidence (high|medium|low), and reason (<140 chars).",
+    "For EACH project return applies (boolean) and reason (<140 chars).",
     "The reason must state the SPECIFIC change, or — when rejecting — why the apparent link is superficial.",
     "",
     `LEARNING: ${video.title}`,

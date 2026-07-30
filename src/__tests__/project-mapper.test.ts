@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CONFIDENCE_HIGH_Z,
   JUDGE_VERSION,
   type ProjectMappingsFile,
   type ProjectVector,
@@ -13,6 +14,12 @@ import {
 } from "../agents/project-mapper.js";
 import { openSearchDb } from "../search/db.js";
 import { type SearchStates, buildSearchRecords, indexRecords } from "../search/indexer.js";
+
+/** parseJudgement with every candidate scored into `high`, so these cases
+ *  exercise parsing and dedup rather than confidence derivation — that lives in
+ *  confidence-from-score.test.ts. */
+const judged = (judge: unknown, names: string[]) =>
+  parseJudgement(judge, names, Object.fromEntries(names.map((n) => [n, CONFIDENCE_HIGH_Z])));
 
 describe("prefilter", () => {
   const projects: ProjectVector[] = [
@@ -78,7 +85,7 @@ describe("prefilter with corpus baselines", () => {
 
 describe("parseJudgement", () => {
   it("keeps applies+known verdicts, clamps reason, drops the rest", () => {
-    const r = parseJudgement(
+    const r = judged(
       {
         results: [
           { project: "A", applies: true, confidence: "high", reason: "x".repeat(300) },
@@ -94,7 +101,7 @@ describe("parseJudgement", () => {
   });
 
   it("dedupes duplicate/case-variant verdicts for the same project", () => {
-    const r = parseJudgement(
+    const r = judged(
       {
         results: [
           { project: "Alpha", applies: true, confidence: "high", reason: "first verdict" },
@@ -109,7 +116,7 @@ describe("parseJudgement", () => {
   });
 
   it("returns [] on malformed output", () => {
-    expect(parseJudgement({ nope: 1 }, ["A"])).toEqual([]);
+    expect(judged({ nope: 1 }, ["A"])).toEqual([]);
   });
 
   it("truncates a long reason on a word boundary, not mid-word", () => {
@@ -117,9 +124,7 @@ describe("parseJudgement", () => {
     // past REASON_MAX — see videos/project_mappings.json for the original bug.
     const original =
       "Dopamine includes a SvelteKit dashboard, which is a new website. Technical SEO for sitemaps, GSC, and link previews will aid discoverability, ranking, and shareability of the public snapshot substantially over time.";
-    const r = parseJudgement({ results: [{ project: "A", applies: true, confidence: "high", reason: original }] }, [
-      "A",
-    ]);
+    const r = judged({ results: [{ project: "A", applies: true, confidence: "high", reason: original }] }, ["A"]);
     const reason = r[0].reason;
     expect(reason.length).toBeLessThanOrEqual(140);
     expect(reason.endsWith("…")).toBe(true);
@@ -132,7 +137,7 @@ describe("parseJudgement", () => {
   });
 
   it("drops a mapping with an empty or single-fragment reason instead of surfacing junk", () => {
-    const r = parseJudgement(
+    const r = judged(
       {
         results: [
           { project: "A", applies: true, confidence: "high", reason: "Can" },
