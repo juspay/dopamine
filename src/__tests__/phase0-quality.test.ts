@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { parseBrief } from "../agents/project-brief.js";
-import { parseJudgement } from "../agents/project-mapper.js";
+import { CONFIDENCE_HIGH_Z, parseJudgement } from "../agents/project-mapper.js";
 import { deriveTitle } from "../dashboard/title.js";
 import { thinReasonFor } from "../dashboard/data-builder.js";
 import { briefSourceCount, isExploratoryAction } from "../schemas/brief.js";
+
+/** parseJudgement with every candidate scored into `high`, so these cases
+ *  exercise reason quality and recall rather than confidence derivation — that
+ *  lives in confidence-from-score.test.ts. */
+const judged = (judge: unknown, names: string[]) =>
+  parseJudgement(judge, names, Object.fromEntries(names.map((n) => [n, CONFIDENCE_HIGH_Z])));
 
 describe("thinReasonFor", () => {
   it("blames the classifier when classification itself errored", () => {
@@ -83,27 +89,27 @@ describe("parseJudgement reason quality", () => {
   const j = (reason: string) => ({ results: [{ project: "P", applies: true, confidence: "high", reason }] });
 
   it("keeps a terse but real two-word reason", () => {
-    expect(parseJudgement(j("Same tech"), ["P"])[0].reason).toBe("Same tech");
+    expect(judged(j("Same tech"), ["P"])[0].reason).toBe("Same tech");
   });
   it("rejects an empty or single-word reason", () => {
-    expect(parseJudgement(j(""), ["P"])).toEqual([]);
-    expect(parseJudgement(j("Can"), ["P"])).toEqual([]);
+    expect(judged(j(""), ["P"])).toEqual([]);
+    expect(judged(j("Can"), ["P"])).toEqual([]);
   });
   it("truncates on a word boundary, never mid-word", () => {
     const long = `${"word ".repeat(40)}end`;
-    const out = parseJudgement(j(long), ["P"])[0].reason;
+    const out = judged(j(long), ["P"])[0].reason;
     expect(out.endsWith("…")).toBe(true);
     expect(out).not.toMatch(/wor…$/); // would indicate a mid-word cut
     expect(out.length).toBeLessThanOrEqual(141);
   });
   it("does not split an astral character across the cut", () => {
-    const out = parseJudgement(j(`${"a".repeat(138)}🎉 tail`), ["P"])[0].reason;
+    const out = judged(j(`${"a".repeat(138)}🎉 tail`), ["P"])[0].reason;
     // A lone surrogate would make the string non-round-trippable.
     expect([...out].every((ch) => ch.codePointAt(0) !== undefined)).toBe(true);
     expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(out)).toBe(false);
   });
   it("lets the first verdict for a project win over a later duplicate", () => {
-    const out = parseJudgement(
+    const out = judged(
       {
         results: [
           { project: "P", applies: true, confidence: "high", reason: "Can" },
@@ -130,8 +136,8 @@ describe("parseJudgement lone-token reasons", () => {
   const j = (reason: string) => ({ results: [{ project: "P", applies: true, confidence: "high", reason }] });
 
   it("rejects a short lone token but keeps a substantive one", () => {
-    expect(parseJudgement(j("Can"), ["P"])).toEqual([]);
-    expect(parseJudgement(j("authentication-middleware-reuse"), ["P"])).toHaveLength(1);
+    expect(judged(j("Can"), ["P"])).toEqual([]);
+    expect(judged(j("authentication-middleware-reuse"), ["P"])).toHaveLength(1);
   });
 });
 
@@ -142,18 +148,18 @@ describe("parseJudgement resilience (recall)", () => {
   it("keeps a valid verdict even when a sibling verdict is malformed", () => {
     // Regression: the whole-object schema discarded every verdict when one was
     // malformed, losing ~93% of the judge's positive answers.
-    const out = parseJudgement({ results: [good, malformed] }, ["A", "B"]);
+    const out = judged({ results: [good, malformed] }, ["A", "B"]);
     expect(out).toHaveLength(1);
     expect(out[0].project).toBe("A");
   });
 
   it("keeps a valid verdict that follows a malformed one", () => {
-    expect(parseJudgement({ results: [malformed, good] }, ["A", "B"])).toHaveLength(1);
+    expect(judged({ results: [malformed, good] }, ["A", "B"])).toHaveLength(1);
   });
 
   it("returns nothing for a non-array or absent results payload", () => {
-    expect(parseJudgement({ results: "nope" }, ["A"])).toEqual([]);
-    expect(parseJudgement({}, ["A"])).toEqual([]);
-    expect(parseJudgement(null, ["A"])).toEqual([]);
+    expect(judged({ results: "nope" }, ["A"])).toEqual([]);
+    expect(judged({}, ["A"])).toEqual([]);
+    expect(judged(null, ["A"])).toEqual([]);
   });
 });

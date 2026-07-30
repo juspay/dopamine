@@ -22,26 +22,32 @@ describe("confidenceFromScore", () => {
 describe("parseJudgement confidence source", () => {
   const verdicts = {
     results: [
-      { project: "Weak", applies: true, confidence: "high", reason: "a real sounding reason" },
-      { project: "Strong", applies: true, confidence: "high", reason: "another real reason" },
+      { project: "Weak", applies: true, reason: "a real sounding reason" },
+      { project: "Strong", applies: true, reason: "another real reason" },
     ],
   };
 
-  it("overrides the judge's confidence with the measured score", () => {
-    // The judge called both "high"; only one has the evidence for it.
+  it("assigns confidence from the measured score", () => {
     const out = parseJudgement(verdicts, ["Weak", "Strong"], { Weak: 1.1, Strong: 2.4 });
     expect(out.find((m) => m.project === "Weak")?.confidence).toBe("low");
     expect(out.find((m) => m.project === "Strong")?.confidence).toBe("high");
   });
 
-  it("keeps the judge's confidence when no score is supplied for that project", () => {
+  it("records a scoreless match as low rather than promoting it", () => {
+    // A candidate always carries a score, so a missing one is bookkeeping drift.
+    // It must not become a chip or a brief action on the strength of an absence.
     const out = parseJudgement(verdicts, ["Weak", "Strong"], { Strong: 2.4 });
-    expect(out.find((m) => m.project === "Weak")?.confidence).toBe("high");
+    expect(out.find((m) => m.project === "Weak")?.confidence).toBe("low");
     expect(out.find((m) => m.project === "Strong")?.confidence).toBe("high");
   });
 
-  it("falls back entirely when scores are omitted", () => {
-    expect(parseJudgement(verdicts, ["Weak", "Strong"]).every((m) => m.confidence === "high")).toBe(true);
+  it("ignores a confidence the judge volunteers", () => {
+    // The field is no longer requested; a model that sends it anyway must not
+    // be able to talk its way into a higher bucket than the evidence supports.
+    const volunteered = {
+      results: [{ project: "Weak", applies: true, confidence: "high", reason: "a real sounding reason" }],
+    };
+    expect(parseJudgement(volunteered, ["Weak"], { Weak: 1.1 })[0].confidence).toBe("low");
   });
 });
 
