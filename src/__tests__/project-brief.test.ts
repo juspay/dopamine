@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type BriefVideo,
   briefHash,
+  briefPrompt,
   collectProjectLearnings,
   parseBrief,
   runProjectBrief,
@@ -69,6 +70,53 @@ describe("briefHash", () => {
   it("changes when a learning's confidence changes (re-judged)", () => {
     const requdged = [{ ...ls[0], confidence: "medium" as const }];
     expect(briefHash(proj, requdged, "m")).not.toBe(briefHash(proj, ls, "m"));
+  });
+});
+
+describe("briefPrompt", () => {
+  // Regression: the real failure was a learning whose concrete mechanism ("each
+  // task runs in its own isolated Git worktree") sat FOURTH in its takeaway list.
+  // A 3-item window hid it, and the synthesised action restated the project's
+  // existing behaviour instead of the new mechanism.
+  const deepLearning = [
+    {
+      id: "v1",
+      title: "1Code",
+      takeaways: [
+        "runs multiple AI coding tasks in parallel",
+        "wraps agents in a visual dashboard",
+        "fix a bug and write docs simultaneously",
+        "each task runs in its own isolated Git worktree",
+        "includes background execution and diff previews",
+        "sixth takeaway",
+        "seventh takeaway should NOT appear",
+      ],
+      toolNames: ["1Code"],
+      reason: "worktree isolation for parallel agent tasks",
+      confidence: "high" as const,
+      docHash: "d1",
+    },
+  ];
+
+  it("shows the takeaway carrying the concrete mechanism, not just the first three", () => {
+    const p = briefPrompt(proj, deepLearning);
+    expect(p).toContain("each task runs in its own isolated Git worktree");
+    expect(p).toContain("includes background execution and diff previews");
+  });
+
+  it("still bounds the window so one verbose learning cannot crowd out the rest", () => {
+    expect(briefPrompt(proj, deepLearning)).not.toContain("seventh takeaway should NOT appear");
+  });
+
+  it("demands a named artefact and warns against restating existing behaviour", () => {
+    const p = briefPrompt(proj, deepLearning);
+    expect(p).toContain("NAME THE SPECIFICS");
+    expect(p).toMatch(/at least one concrete artefact/);
+    expect(p).toMatch(/Do not propose what the project already does/);
+  });
+
+  it("passes the tool names through so an action can cite them", () => {
+    expect(briefPrompt(proj, deepLearning)).toContain("tools: 1Code");
   });
 });
 
