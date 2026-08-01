@@ -69,6 +69,12 @@ export function collectProjectLearnings(
 const US = String.fromCharCode(31);
 const RS = String.fromCharCode(30);
 
+/** Bump when synthesis behaviour changes (prompt, how many takeaways are shown,
+ *  parsing) so briefs written under the old behaviour are re-synthesised. Without
+ *  it a prompt change is inert: the hash covers the learnings but not the
+ *  instructions, so every cached brief would survive untouched. */
+export const BRIEF_VERSION = 2;
+
 /**
  * Stable, order-independent hash gating re-synthesis. Includes each learning's
  * docHash and confidence so a re-analyzed video (new content, same title) or a
@@ -79,9 +85,15 @@ export function briefHash(project: Project, learnings: BriefLearning[], model: s
     .map((l) => [l.id, l.docHash, l.confidence, l.reason].join(US))
     .sort()
     .join(RS);
-  const material = [model, project.name, project.description, parts].join(RS);
+  const material = [String(BRIEF_VERSION), model, project.name, project.description, parts].join(RS);
   return createHash("sha256").update(material).digest("hex");
 }
+
+/** Takeaways shown per learning. The concrete mechanism is often NOT in the
+ *  first few — the learning that produced "each task runs in its own isolated
+ *  worktree" carried it fourth, so a 3-item window dropped the one specific that
+ *  made the action worth writing. */
+const TAKEAWAYS_SHOWN = 6;
 
 export function briefPrompt(project: Project, learnings: BriefLearning[]): string {
   return [
@@ -90,13 +102,27 @@ export function briefPrompt(project: Project, learnings: BriefLearning[]): strin
     "You are advising on this project. Below are saved learnings judged relevant to it.",
     "Produce 3-5 CONCRETE, prioritized actions to try in this project — most impactful first.",
     "Each action: an imperative title, 1-2 sentences of specific detail (what to do and why for THIS project),",
-    "and basedOn = the videoIds it draws on. Combine related learnings; do NOT merely restate a learning.",
+    "and basedOn = the videoIds it draws on.",
+    "",
+    "NAME THE SPECIFICS. Every action must carry over the concrete thing that made its",
+    "learning worth saving — the tool, library, protocol, or named mechanism. Write",
+    "'batch-create one worktree per agent task the way 1Code does', not 'improve",
+    "parallel task isolation'. An action a reader cannot act on without re-watching",
+    "the video has failed.",
+    "",
+    "Combining related learnings is good; generalising until the specifics disappear is not.",
+    "Before returning, check each action names at least one concrete artefact from its",
+    "cited learnings. If it names none, it is too abstract — rewrite it.",
+    "",
+    "Do not propose what the project already does. If a learning's only overlap is a",
+    "capability the project description already claims, either draw the NEW mechanism",
+    "out of it or leave that learning out.",
     "If only one learning is given, return a single focused action.",
     "",
     "LEARNINGS:",
     ...learnings.map(
       (l) =>
-        `- [${l.id}] ${l.title} — ${l.takeaways.slice(0, 3).join("; ")}${l.toolNames.length ? ` (tools: ${l.toolNames.join(", ")})` : ""} [why: ${l.reason}]`,
+        `- [${l.id}] ${l.title} — ${l.takeaways.slice(0, TAKEAWAYS_SHOWN).join("; ")}${l.toolNames.length ? ` (tools: ${l.toolNames.join(", ")})` : ""} [why: ${l.reason}]`,
     ),
   ].join("\n");
 }
