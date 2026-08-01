@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -18,6 +19,7 @@ if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !path.isAbsolute(process.env.G
 
 const { hasSearchSchema, openSearchDb } = await import("../search/db.js");
 const { TOOLS, handleToolCall } = await import("./handlers.js");
+const { createUsageLogger, noopUsageLogger } = await import("./usage-log.js");
 
 const DB_PATH = path.join(repoRoot, "videos", "search.db");
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? "gemini-embedding-001";
@@ -89,11 +91,18 @@ async function getQueryVector(text: string): Promise<number[] | null> {
 const MISSING_DB_HELP =
   "The search index (videos/search.db) does not exist yet. Build it from the dopamine repo with: npm run build && npm run search:index";
 
+// Usage log lives under the gitignored logs/ dir, so real project names from a
+// private portfolio never reach a commit. Opt out with DOPAMINE_MCP_USAGE_LOG=0.
+const USAGE_LOG_PATH = path.join(repoRoot, "logs", "mcp-usage.jsonl");
+const usageLoggingOn = process.env.DOPAMINE_MCP_USAGE_LOG !== "0";
+if (usageLoggingOn) await mkdir(path.dirname(USAGE_LOG_PATH), { recursive: true }).catch(() => {});
+
 const deps = {
   getDb,
   getQueryVector,
   embeddingModel: EMBEDDING_MODEL,
   missingDbHelp: MISSING_DB_HELP,
+  logUsage: usageLoggingOn ? createUsageLogger(USAGE_LOG_PATH) : noopUsageLogger,
 };
 
 const server = new Server({ name: "dopamine-kb", version: "1.0.0" }, { capabilities: { tools: {} } });

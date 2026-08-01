@@ -9,6 +9,7 @@ import {
   searchTools,
   stats,
 } from "../search/query.js";
+import { type UsageLogger, tallyConfidence } from "./usage-log.js";
 
 /** Everything the tool dispatch needs from the host process — injectable for tests. */
 export interface HandlerDeps {
@@ -16,6 +17,8 @@ export interface HandlerDeps {
   getQueryVector: (text: string) => Promise<number[] | null>;
   embeddingModel: string;
   missingDbHelp: string;
+  /** Optional so every existing caller and test keeps working untouched. */
+  logUsage?: UsageLogger;
 }
 
 export interface ToolContent {
@@ -133,10 +136,21 @@ const toolFns: Record<string, ToolFn> = {
     );
   },
   corpus_stats: (_deps, db) => jsonContent(stats(db)),
-  find_for_project: (_deps, db, args) => {
+  find_for_project: (deps, db, args) => {
     const project = String(args.project ?? "");
     if (project === "") return errorContent("project is required");
-    const hits = findForProject(db, project, asConfidence(args.minConfidence));
+    const minConfidence = asConfidence(args.minConfidence);
+    const hits = findForProject(db, project, minConfidence);
+    // Logged before the empty-result early return so an unknown project name is
+    // recorded too — "callers keep asking for a project that has no mappings" is
+    // itself a finding.
+    deps.logUsage?.({
+      event: "find_for_project",
+      project,
+      minConfidence,
+      returned: hits.length,
+      byConfidence: tallyConfidence(hits),
+    });
     if (hits.length === 0) {
       const known = listMappedProjects(db);
       return errorContent(
@@ -151,18 +165,31 @@ const toolFns: Record<string, ToolFn> = {
 
 /** Dispatch one tools/call request. Never throws — every failure is a ToolContent error. */
 export async function handleToolCall(deps: HandlerDeps, name: string, args: ToolArgs = {}): Promise<ToolContent> {
+  const started = performance.now();
+  const record = (ok: boolean) =>
+    deps.logUsage?.({ event: "call", tool: name, ms: Math.round(performance.now() - started), ok });
+
   let db: DatabaseSync;
   try {
     db = deps.getDb();
   } catch {
+    // Logged, not skipped: "every call failed because the index was missing" is
+    // the single most useful thing this log can tell you.
+    record(false);
     return errorContent(deps.missingDbHelp);
   }
 
   const fn = toolFns[name];
-  if (!fn) return errorContent(`Unknown tool: ${name}`);
+  if (!fn) {
+    record(false);
+    return errorContent(`Unknown tool: ${name}`);
+  }
   try {
-    return await fn(deps, db, args);
+    const result = await fn(deps, db, args);
+    record(result.isError !== true);
+    return result;
   } catch (err) {
+    record(false);
     return errorContent(`dopamine-kb error: ${String(err).slice(0, 300)}`);
   }
 }
