@@ -16,7 +16,8 @@
     { href: '/', label: 'Home' },
     { href: '/videos', label: 'Videos' },
     { href: '/tools', label: 'Tools' },
-    { href: '/kb', label: 'Knowledge' }
+    { href: '/kb', label: 'Knowledge' },
+    { href: '/review', label: 'Review' }
   ];
 
   function isActive(href: string): boolean {

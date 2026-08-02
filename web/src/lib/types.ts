@@ -139,3 +139,19 @@ export interface IndexFile {
   meta: Meta;
   videos: IndexRecord[];
 }
+
+// Human labels (mirror of src/schemas/label.ts). The dashboard is the only
+// writer; the pipeline never generates or overwrites these.
+export type Verdict = 'applies' | 'none';
+export interface Label {
+  projects: string[];
+  tags: string[];
+  verdict: Verdict;
+  note: string;
+  updatedAt: string;
+}
+export type LabelPatch = Partial<Omit<Label, 'updatedAt'>>;
+export interface LabelsFile {
+  version: 1;
+  labels: Record<string, Label>;
+}
