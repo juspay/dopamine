@@ -50,7 +50,10 @@
       <span class="arrow" aria-hidden="true">→</span> {name}
     </h1>
     {#if loaded}
-      <p class="count">{items.length} {items.length === 1 ? 'learning' : 'learnings'}</p>
+      <p class="count">
+        {items.length} {items.length === 1 ? 'learning' : 'learnings'}
+        <a class="review-link" href={'/review?project=' + encodeURIComponent(name)}>Review these →</a>
+      </p>
     {/if}
   </header>
 
@@ -145,6 +148,16 @@
     color: var(--color-text-secondary);
     font-size: var(--font-sm);
     margin: 0;
+  }
+
+  .review-link {
+    margin-left: var(--space-3);
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .review-link:hover {
+    text-decoration: underline;
   }
 
   .actions {
