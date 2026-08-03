@@ -9,13 +9,22 @@ import {
 } from "../agents/project-mapper.js";
 
 describe("confidenceFromScore", () => {
-  it("splits on the observed quartiles, inclusive at each boundary", () => {
+  it("splits on the refitted cut points, inclusive at each boundary", () => {
     expect(confidenceFromScore(CONFIDENCE_HIGH_Z)).toBe("high");
     expect(confidenceFromScore(3.2)).toBe("high");
     expect(confidenceFromScore(CONFIDENCE_MEDIUM_Z)).toBe("medium");
     expect(confidenceFromScore(CONFIDENCE_HIGH_Z - 0.01)).toBe("medium");
     expect(confidenceFromScore(CONFIDENCE_MEDIUM_Z - 0.01)).toBe("low");
     expect(confidenceFromScore(0)).toBe("low");
+  });
+
+  it("keeps the buckets far enough apart to mean different things", () => {
+    // The cut points were refitted to human agreement (17% / 36% / 86%). The
+    // failure they guard against is a future edit that drifts them together
+    // again: the previous high cut sat close enough to medium that the two
+    // buckets scored 44% and 38%, so "high" carried almost no information.
+    expect(CONFIDENCE_HIGH_Z).toBeGreaterThan(CONFIDENCE_MEDIUM_Z);
+    expect(CONFIDENCE_HIGH_Z - CONFIDENCE_MEDIUM_Z).toBeGreaterThanOrEqual(1.0);
   });
 });
 
@@ -28,7 +37,10 @@ describe("parseJudgement confidence source", () => {
   };
 
   it("assigns confidence from the measured score", () => {
-    const out = parseJudgement(verdicts, ["Weak", "Strong"], { Weak: 1.1, Strong: 2.4 });
+    const out = parseJudgement(verdicts, ["Weak", "Strong"], {
+      Weak: CONFIDENCE_MEDIUM_Z - 0.15,
+      Strong: CONFIDENCE_HIGH_Z + 0.5,
+    });
     expect(out.find((m) => m.project === "Weak")?.confidence).toBe("low");
     expect(out.find((m) => m.project === "Strong")?.confidence).toBe("high");
   });
@@ -36,7 +48,7 @@ describe("parseJudgement confidence source", () => {
   it("records a scoreless match as low rather than promoting it", () => {
     // A candidate always carries a score, so a missing one is bookkeeping drift.
     // It must not become a chip or a brief action on the strength of an absence.
-    const out = parseJudgement(verdicts, ["Weak", "Strong"], { Strong: 2.4 });
+    const out = parseJudgement(verdicts, ["Weak", "Strong"], { Strong: CONFIDENCE_HIGH_Z + 0.5 });
     expect(out.find((m) => m.project === "Weak")?.confidence).toBe("low");
     expect(out.find((m) => m.project === "Strong")?.confidence).toBe("high");
   });
@@ -47,7 +59,7 @@ describe("parseJudgement confidence source", () => {
     const volunteered = {
       results: [{ project: "Weak", applies: true, confidence: "high", reason: "a real sounding reason" }],
     };
-    expect(parseJudgement(volunteered, ["Weak"], { Weak: 1.1 })[0].confidence).toBe("low");
+    expect(parseJudgement(volunteered, ["Weak"], { Weak: CONFIDENCE_MEDIUM_Z - 0.15 })[0].confidence).toBe("low");
   });
 });
 

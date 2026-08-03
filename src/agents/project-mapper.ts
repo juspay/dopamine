@@ -48,7 +48,7 @@ export type MappingSet = Record<string, ProjectMapping[]>;
  *  behaviour are re-judged. Without this, a video recorded as "nothing applies"
  *  stays that way until its own content changes — which is how the truncation
  *  bug's empty results would have persisted. */
-export const JUDGE_VERSION = 4;
+export const JUDGE_VERSION = 5;
 
 export interface ProjectMappingsFile {
   portfolioHash: string;
@@ -182,9 +182,24 @@ export function confidenceFromScore(score: number): Confidence {
   return "low";
 }
 
-/** p75 of observed mapping scores. */
-export const CONFIDENCE_HIGH_Z = 1.75;
-/** p25 of observed mapping scores. */
+/**
+ * Refitted against 78 human-labelled videos. The previous cut points were
+ * quartiles of the corpus's own score distribution, which describes the shape
+ * of the data and says nothing about whether a mapping is right. Measured
+ * against how often a human actually agreed:
+ *
+ *   band          n     agreed
+ *   0.50–1.25    192      17%
+ *   1.25–2.50    170      36%
+ *   >= 2.50       14      86%
+ *
+ * The old high cut of 1.75 pooled a 21%-agreement band with an 86% one and
+ * landed at 44% overall — six points from medium's 38%, so "high" carried
+ * almost no information. Moving it to 2.50 separates the buckets properly.
+ * `high` is now rare and genuinely trustworthy rather than merely common.
+ */
+export const CONFIDENCE_HIGH_Z = 2.5;
+/** Below this, agreement collapses to ~17% — the level `low` is meant to mark. */
 export const CONFIDENCE_MEDIUM_Z = 1.25;
 
 /** Truncate on a word boundary where one is reasonably close, so a reason
@@ -256,18 +271,27 @@ export function judgePrompt(video: JudgeVideo, projects: Project[]): string {
   return [
     "Decide, for each project, whether this saved-video learning would actually change what its maintainer builds.",
     "",
-    "Default to applies=false. The bar is not 'related to' — it is 'I would open the repo because of this'.",
+    "These projects are NOT alternatives and you are NOT picking the best fit. Judge each one",
+    "on its own, as if it were the only project on the page. One learning routinely applies to",
+    "several: an open-source agent framework can change the agent runtime AND the model layer",
+    "that would wrap it AND the mobile client that would drive it. Accepting one project is not",
+    "evidence against any other, and there is no limit on how many may apply.",
+    "",
+    "The bar is not 'related to' — it is 'a maintainer would act on this'. Do not require a",
+    "stated need: a tool this project could adopt to do its job better DOES apply, which is most",
+    "of what is worth surfacing.",
     "",
     "REJECT (applies=false) when the only link is:",
     "  - a shared language, framework, or platform ('both use JavaScript', 'both are SvelteKit')",
     "  - a shared broad topic ('both involve AI', 'both are developer tools')",
     "  - subject matter the project merely PROCESSES or INGESTS rather than is built from",
     "  - a generic best practice that would apply equally to any software project",
-    "  - a tool the project could theoretically adopt but has no stated need for",
     "",
-    "ACCEPT (applies=true) only when you can name the concrete thing that changes: a specific",
+    "ACCEPT (applies=true) when you can name the concrete thing that changes: a specific",
     "technique to adopt, a named tool to install, a defect to avoid, or a decision to revisit.",
-    "If your reason could be copy-pasted onto a different project unchanged, it is not specific enough — reject.",
+    "The same concrete thing may genuinely serve several of these projects — a shared reason",
+    "across two projects is a real overlap, not a sign the reason is too vague. What makes a",
+    "reason too vague is naming nothing specific at all.",
     "",
     "A weak link is an applies=false. There is no partial credit and nothing downstream",
     "rescues a borderline accept — the strength of each accepted match is measured",

@@ -1,13 +1,21 @@
 [
   {
     "name": "Example App",
-    "description": "One-sentence description of what this project is and does; the more specific, the better the mapping. Mention the stack and the problems it solves.",
-    "keywords": ["typescript", "sveltekit", "payments"],
+    "description": "One sentence on what this project IS, then a sentence starting 'Improved by learnings about ...' naming the subjects that genuinely change it. The second sentence matters most: name + description + keywords are what get embedded, so the vocabulary here decides which learnings are ever offered to the judge. Describe the project in the words a relevant learning would itself use — 'agent memory, tool-use reliability, MCP servers' finds far more than 'TypeScript/Express bot'.",
+    "keywords": [
+      "terms a relevant learning would actually contain",
+      "agent memory",
+      "tool calling",
+      "session persistence",
+      "typescript",
+      "sveltekit"
+    ],
+    "avoid": "the near-miss category this project keeps attracting. Only the judge sees this, never the embedding — so it can raise precision but can never recover a learning the prefilter already dropped. Name what is adjacent-but-wrong; do not exclude the project's own subject, or it will reject the learnings you most want.",
     "path": "/absolute/path/to/example-app"
   },
   {
     "name": "Example CLI",
-    "description": "A command-line tool for X. Projects without a path get chips and find_for_project results but no IDEAS.md drops.",
+    "description": "A command-line tool for X. Improved by learnings about the specific mechanics it implements. Projects without a path get chips and find_for_project results but no IDEAS.md drops.",
     "keywords": ["cli", "automation"]
   }
 ]

@@ -89,7 +89,11 @@ export const CONFIG = {
 
   // Project mapping (hybrid embed-prefilter → LLM judge).
   PROJECTS_CONFIG: path.resolve("projects.json"),
-  MAP_PREFILTER_TOPK: Number.parseInt(process.env.MAP_PREFILTER_TOPK ?? "4", 10),
+  /** Raised 4 → 6 against 78 human-labelled videos: at floor 0.5 the extra two
+   *  slots move the recall ceiling from 73% to 85%, because a video the human
+   *  assigns to three or four projects cannot be served by four candidates once
+   *  a hub project occupies one of them. */
+  MAP_PREFILTER_TOPK: Number.parseInt(process.env.MAP_PREFILTER_TOPK ?? "6", 10),
   /** Raw-cosine floor. Only used on a corpus too small to standardise (see below). */
   MAP_PREFILTER_MIN: Number.parseFloat(process.env.MAP_PREFILTER_MIN ?? "0.55"),
   /**
@@ -102,14 +106,24 @@ export const CONFIG = {
    *   0.75   19/40           32         1.68             17/40
    *   1.00   18/40           30         1.67             20/40
    *
-   * Past 0.75 the multi-project spread stops improving, so the extra tightening
-   * buys cleaner individual verdicts rather than fewer of them: at 1.0 a
-   * terminal-monitor video maps to Shooter alone and an AI-gateway video to
-   * Neurolink alone, where 0.5 gave each of them four projects. 0.75 and 1.0
-   * are within sample noise of each other on volume — this is the knob to
-   * reach for if mapping coverage matters more than per-mapping precision.
+   * That sweep had no ground truth — it read "fewer projects per video" as
+   * "cleaner", which is only true if the extra projects were wrong. 78
+   * human-labelled videos (124 verdicts) show they were not. Scored against
+   * them, the floor is the binding constraint on recall:
+   *
+   *   floor  topK   candidates   recall ceiling
+   *   1.00   4      225          64%   ← previous setting
+   *   1.00   6      256          70%
+   *   0.75   6      327          81%
+   *   0.50   6      376          85%
+   *   0.25   6      422          89%
+   *
+   * The judge can only reject, never add, so anything below the floor is
+   * unreachable at any prompt quality. 0.50 buys +21 points of ceiling for
+   * 1.67x the judge calls; past it the curve flattens while candidate density
+   * keeps falling, which spends judge budget on pairs it will reject anyway.
    */
-  MAP_PREFILTER_MIN_Z: Number.parseFloat(process.env.MAP_PREFILTER_MIN_Z ?? "1.0"),
+  MAP_PREFILTER_MIN_Z: Number.parseFloat(process.env.MAP_PREFILTER_MIN_Z ?? "0.5"),
   /** Below this many videos a per-project spread is noise, so ranking stays on raw cosine. */
   MAP_BASELINE_MIN_VIDEOS: Number.parseInt(process.env.MAP_BASELINE_MIN_VIDEOS ?? "30", 10),
   MAP_MODEL: process.env.MAP_MODEL ?? "gemini-2.5-flash",
