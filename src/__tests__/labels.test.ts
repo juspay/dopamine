@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   EMPTY_LABELS,
+  LabelPatchSchema,
   type LabelsFile,
   isEmptyLabel,
   isValidVideoId,
@@ -26,6 +27,27 @@ describe("upsertLabel", () => {
     expect(b.labels.v1.projects).toEqual(["Yama"]);
     expect(b.labels.v1.note).toBe("keep me");
     expect(b.labels.v1.tags).toEqual(["infra"]);
+  });
+
+  it("preserves other fields THROUGH THE PATCH SCHEMA, not just a raw object", () => {
+    // The test above passed while the server still destroyed data, because it
+    // called upsertLabel directly and skipped validation. The real path parses
+    // first, and `LabelSchema.partial()` used to materialise every default —
+    // turning "I only sent tags" into "clear projects, verdict and note".
+    const a = upsertLabel(EMPTY_LABELS, "v1", { projects: ["Yama"], note: "keep me" }, NOW);
+    const patch = LabelPatchSchema.parse({ tags: ["infra"] });
+    expect(patch).toEqual({ tags: ["infra"] }); // no phantom keys
+    const b = upsertLabel(a, "v1", patch, "later");
+    expect(b.labels.v1.projects).toEqual(["Yama"]);
+    expect(b.labels.v1.note).toBe("keep me");
+    expect(b.labels.v1.tags).toEqual(["infra"]);
+  });
+
+  it("still lets a caller clear a field on purpose", () => {
+    // The fix must not make clearing impossible: an explicit [] is a real edit.
+    const a = upsertLabel(EMPTY_LABELS, "v1", { projects: ["Yama"] }, NOW);
+    const patch = LabelPatchSchema.parse({ projects: [] });
+    expect(upsertLabel(a, "v1", patch, NOW).labels.v1.projects).toEqual([]);
   });
 
   it("clears projects only when explicitly given an empty array", () => {

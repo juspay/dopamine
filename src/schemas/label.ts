@@ -35,8 +35,25 @@ export const LabelsFileSchema = z.object({
 });
 export type LabelsFile = z.infer<typeof LabelsFileSchema>;
 
-/** What a client may send; server stamps updatedAt so a wrong clock cannot poison ordering. */
-export const LabelPatchSchema = LabelSchema.omit({ updatedAt: true }).partial();
+/**
+ * What a client may send; server stamps updatedAt so a wrong clock cannot poison
+ * ordering.
+ *
+ * Declared field-by-field rather than as `LabelSchema.partial()`, which looks
+ * equivalent and is not: `.partial()` makes each key optional but leaves the
+ * `.default()` on it intact, so zod MATERIALISES the default for any key the
+ * client omitted. A patch of `{tags:["x"]}` arrived as
+ * `{projects:[], tags:["x"], verdict:"applies", note:""}` and silently wiped the
+ * projects — upsertLabel could not tell "not sent" from "explicitly cleared".
+ * These must stay `.optional()` with NO defaults for a partial update to mean
+ * what it says.
+ */
+export const LabelPatchSchema = z.object({
+  projects: z.array(z.string().min(1)).optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  verdict: z.enum(VERDICTS).optional(),
+  note: z.string().max(2000).optional(),
+});
 export type LabelPatch = z.infer<typeof LabelPatchSchema>;
 
 export const EMPTY_LABELS: LabelsFile = { version: 1, labels: {} };
