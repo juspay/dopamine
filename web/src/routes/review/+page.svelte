@@ -10,9 +10,11 @@
    * judging the learning, and the resulting labels would be worth nothing as
    * ground truth.
    */
+  import { untrack } from 'svelte';
   import { page } from '$app/stores';
   import { getVideos, isIndexLoaded, loadFacets, getFacets } from '$lib/data.svelte.js';
   import { getAllLabels, isReviewed, labelsError, labelsLoaded, loadLabels } from '$lib/labels.svelte.js';
+  import type { IndexRecord } from '$lib/types.js';
   import LabelPanel from '$lib/components/LabelPanel.svelte';
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
@@ -63,10 +65,37 @@
     return pool.filter((v) => isReviewed(v.id)).length;
   });
 
-  const visible = $derived.by(() => {
-    getAllLabels();
+  // The queue is a SNAPSHOT, deliberately not reactive to label writes.
+  //
+  // It used to recompute on every save, so with "hide reviewed" on, a row
+  // vanished the instant it was touched — you could pick a project OR add a tag,
+  // never both, because the first action removed the row (and its tag input)
+  // mid-edit. A whole labelling pass came back with 74 rows carrying projects,
+  // one carrying a tag, and not a single row carrying both.
+  //
+  // Rows now stay put while you work and drain only when you ask.
+  let queue = $state<IndexRecord[]>([]);
+  function rebuildQueue(): void {
     const xs = hideReviewed ? pool.filter((v) => !isReviewed(v.id)) : pool;
-    return xs.slice(0, limit);
+    queue = xs.slice(0, limit);
+  }
+  // Rebuild on filter/scope/limit changes and once data lands — untracked inside
+  // so reading isReviewed() here does not re-subscribe the effect to every save.
+  $effect(() => {
+    scope;
+    projectFilter;
+    hideReviewed;
+    limit;
+    loaded;
+    untrack(rebuildQueue);
+  });
+
+  const visible = $derived(queue);
+  // How many of the rows on screen are now done — shown so "Clear reviewed" has
+  // an obvious purpose rather than being a mystery button.
+  const doneOnScreen = $derived.by(() => {
+    getAllLabels();
+    return queue.filter((v) => isReviewed(v.id)).length;
   });
 
   const totalLabelled = $derived(Object.keys(getAllLabels()).length);
@@ -109,6 +138,9 @@
       <input type="checkbox" bind:checked={hideReviewed} />
       hide reviewed
     </label>
+    <button class="seg" onclick={rebuildQueue} disabled={doneOnScreen === 0}>
+      Clear reviewed{doneOnScreen ? ` (${doneOnScreen})` : ''}
+    </button>
   </div>
 
   {#if loaded}
@@ -195,6 +227,10 @@
     border-radius: var(--radius-pill);
     cursor: pointer;
     transition: all var(--t-fast);
+  }
+  .seg:disabled {
+    opacity: 0.45;
+    cursor: default;
   }
   .seg.on {
     background: var(--accent);
