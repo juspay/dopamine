@@ -29,7 +29,7 @@ function memFs(seed: Record<string, string> = {}, existingDirs: string[] = []) {
   return { impl, files };
 }
 
-const dopamine: Project[] = [{ name: "Dopamine", description: "d", keywords: [], path: "/repo" }];
+const dopamine: Project[] = [{ name: "Dopamine", description: "d", keywords: [], facets: [], path: "/repo" }];
 
 describe("writeBriefIdeas", () => {
   it("appends once, skips on same hash, replaces on new hash", async () => {
@@ -73,8 +73,8 @@ describe("writeBriefIdeas", () => {
   it("keeps distinct projects that share a repo path in separate regions", async () => {
     const { impl, files } = memFs({}, ["/repo"]);
     const two: Project[] = [
-      { name: "Alpha", description: "a", keywords: [], path: "/repo" },
-      { name: "Beta", description: "b", keywords: [], path: "/repo" },
+      { name: "Alpha", description: "a", keywords: [], facets: [], path: "/repo" },
+      { name: "Beta", description: "b", keywords: [], facets: [], path: "/repo" },
     ];
     const briefs: ProjectBriefs = {
       Alpha: { hash: "A", generatedAt: "T", actions: [{ title: "alpha act", detail: "d", basedOn: [] }] },
@@ -111,17 +111,17 @@ describe("writeBriefIdeas", () => {
     // empty actions, no path, and missing dir are all skipped without throwing
     await writeBriefIdeas(
       { P: { hash: "H", generatedAt: "T", actions: [] } },
-      [{ name: "P", description: "d", keywords: [], path: "/repo" }],
+      [{ name: "P", description: "d", keywords: [], facets: [], path: "/repo" }],
       { fsImpl: impl },
     );
     await writeBriefIdeas(
       { Q: { hash: "H", generatedAt: "T", actions: [{ title: "t", detail: "d", basedOn: [] }] } },
-      [{ name: "Q", description: "d", keywords: [] }],
+      [{ name: "Q", description: "d", keywords: [], facets: [] }],
       { fsImpl: impl },
     );
     await writeBriefIdeas(
       { M: { hash: "H", generatedAt: "T", actions: [{ title: "t", detail: "d", basedOn: [] }] } },
-      [{ name: "M", description: "d", keywords: [], path: "/gone" }],
+      [{ name: "M", description: "d", keywords: [], facets: [], path: "/gone" }],
       { fsImpl: impl },
     );
     expect(files.has("/gone/IDEAS.md")).toBe(false);
