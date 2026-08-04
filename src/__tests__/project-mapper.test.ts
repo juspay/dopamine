@@ -9,6 +9,7 @@ import {
   type ProjectVector,
   parseJudgement,
   prefilter,
+  prefilterScored,
   projectBaselines,
   runProjectMapper,
 } from "../agents/project-mapper.js";
@@ -23,9 +24,9 @@ const judged = (judge: unknown, names: string[]) =>
 
 describe("prefilter", () => {
   const projects: ProjectVector[] = [
-    { name: "A", vector: Float32Array.from([1, 0, 0]) },
-    { name: "B", vector: Float32Array.from([0, 1, 0]) },
-    { name: "C", vector: Float32Array.from([0, 0, 1]) },
+    { key: "A", project: "A", vector: Float32Array.from([1, 0, 0]) },
+    { key: "B", project: "B", vector: Float32Array.from([0, 1, 0]) },
+    { key: "C", project: "C", vector: Float32Array.from([0, 0, 1]) },
   ];
   it("returns projects above the floor, best first", () => {
     expect(prefilter([1, 0.1, 0], projects, 4, 0.5)).toEqual(["A"]);
@@ -41,8 +42,8 @@ describe("prefilter with corpus baselines", () => {
   // cosine for every input — the real failure, where one project was offered
   // for 84% of the corpus and another for 4% purely on vector centrality.
   const projects: ProjectVector[] = [
-    { name: "Hub", vector: Float32Array.from([1, 1, 1]) },
-    { name: "Specialist", vector: Float32Array.from([1, 0, 0]) },
+    { key: "Hub", project: "Hub", vector: Float32Array.from([1, 1, 1]) },
+    { key: "Specialist", project: "Specialist", vector: Float32Array.from([1, 0, 0]) },
   ];
   const corpus = [
     [1, 0, 0],
@@ -70,7 +71,7 @@ describe("prefilter with corpus baselines", () => {
 
   it("falls back to the raw scale for a project with no spread", () => {
     // Every corpus vector equidistant → sd 0 → standardising is undefined.
-    const flat: ProjectVector[] = [{ name: "Flat", vector: Float32Array.from([1, 0, 0]) }];
+    const flat: ProjectVector[] = [{ key: "Flat", project: "Flat", vector: Float32Array.from([1, 0, 0]) }];
     const baselines = projectBaselines(
       [
         [1, 0, 0],
@@ -80,6 +81,52 @@ describe("prefilter with corpus baselines", () => {
     );
     expect(baselines.Flat.sd).toBe(0);
     expect(prefilter([1, 0, 0], flat, 2, 0.5, baselines)).toEqual(["Flat"]);
+  });
+});
+
+describe("facet vectors", () => {
+  // A project whose applicable set is genuinely multi-topic: its single doc
+  // sits BETWEEN the clusters, so it is mediocre for both. Splitting it into
+  // facets lets each cluster be matched by the facet that covers it.
+  const centroid: ProjectVector[] = [{ key: "Multi", project: "Multi", vector: Float32Array.from([1, 1, 0]) }];
+  const faceted: ProjectVector[] = [
+    { key: "Multi", project: "Multi", vector: Float32Array.from([1, 1, 0]) },
+    { key: "Multi#0", project: "Multi", vector: Float32Array.from([1, 0, 0]) },
+    { key: "Multi#1", project: "Multi", vector: Float32Array.from([0, 1, 0]) },
+  ];
+
+  it("scores a project as its BEST facet, not its centroid", () => {
+    const [viaCentroid] = prefilterScored([1, 0, 0], centroid, 4, Number.NEGATIVE_INFINITY);
+    const [viaFacets] = prefilterScored([1, 0, 0], faceted, 4, Number.NEGATIVE_INFINITY);
+    expect(viaFacets.score).toBeGreaterThan(viaCentroid.score);
+  });
+
+  it("emits a project once however many facets it has", () => {
+    const out = prefilterScored([1, 1, 0], faceted, 4, Number.NEGATIVE_INFINITY);
+    expect(out.map((c) => c.name)).toEqual(["Multi"]);
+  });
+
+  it("does not let one project's facets crowd others out of topK", () => {
+    // Pooling must happen BEFORE the slice: three raw Multi vectors would
+    // otherwise fill every slot and hide Other entirely.
+    const withOther: ProjectVector[] = [
+      ...faceted,
+      { key: "Other", project: "Other", vector: Float32Array.from([0, 0, 1]) },
+    ];
+    const names = prefilterScored([1, 1, 1], withOther, 2, Number.NEGATIVE_INFINITY).map((c) => c.name);
+    expect(names).toContain("Other");
+  });
+
+  it("gives every facet its own baseline, keyed so they cannot collide", () => {
+    const baselines = projectBaselines(
+      [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      faceted,
+    );
+    expect(Object.keys(baselines).sort()).toEqual(["Multi", "Multi#0", "Multi#1"]);
   });
 });
 
@@ -192,8 +239,8 @@ const videoEmbed = async (texts: string[]): Promise<number[][]> =>
 const projectEmbed = async (text: string): Promise<number[]> => (text.includes("cooking") ? [0, 0, 1] : [1, 0, 0]);
 
 const PROJECTS = [
-  { name: "Scraper", description: "web scraping tools and anti-bot bypass", keywords: [] },
-  { name: "Kitchen", description: "cooking recipes and food prep", keywords: [] },
+  { name: "Scraper", description: "web scraping tools and anti-bot bypass", keywords: [], facets: [] },
+  { name: "Kitchen", description: "cooking recipes and food prep", keywords: [], facets: [] },
 ];
 
 let tmpDir: string;

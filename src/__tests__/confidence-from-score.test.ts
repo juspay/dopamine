@@ -65,8 +65,8 @@ describe("parseJudgement confidence source", () => {
 
 describe("prefilterScored", () => {
   const projects: ProjectVector[] = [
-    { name: "A", vector: Float32Array.from([1, 0, 0]) },
-    { name: "B", vector: Float32Array.from([0, 1, 0]) },
+    { key: "A", project: "A", vector: Float32Array.from([1, 0, 0]) },
+    { key: "B", project: "B", vector: Float32Array.from([0, 1, 0]) },
   ];
 
   it("returns the same names as prefilter, carrying the score that drives confidence", () => {

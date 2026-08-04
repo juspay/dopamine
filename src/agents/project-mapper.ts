@@ -7,7 +7,7 @@ import { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
 import { acquireLock, releaseLock } from "../pipeline/lock.js";
 import { MapJudgeSchema, MapVerdictSchema } from "../schemas/mapping.js";
-import { type Project, loadProjects, portfolioHash, projectDoc, projectHash } from "../schemas/projects.js";
+import { type Project, facetHash, loadProjects, portfolioHash, projectFacets } from "../schemas/projects.js";
 import { blobToVector, hasSearchSchema, openSearchDb, vectorToBlob } from "../search/db.js";
 import { cosineSim } from "../search/rank.js";
 import { safeJsonParse } from "../utils/json-repair.js";
@@ -48,7 +48,7 @@ export type MappingSet = Record<string, ProjectMapping[]>;
  *  behaviour are re-judged. Without this, a video recorded as "nothing applies"
  *  stays that way until its own content changes — which is how the truncation
  *  bug's empty results would have persisted. */
-export const JUDGE_VERSION = 5;
+export const JUDGE_VERSION = 6;
 
 export interface ProjectMappingsFile {
   portfolioHash: string;
@@ -60,7 +60,13 @@ export interface ProjectMappingsFile {
 }
 
 export interface ProjectVector {
-  name: string;
+  /** Vector identity: the project name for a base doc, `Name#i` for a facet.
+   *  Baselines and the vector cache are keyed by this, never by `project` —
+   *  a project with facets contributes several vectors and they must not
+   *  collapse onto one baseline. */
+  key: string;
+  /** Project this vector votes for. Several vectors may share it. */
+  project: string;
   vector: Float32Array;
 }
 
@@ -94,7 +100,7 @@ export function projectBaselines(videoVecs: ArrayLike<number>[], projects: Proje
     const sims = videoVecs.map((v) => cosineSim(v, p.vector));
     const mean = sims.reduce((a, b) => a + b, 0) / sims.length;
     const variance = sims.reduce((a, b) => a + (b - mean) ** 2, 0) / sims.length;
-    out[p.name] = { mean, sd: Math.sqrt(variance) };
+    out[p.key] = { mean, sd: Math.sqrt(variance) };
   }
   return out;
 }
@@ -124,8 +130,15 @@ export interface ScoredCandidate {
   score: number;
 }
 
-/** As `prefilter`, but keeps the score — the only measured evidence we have
- *  about how well a video matches a project, and the basis for confidence. */
+/**
+ * As `prefilter`, but keeps the score — the only measured evidence we have
+ * about how well a video matches a project, and the basis for confidence.
+ *
+ * A project scores as its BEST facet (max-pooling), so one project appears at
+ * most once no matter how many vectors it contributed. Pooling happens before
+ * the floor and topK are applied: otherwise a project with many facets would
+ * crowd the shortlist with several copies of itself and push other projects out.
+ */
 export function prefilterScored(
   videoVec: ArrayLike<number>,
   projects: ProjectVector[],
@@ -133,16 +146,19 @@ export function prefilterScored(
   min: number,
   baselines?: ProjectBaselines,
 ): ScoredCandidate[] {
-  return projects
-    .map((p) => {
-      const sim = cosineSim(videoVec, p.vector);
-      const base = baselines?.[p.name];
-      // sd of 0 means every video is equidistant from this project, so the
-      // standardised score is undefined — leave it on the raw scale rather
-      // than dividing by zero.
-      const score = base && base.sd > 0 ? (sim - base.mean) / base.sd : sim;
-      return { name: p.name, score };
-    })
+  const best = new Map<string, number>();
+  for (const p of projects) {
+    const sim = cosineSim(videoVec, p.vector);
+    const base = baselines?.[p.key];
+    // sd of 0 means every video is equidistant from this project, so the
+    // standardised score is undefined — leave it on the raw scale rather
+    // than dividing by zero.
+    const score = base && base.sd > 0 ? (sim - base.mean) / base.sd : sim;
+    const prev = best.get(p.project);
+    if (prev === undefined || score > prev) best.set(p.project, score);
+  }
+  return [...best.entries()]
+    .map(([name, score]) => ({ name, score }))
     .filter((p) => p.score >= min)
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
@@ -330,11 +346,14 @@ export async function embedProjects(
   embed: EmbedFn,
   model: string,
 ): Promise<ProjectVector[]> {
-  const currentNames = new Set(projects.map((p) => p.name));
+  // Keyed by facet, not project: dropping a facet must evict exactly its vector
+  // and leave the project's others alone.
+  const facets = projects.flatMap(projectFacets);
+  const currentKeys = new Set(facets.map((f) => f.key));
   const existing = db.prepare("SELECT project FROM project_vectors").all() as { project: string }[];
   const delVec = db.prepare("DELETE FROM project_vectors WHERE project = ?");
   for (const row of existing) {
-    if (!currentNames.has(row.project)) delVec.run(row.project);
+    if (!currentKeys.has(row.project)) delVec.run(row.project);
   }
 
   const getVec = db.prepare("SELECT hash, model, vector FROM project_vectors WHERE project = ?");
@@ -344,16 +363,16 @@ export async function embedProjects(
   `);
 
   const out: ProjectVector[] = [];
-  for (const p of projects) {
-    const hash = projectHash(p);
-    const cached = getVec.get(p.name) as { hash: string; model: string; vector: Uint8Array } | undefined;
+  for (const f of facets) {
+    const hash = facetHash(f);
+    const cached = getVec.get(f.key) as { hash: string; model: string; vector: Uint8Array } | undefined;
     if (cached && cached.hash === hash && cached.model === model) {
-      out.push({ name: p.name, vector: blobToVector(cached.vector) });
+      out.push({ key: f.key, project: f.project, vector: blobToVector(cached.vector) });
       continue;
     }
-    const vec = await embed(projectDoc(p));
-    upsert.run(p.name, hash, model, vec.length, vectorToBlob(vec));
-    out.push({ name: p.name, vector: Float32Array.from(vec) });
+    const vec = await embed(f.text);
+    upsert.run(f.key, hash, model, vec.length, vectorToBlob(vec));
+    out.push({ key: f.key, project: f.project, vector: Float32Array.from(vec) });
   }
   return out;
 }

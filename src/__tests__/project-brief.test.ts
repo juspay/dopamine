@@ -51,7 +51,7 @@ describe("collectProjectLearnings", () => {
   });
 });
 
-const proj: Project = { name: "Dopamine", description: "d", keywords: [] };
+const proj: Project = { name: "Dopamine", description: "d", keywords: [], facets: [] };
 
 describe("briefHash", () => {
   const ls = [
@@ -138,7 +138,7 @@ describe("parseBrief", () => {
 });
 
 describe("runProjectBrief", () => {
-  const projects: Project[] = [{ name: "Dopamine", description: "d", keywords: [] }];
+  const projects: Project[] = [{ name: "Dopamine", description: "d", keywords: [], facets: [] }];
   const videos = [...vids.values()];
 
   it("regenerates only changed projects and prunes removed ones", async () => {
@@ -163,8 +163,8 @@ describe("runProjectBrief", () => {
 
   it("keeps other projects' briefs when one project's generate() throws", async () => {
     const twoProjects: Project[] = [
-      { name: "Dopamine", description: "d", keywords: [] },
-      { name: "Boom", description: "b", keywords: [] },
+      { name: "Dopamine", description: "d", keywords: [], facets: [] },
+      { name: "Boom", description: "b", keywords: [], facets: [] },
     ];
     const twoMappings: MappingSet = {
       v1: [{ project: "Dopamine", confidence: "high", reason: "r" }],
@@ -189,7 +189,7 @@ describe("runProjectBrief", () => {
   });
 
   it("skips projects below the minMappings threshold", async () => {
-    const solo: Project[] = [{ name: "Solo", description: "d", keywords: [] }];
+    const solo: Project[] = [{ name: "Solo", description: "d", keywords: [], facets: [] }];
     const oneMapping: MappingSet = { v1: [{ project: "Solo", confidence: "high", reason: "r" }] };
     const generate = async () => ({ actions: [{ title: "t", detail: "d", basedOn: [] }] });
     const out = await runProjectBrief({
