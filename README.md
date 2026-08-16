@@ -181,6 +181,10 @@ npm run map:projects   # map corpus learnings to projects.json (chips, find_for_
 Define your projects in `projects.json` (see `projects.example.json`). Runs as a
 pipeline step. See [docs/project-mapping.md](docs/project-mapping.md).
 
+To measure the mapper rather than run it, `npm run eval:judge` and friends score
+it against your labels. They need private corpus data and make paid model calls,
+so they never run in CI — see [docs/eval-harness.md](docs/eval-harness.md).
+
 ### Development mode
 
 ```bash
