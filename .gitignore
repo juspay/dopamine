@@ -37,6 +37,7 @@ videos/*.json
 videos/*.csv
 videos/*.db
 videos/*.db-*
+videos/*.done
 /dashboard/data/*
 !/dashboard/data/README.md
 
