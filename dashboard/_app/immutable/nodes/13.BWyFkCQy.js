@@ -25,14 +25,14 @@ import {
   st as te,
   w as S,
 } from "../chunks/BZ84wCgC.js";
-import { t as ne } from "../chunks/Dmb9twoO.js";
+import { t as ne } from "../chunks/DsZFQft9.js";
 import "../chunks/xihTtKlq.js";
 import { a as re, l as ie, o as ae, r as oe } from "../chunks/CdnViQ5q.js";
-import { t as se } from "../chunks/B2DVDhc0.js";
-import "../chunks/DauwGVTW.js";
-import { i as ce, r as le, u as C } from "../chunks/H8Kuq40O.js";
+import { t as se } from "../chunks/D5x1uFyw.js";
+import "../chunks/DsboxpXm.js";
+import { i as ce, r as le, u as C } from "../chunks/bfCGhs6S.js";
 import { m as ue, t as de, u as fe } from "../chunks/Dt5KBvTb.js";
-import { t as pe } from "../chunks/Is8ZIs2f.js";
+import { t as pe } from "../chunks/BPB2CjVM.js";
 var me = b(`<span class="count-badge svelte-yxunt"> </span>`),
   he = b(`<button class="clear-btn svelte-yxunt" type="button">Clear filters</button>`),
   ge = b(`<button type="button"> </button>`),
@@ -63,13 +63,13 @@ function w(o, b) {
     j = h(c([])),
     M = h(`all`),
     N = h(`all`),
-    P = h(`best`),
+    P = h(`date-desc`),
     F = h(!1);
   u(() => {
     e(k, a(O).get(`q`) ?? ``, !0),
       e(M, a(O).get(`verif`) ?? `all`, !0),
       e(N, a(O).get(`act`) ?? `all`, !0),
-      e(P, a(O).get(`sort`) ?? `best`, !0),
+      e(P, a(O).get(`sort`) ?? `date-desc`, !0),
       e(F, a(O).get(`thin`) === `1`);
     let t = a(O).get(`cat`);
     e(A, t ? t.split(`,`).filter(Boolean) : [], !0);
@@ -83,7 +83,7 @@ function w(o, b) {
       a(j).length ? e.searchParams.set(`project`, a(j).join(`,`)) : e.searchParams.delete(`project`),
       a(M) === `all` ? e.searchParams.delete(`verif`) : e.searchParams.set(`verif`, a(M)),
       a(N) === `all` ? e.searchParams.delete(`act`) : e.searchParams.set(`act`, a(N)),
-      a(P) === `best` ? e.searchParams.delete(`sort`) : e.searchParams.set(`sort`, a(P)),
+      a(P) === `date-desc` ? e.searchParams.delete(`sort`) : e.searchParams.set(`sort`, a(P)),
       a(F) ? e.searchParams.set(`thin`, `1`) : e.searchParams.delete(`thin`),
       ne(e.toString(), { replaceState: !0, keepFocus: !0, noScroll: !0 });
   }
@@ -171,7 +171,7 @@ function w(o, b) {
     e(j, a(j).includes(t) ? a(j).filter((e) => e !== t) : [...a(j), t], !0), I();
   }
   function Ie() {
-    e(k, ``), e(A, [], !0), e(j, [], !0), e(M, `all`), e(N, `all`), e(P, `best`), e(F, !1), I();
+    e(k, ``), e(A, [], !0), e(j, [], !0), e(M, `all`), e(N, `all`), e(P, `date-desc`), e(F, !1), I();
   }
   function Le() {
     e(F, !a(F)), I();
@@ -188,7 +188,7 @@ function w(o, b) {
       a(j).length > 0 ||
       a(M) !== `all` ||
       a(N) !== `all` ||
-      a(P) !== `best` ||
+      a(P) !== `date-desc` ||
       a(F),
   );
   var W = Te(),
