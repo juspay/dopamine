@@ -18,9 +18,9 @@ import {
   st as g,
   ut as _,
 } from "./BZ84wCgC.js";
-import { t as v } from "./Dmb9twoO.js";
+import { t as v } from "./DsZFQft9.js";
 import "./xihTtKlq.js";
-import "./DauwGVTW.js";
+import "./DsboxpXm.js";
 var y = h(
   `<form class="search-box svelte-1o0c7a1" role="search"><span class="search-icon svelte-1o0c7a1" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg></span> <input class="search-input svelte-1o0c7a1" type="search" name="q" aria-label="Search" autocomplete="off" spellcheck="false"/> <button class="search-submit svelte-1o0c7a1" type="submit" aria-label="Submit search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></button></form>`,
 );

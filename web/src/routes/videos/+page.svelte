@@ -26,7 +26,10 @@
   let projs    = $state<string[]>([]);
   let verif    = $state('all');
   let act      = $state('all');
-  let sort     = $state('best');
+  // Newest first by default: the library is a saved-content feed, so the
+  // question it answers on arrival is "what came in recently". Quality
+  // ranking stays one click away as 'Best first'.
+  let sort     = $state('date-desc');
   // Low-quality (thin) learnings are hidden by default so the empty/unprocessed
   // tail never leads the library; a toggle brings them back.
   let showThin = $state(false);
@@ -36,7 +39,7 @@
     q     = sp.get('q')    ?? '';
     verif = sp.get('verif') ?? 'all';
     act = sp.get('act') ?? 'all';
-    sort  = sp.get('sort')  ?? 'best';
+    sort  = sp.get('sort')  ?? 'date-desc';
     showThin = sp.get('thin') === '1';
     const rawCats = sp.get('cat');
     cats = rawCats ? rawCats.split(',').filter(Boolean) : [];
@@ -52,7 +55,7 @@
     if (projs.length) url.searchParams.set('project', projs.join(',')); else url.searchParams.delete('project');
     if (verif !== 'all') url.searchParams.set('verif', verif); else url.searchParams.delete('verif');
     if (act !== 'all') url.searchParams.set('act', act); else url.searchParams.delete('act');
-    if (sort !== 'best') url.searchParams.set('sort', sort); else url.searchParams.delete('sort');
+    if (sort !== 'date-desc') url.searchParams.set('sort', sort); else url.searchParams.delete('sort');
     if (showThin) url.searchParams.set('thin', '1'); else url.searchParams.delete('thin');
     goto(url.toString(), { replaceState: true, keepFocus: true, noScroll: true });
   }
@@ -190,7 +193,7 @@
     projs = [];
     verif = 'all';
     act   = 'all';
-    sort  = 'best';
+    sort  = 'date-desc';
     showThin = false;
     syncUrl();
   }
@@ -216,7 +219,7 @@
   }
 
   const hasFilters = $derived(
-    q.trim() !== '' || cats.length > 0 || projs.length > 0 || verif !== 'all' || act !== 'all' || sort !== 'best' || showThin
+    q.trim() !== '' || cats.length > 0 || projs.length > 0 || verif !== 'all' || act !== 'all' || sort !== 'date-desc' || showThin
   );
 </script>
 
