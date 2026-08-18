@@ -34,7 +34,7 @@ import { igMetadataToSourceItem } from "../sources/instagram/map.js";
 import { getEnabledCollectors } from "../sources/registry.js";
 import type { MetadataEntry, SourceItem } from "../types/index.js";
 import { getLogger } from "../utils/logger.js";
-import { resetMetrics } from "../utils/metrics.js";
+import { resetMetrics, type StepCounts } from "../utils/metrics.js";
 
 // ---------------------------------------------------------------------------
 // Pipeline step definition
@@ -42,7 +42,10 @@ import { resetMetrics } from "../utils/metrics.js";
 
 interface PipelineStep {
   name: string;
-  run: () => Promise<void>;
+  /** Returning counts lets the run summary tell a step that processed
+   *  nothing apart from one that simply does not report. */
+  // biome-ignore lint/suspicious/noConfusingVoidType: the 19 agents wired below are all `Promise<void>`, and `void` is not assignable to `undefined`
+  run: () => Promise<void | StepCounts>;
   /**
    * Parallel group tag. Steps in the same group CAN run concurrently
    * when --parallel is enabled. Steps with different groups or no group
@@ -126,16 +129,17 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   let collectedItems: SourceItem[] = [];
   let collectionRan = false;
 
-  const runCollectionStep = async (): Promise<void> => {
+  const runCollectionStep = async (): Promise<StepCounts> => {
     const collectors = getEnabledCollectors(CONFIG.SOURCES);
     console.log(`\n=== Collection — ${collectors.map((c) => c.source).join(", ")} ===`);
     const collected = await Promise.all(collectors.map((c) => c.collect()));
     collectedItems = collected.flat();
     collectionRan = true;
     console.log(`  Collected ${collectedItems.length} new item(s); metadata.json updated via ingest.`);
+    return { processed: collectedItems.length };
   };
 
-  const runAcquisitionStep = async (): Promise<void> => {
+  const runAcquisitionStep = async (): Promise<StepCounts> => {
     let items = collectedItems;
     if (!collectionRan) {
       // Collection step was skipped (e.g. --start>0): reconstruct the item list
@@ -146,6 +150,7 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     const registry = new Map(getEnabledCollectors(CONFIG.SOURCES).map((c) => [c.source, c] as const));
     laneItems = await acquireAll(items, registry);
     console.log(`\n=== Acquisition — ${laneItems.length}/${items.length} item(s) acquired ===`);
+    return { processed: laneItems.length, skipped: items.length - laneItems.length };
   };
 
   const steps: PipelineStep[] = [
@@ -328,7 +333,7 @@ async function runSingleStep(
 
   const t0 = Date.now();
   try {
-    await step.run();
+    metrics.recordCounts(await step.run());
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     metrics.endStep("success");
     stepLog.info(`Step ${index + 1}/${totalSteps}: ${step.name} — completed in ${elapsed}s`);
