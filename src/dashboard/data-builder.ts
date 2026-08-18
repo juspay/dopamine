@@ -13,6 +13,13 @@
  * If types change, update both files.
  */
 
+// Side-effect import so .env loads BEFORE config.js evaluates, exactly as
+// runner.ts does. Without it a standalone `npm run dashboard:data` computed
+// CONFIG.VIDEOS_DIR from an unset INSTAGRAM_USERNAME (-> videos/user_saved),
+// so the mp4 existence check missed every file and the dashboard shipped with
+// hasVideo:false and videoPath:null for all 478 videos — no player anywhere.
+import "dotenv/config";
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { CatalogRecord } from "../agents/catalog.js";
@@ -845,8 +852,11 @@ export async function buildDashboardData(): Promise<void> {
   };
   await fs.writeFile(path.join(dataDir, "facets.json"), JSON.stringify(facets), "utf8");
 
-  // Tools: flatten actionableItems with non-empty url from verified videos
-  const goodVerifications = new Set(["verified_useful", "partially_verified"]);
+  // Tools: flatten actionableItems with non-empty url. Unverified videos used to
+  // be dropped here, which hid 145 of 478 videos (and 59% of recent ones) from
+  // /tools entirely — a brand-new save contributed nothing until it happened to
+  // verify well. They are included now and carry their verification status, so
+  // the table can mark them rather than the builder silently discarding them.
   const urlStatusPriority: Record<string, number> = {
     live: 0,
     redirect: 1,
@@ -859,7 +869,6 @@ export async function buildDashboardData(): Promise<void> {
 
   const toolMap = new Map<string, ToolRecord>();
   for (const v of normalized) {
-    if (!goodVerifications.has(v.verification)) continue;
     for (const ai of v.actionableItems) {
       if (!ai.url) continue;
       const key = `${ai.name}|||${ai.url}`;

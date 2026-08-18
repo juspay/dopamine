@@ -150,6 +150,14 @@ export const CONFIG = {
       : ["AI & Machine Learning", "Tech & Coding", "Business & Marketing", "UI/UX Design"],
   ),
 
+  // Staleness refresh for research + verification. Both agents used to skip any
+  // entry that had no error, so their results were write-once and decayed: a URL
+  // checked in May still rendered its May live/dead status on /tools. TTL makes
+  // them re-check; the per-run cap keeps the backlog draining a slice at a time
+  // instead of billing for every stale entry on the first run after this lands.
+  REFRESH_TTL_DAYS: Number.parseInt(process.env.REFRESH_TTL_DAYS ?? "30", 10),
+  REFRESH_MAX_PER_RUN: Number.parseInt(process.env.REFRESH_MAX_PER_RUN ?? "20", 10),
+
   DELAY_BETWEEN_REQUESTS_MS: Number.parseInt(process.env.DELAY_MS ?? "500", 10),
   MAX_RETRIES: 5,
   RETRY_BASE_DELAY_MS: 10_000,

@@ -53,3 +53,6 @@ videos/smoke-test-*.json
 
 # Claude Code harness artifacts (worktrees, etc.)
 .claude/
+
+# Single-instance guards held by the scheduled runners (scripts/lock.sh).
+.locks/

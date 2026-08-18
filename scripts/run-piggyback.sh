@@ -14,6 +14,28 @@ cd "$DIR"
 mkdir -p logs
 LOGFILE="${DIR}/logs/piggyback.log"
 
+# Single-instance guard: four slots a day plus up to 3 retries 60s apart means a
+# slow harvest can still be running when the next slot fires. Exit 0 so launchd
+# records a clean skip rather than a failure.
+. "$DIR/scripts/lock.sh"
+if ! acquire_lock "$DIR/.locks/piggyback"; then
+  echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) skipped: another harvest is already running ===" >> "$LOGFILE"
+  exit 0
+fi
+
+# Scroll depth by slot. One deep pass a day walks the whole saved feed; the
+# other slots only need the top of it, since they are chasing saves made in the
+# last few hours. Scrolling every slot deeply would multiply our Instagram
+# footprint for content the deep pass already has.
+if [ -z "${IG_PIGGYBACK_SCROLLS:-}" ]; then
+  hour=$((10#$(date +%H)))   # 10# so 08/09 are not read as invalid octal
+  if [ "$hour" -eq "${IG_PIGGYBACK_DEEP_HOUR:-0}" ]; then
+    export IG_PIGGYBACK_SCROLLS="${IG_PIGGYBACK_SCROLLS_DEEP:-40}"
+  else
+    export IG_PIGGYBACK_SCROLLS="${IG_PIGGYBACK_SCROLLS_SHALLOW:-6}"
+  fi
+fi
+
 # Resolve node — launchd's minimal PATH may not include nvm/pnpm/homebrew.
 NODE_BIN=""
 for candidate in \
@@ -45,7 +67,7 @@ fi
 max_attempts=3
 attempt=1
 while true; do
-  echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) harvest attempt ${attempt}/${max_attempts} (node $("$NODE_BIN" --version)) ===" >> "$LOGFILE"
+  echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) harvest attempt ${attempt}/${max_attempts} (node $("$NODE_BIN" --version), scrolls=${IG_PIGGYBACK_SCROLLS}) ===" >> "$LOGFILE"
   rc=0
   "$NODE_BIN" dist/pipeline/piggyback/harvester.js >> "$LOGFILE" 2>&1 || rc=$?
   [ "$rc" -eq 0 ] && exit 0

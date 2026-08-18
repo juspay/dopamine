@@ -16,6 +16,7 @@ import { VerificationReportSchema, type VerificationReport } from "../schemas/ve
 import { tolerantOutput } from "../schemas/tolerant.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { makeRefreshGate } from "../pipeline/refresh.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import type { AnalysisEntry } from "./analyzer.js";
@@ -221,6 +222,11 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
     `Verification: ${entries.length} videos to verify, ${zeroItemEntries.length} with no actionable items (baseline entries)`,
   );
 
+  // Re-verify past the TTL. Without this a `not_verified` verdict was terminal:
+  // the entry had no error, so every later run skipped it and its tools stayed
+  // off /tools permanently, however much the underlying links had changed.
+  const gate = makeRefreshGate({ ttlDays: CONFIG.REFRESH_TTL_DAYS, maxPerRun: CONFIG.REFRESH_MAX_PER_RUN });
+
   let verified = 0,
     skipped = 0,
     errors = 0;
@@ -228,10 +234,11 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
   for (const [i, [filename, analysis]] of entries.entries()) {
     const logPrefix = `[${i + 1}/${entries.length}]`;
 
-    // Resume mode
-    if (filename in verificationState && !verificationState[filename].error) {
+    // Resume mode + staleness refresh
+    const decision = gate.decide(verificationState[filename], "verified_at");
+    if (!decision.reprocess) {
       skipped++;
-      console.log(`${logPrefix} SKIP (already verified): ${filename}`);
+      console.log(`${logPrefix} SKIP (${decision.reason}): ${filename}`);
       continue;
     }
 
@@ -316,6 +323,6 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
   }
 
   console.log(
-    `\nVerification done. Verified: ${verified}, Skipped: ${skipped}, Errors: ${errors}, Baselines: ${baselines}`,
+    `\nVerification done. Verified: ${verified}, Skipped: ${skipped}, Errors: ${errors}, Baselines: ${baselines}, Refreshed: ${gate.refreshedCount()}`,
   );
 }

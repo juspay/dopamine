@@ -43,6 +43,16 @@ echo "Using node: $NODE_BIN ($("$NODE_BIN" --version))"
 
 # Run the pre-built pipeline (build separately when code changes). Notify on a
 # hard failure (crash / non-zero exit) so a silent outage can't go unnoticed.
+# Single-instance guard: a run takes ~20min and the slots are 6h apart, but a
+# large intake or a stalled model call can overrun. Two concurrent runners
+# read-modify-write the same state files, so the loser's work disappears
+# silently. Exit 0 so launchd records a skip, not a failure.
+. "$DIR/scripts/lock.sh"
+if ! acquire_lock "$DIR/.locks/pipeline"; then
+  echo "Skipped: another pipeline run is already in progress."
+  exit 0
+fi
+
 rc=0
 "$NODE_BIN" dist/pipeline/runner.js || rc=$?
 if [ "$rc" -ne 0 ]; then

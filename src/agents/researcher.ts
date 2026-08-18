@@ -18,6 +18,7 @@ import { CONFIG } from "../pipeline/config.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import type { AnalysisEntry } from "./analyzer.js";
 import { checkUrls } from "../utils/url-check.js";
+import { makeRefreshGate } from "../pipeline/refresh.js";
 
 /** Research result for a single actionable item. */
 export interface ResearchItemResult {
@@ -488,6 +489,11 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
 
   console.log(`Research: ${entries.length} videos with actionable items`);
 
+  // Re-check entries past the TTL so URL liveness on /tools stops reflecting
+  // whenever the link happened to be seen first. Capped per run so the backlog
+  // drains gradually rather than billing for every stale entry at once.
+  const gate = makeRefreshGate({ ttlDays: CONFIG.REFRESH_TTL_DAYS, maxPerRun: CONFIG.REFRESH_MAX_PER_RUN });
+
   let researched = 0,
     skipped = 0,
     errors = 0;
@@ -495,10 +501,11 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
   for (const [i, [filename, analysis]] of entries.entries()) {
     const logPrefix = `[${i + 1}/${entries.length}]`;
 
-    // Resume mode — skip if already researched without error
-    if (filename in researchState && !researchState[filename].error) {
+    // Resume mode + staleness refresh
+    const decision = gate.decide(researchState[filename], "researched_at");
+    if (!decision.reprocess) {
       skipped++;
-      console.log(`${logPrefix} SKIP (already researched): ${filename}`);
+      console.log(`${logPrefix} SKIP (${decision.reason}): ${filename}`);
       continue;
     }
 
@@ -557,5 +564,7 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
     await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
   }
 
-  console.log(`\nResearch done. Researched: ${researched}, Skipped: ${skipped}, Errors: ${errors}`);
+  console.log(
+    `\nResearch done. Researched: ${researched}, Skipped: ${skipped}, Errors: ${errors}, Refreshed: ${gate.refreshedCount()}`,
+  );
 }

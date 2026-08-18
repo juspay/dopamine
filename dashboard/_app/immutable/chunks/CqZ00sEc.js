@@ -15,76 +15,54 @@ import {
   nt as p,
   st as m,
 } from "./BZ84wCgC.js";
-import { t as h } from "./DsZFQft9.js";
 import "./xihTtKlq.js";
-import "./DsboxpXm.js";
-import { d as g, n as _, u as v } from "./bfCGhs6S.js";
-import { d as y, o as b } from "./Dt5KBvTb.js";
-function x(e, t) {
-  s(t, !0);
-  let r = d(t, `size`, 3, `sm`);
-  function i(e) {
-    e.stopPropagation(), t.onclick ? t.onclick(e) : h(`/project/` + encodeURIComponent(t.project));
-  }
-  {
-    let a = p(() => `→ ` + t.project);
-    _(e, {
-      get label() {
-        return n(a);
-      },
-      get size() {
-        return r();
-      },
-      onclick: i,
-    });
-  }
-  m();
-}
-var S = f(`<span class="verif-dot svelte-niia12" role="img"></span>`),
-  C = f(`<span class="verif-pill-wrap svelte-niia12"><!></span>`);
-function w(f, h) {
-  s(h, !0);
-  let _ = d(h, `size`, 3, `badge`),
-    x = p(() => g(h.score)),
-    w = p(() => v(h.score)),
-    T = p(() => (h.confidence == null ? n(x) : `${n(x)} (${Math.round(h.confidence * 100)}% confidence)`)),
+import { d as h, u as g } from "./CnvqUUT7.js";
+import { d as _, o as v } from "./Dt5KBvTb.js";
+var y = f(`<span class="verif-dot svelte-niia12" role="img"></span>`),
+  b = f(`<span class="verif-pill-wrap svelte-niia12"><!></span>`);
+function x(f, x) {
+  s(x, !0);
+  let S = d(x, `size`, 3, `badge`),
+    C = p(() => h(x.score)),
+    w = p(() => g(x.score)),
+    T = p(() => (x.confidence == null ? n(C) : `${n(C)} (${Math.round(x.confidence * 100)}% confidence)`)),
     E = p(() =>
-      h.score === `verified_useful`
+      x.score === `verified_useful`
         ? `var(--ok-bg)`
-        : h.score === `partially_verified`
+        : x.score === `partially_verified`
           ? `var(--warn-bg)`
-          : h.score === `outdated`
+          : x.score === `outdated`
             ? `var(--bad-bg)`
             : `var(--neutral-bg)`,
     ),
     D = p(() =>
-      h.score === `verified_useful`
+      x.score === `verified_useful`
         ? `color-mix(in srgb, var(--ok)      28%, transparent)`
-        : h.score === `partially_verified`
+        : x.score === `partially_verified`
           ? `color-mix(in srgb, var(--warn)    28%, transparent)`
-          : h.score === `outdated`
+          : x.score === `outdated`
             ? `color-mix(in srgb, var(--bad)     28%, transparent)`
             : `color-mix(in srgb, var(--neutral) 28%, transparent)`,
     ),
     O = p(() =>
-      h.score === `verified_useful`
+      x.score === `verified_useful`
         ? `color-mix(in srgb, var(--ok)      35%, transparent)`
-        : h.score === `partially_verified`
+        : x.score === `partially_verified`
           ? `color-mix(in srgb, var(--warn)    35%, transparent)`
-          : h.score === `outdated`
+          : x.score === `outdated`
             ? `color-mix(in srgb, var(--bad)     35%, transparent)`
             : `color-mix(in srgb, var(--neutral) 35%, transparent)`,
     );
   var k = r(),
     A = a(k),
     j = (r) => {
-      b(r, {
+      v(r, {
         get text() {
           return n(T);
         },
         position: `top`,
         children: (r) => {
-          var i = S();
+          var i = y();
           t(() => {
             u(i, `background:${n(w) ?? ``}`), l(i, `aria-label`, n(T));
           }),
@@ -94,10 +72,10 @@ function w(f, h) {
       });
     },
     M = (r) => {
-      var i = C();
-      y(o(i), {
+      var i = b();
+      _(o(i), {
         get text() {
-          return n(x);
+          return n(C);
         },
       }),
         c(i),
@@ -110,9 +88,9 @@ function w(f, h) {
         e(r, i);
     };
   i(A, (e) => {
-    _() === `dot` ? e(j) : e(M, -1);
+    S() === `dot` ? e(j) : e(M, -1);
   }),
     e(f, k),
     m();
 }
-export { x as n, w as t };
+export { x as t };
