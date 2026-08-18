@@ -18,7 +18,13 @@ import type { MetadataEntry } from "../../types/index.js";
 
 const PORT = parseInt(process.env.IG_PIGGYBACK_PORT ?? "9455", 10);
 const PROFILE = process.env.IG_PIGGYBACK_PROFILE_DIR ?? path.join(os.homedir(), ".dopamine-ig-profile");
-const SCROLLS = parseInt(process.env.IG_PIGGYBACK_SCROLLS ?? "4", 10);
+// 4 scrolls reached only ~63 of the 462 saved items — the top ~14% of the feed.
+// Saves outside that window were never captured at all, and because the harvest
+// still exited 0 the gap was invisible: a 2026-08-18 deep run recovered 43 items
+// the daily job had never seen, two of them saved within the previous 48 hours.
+// Scrolling is self-limiting — once the feed is exhausted the extra iterations
+// return nothing — so this is bounded by the feed size, not by the number here.
+const SCROLLS = parseInt(process.env.IG_PIGGYBACK_SCROLLS ?? "40", 10);
 // Timing knobs — defaults are generous enough for the slower headless Chrome that
 // launchd spawns: a 3.5s initial wait let the scrolls fire before the feed had
 // rendered, so scheduled runs captured nothing while interactive runs (faster
@@ -66,7 +72,9 @@ export async function harvest(): Promise<void> {
   const chrome = launchChrome(PORT, PROFILE);
   let client: CDP.Client | undefined;
   try {
-    await waitForPort(PORT);
+    // Passing `chrome` lets the wait abort the moment the browser dies instead
+    // of blaming the port after the full timeout.
+    await waitForPort(PORT, undefined, chrome);
     client = await CDP({ port: PORT });
     const { Network, Page, Runtime } = client;
     await Network.enable({});

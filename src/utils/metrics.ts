@@ -17,6 +17,14 @@ export interface StepMetric {
   itemsErrored: number;
 }
 
+/** What a pipeline step reports back about the work it did. Every field is
+ *  optional so a step can report only the dimension it actually knows. */
+export interface StepCounts {
+  processed?: number;
+  skipped?: number;
+  errored?: number;
+}
+
 export interface ApiCallMetric {
   endpoint: string;
   count: number;
@@ -107,6 +115,24 @@ export class MetricsCollector {
     this.stepItems.errored += count;
   }
 
+  /** Roll a step's self-reported counts into the current step's totals.
+   *
+   * Steps return counts rather than calling the individual recorders so that a
+   * step which reports nothing stays distinguishable from one that genuinely
+   * processed nothing — the run summary read a constant 0 for both until the
+   * step contract carried these numbers.
+   *
+   * Counts arriving outside a step have nowhere to be attributed, so they are
+   * dropped instead of silently landing on whichever step happens to run next.
+   */
+  // biome-ignore lint/suspicious/noConfusingVoidType: takes `await step.run()` directly, and a step typed `Promise<void>` yields `void`
+  recordCounts(counts?: StepCounts | void): void {
+    if (!counts || !this.currentStep) return;
+    if (counts.processed) this.recordProcessed(counts.processed);
+    if (counts.skipped) this.recordSkipped(counts.skipped);
+    if (counts.errored) this.recordErrored(counts.errored);
+  }
+
   // ---- API call tracking --------------------------------------------------
 
   recordApiCall(endpoint: string, latencyMs: number): void {
@@ -131,7 +157,10 @@ export class MetricsCollector {
 
   // ---- Finalise & persist -------------------------------------------------
 
-  async save(): Promise<PipelineMetrics> {
+  /** Assemble the metrics snapshot. Pure — writing is `save()`'s job, which
+   *  keeps callers (and tests) able to read a run's totals without touching
+   *  the videos/pipeline-metrics.json the scheduled run owns. */
+  build(): PipelineMetrics {
     const now = Date.now();
 
     const apiCallsRecord: Record<string, ApiCallMetric> = {};
@@ -144,9 +173,9 @@ export class MetricsCollector {
       };
     }
 
-    const succeeded = this.steps.filter(s => s.status === "success").length;
-    const failed = this.steps.filter(s => s.status === "error").length;
-    const skipped = this.steps.filter(s => s.status === "skipped").length;
+    const succeeded = this.steps.filter((s) => s.status === "success").length;
+    const failed = this.steps.filter((s) => s.status === "error").length;
+    const skipped = this.steps.filter((s) => s.status === "skipped").length;
 
     const metrics: PipelineMetrics = {
       runId: this.runId,
@@ -166,6 +195,11 @@ export class MetricsCollector {
       },
     };
 
+    return metrics;
+  }
+
+  async save(): Promise<PipelineMetrics> {
+    const metrics = this.build();
     await fs.mkdir(path.dirname(METRICS_PATH), { recursive: true });
     await fs.writeFile(METRICS_PATH, JSON.stringify(metrics, null, 2), "utf8");
     return metrics;
