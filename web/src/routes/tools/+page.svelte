@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { loadTools, getTools } from '$lib/data.svelte.js';
   import CategoryChip from '$lib/components/CategoryChip.svelte';
+  import VerificationBadge from '$lib/components/VerificationBadge.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
   import { Table, Pill, EmptyState, Select, Input } from '@juspay/svelte-ui-components';
@@ -90,14 +91,21 @@
   });
 
   // Build tableData rows for the library Table.
-  // Columns: Tool | Type | Status | Source | Category
-  const tableHeaders = ['Tool', 'Type', 'Status', 'Source', 'Category'];
+  // Columns: Tool | Type | Status | Verified | Source | Category
+  //
+  // "Verified" sits next to "Status" because the two answer the same question
+  // from different angles: Status is whether the link resolves, Verified is
+  // whether we could confirm the tool does what the video claims. Unverified
+  // tools are listed rather than hidden, so this column is what distinguishes
+  // them.
+  const tableHeaders = ['Tool', 'Type', 'Status', 'Verified', 'Source', 'Category'];
 
   const tableData = $derived<JSONValue[][]>(
     filtered.map((t) => [
       t.name ?? null,
       t.type ?? null,
       t.urlStatus ?? null,
+      t.verification ?? null,
       t.videoTitle || t.videoId || null,
       t.category ?? null,
     ])
@@ -279,6 +287,13 @@
               <Pill text={statusLabel(tool?.urlStatus ?? '')} />
             </span>
           {:else if colIdx === 3}
+            <!-- Verification badge -->
+            {#if tool?.verification}
+              <VerificationBadge score={tool.verification} />
+            {:else}
+              <span class="na">—</span>
+            {/if}
+          {:else if colIdx === 4}
             <!-- Source video link -->
             {#if tool?.videoId}
               <a class="video-link" href={`/video/${encodeURIComponent(tool.videoId)}`}>
@@ -287,7 +302,7 @@
             {:else}
               <span class="na">—</span>
             {/if}
-          {:else if colIdx === 4}
+          {:else if colIdx === 5}
             <!-- Category chip -->
             {#if tool?.category}
               <CategoryChip cat={tool.category} />
