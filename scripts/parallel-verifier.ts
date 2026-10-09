@@ -12,7 +12,7 @@ import fs from "node:fs/promises";
 import { z } from "zod";
 
 const CONCURRENCY = parseInt(process.env.CONCURRENCY ?? "8", 10);
-const MODEL       = process.env.MODEL ?? "gemini-3.1-flash-image-preview";
+const MODEL = process.env.MODEL ?? "gemini-3.8-flash";
 
 // Inlined verification schema (matches src/schemas/verification.ts)
 const ItemVerificationSchema = z.object({
@@ -39,12 +39,12 @@ function computeMaxConfidence(analysis: any, research: any, implementation: any)
   const liveUrls = researchItems.filter((r: any) => r.url_status === "live" || r.url_status === "redirect").length;
   const deadUrls = researchItems.filter((r: any) => r.url_status === "dead").length;
   const urlsChecked = researchItems.filter((r: any) => r.url_status !== "no_url").length;
-  const verifiedClaims = researchItems.filter((r: any) =>
-    r.claim_verification === "verified" || r.claim_verification === "partially_verified"
+  const verifiedClaims = researchItems.filter(
+    (r: any) => r.claim_verification === "verified" || r.claim_verification === "partially_verified",
   ).length;
   const installSuccesses = implItems.filter((i: any) => i.install_result?.exit_code === 0).length;
-  const verificationPassed = implItems.filter(
-    (i: any) => i.verification_results?.some((vr: any) => vr.exit_code === 0)
+  const verificationPassed = implItems.filter((i: any) =>
+    i.verification_results?.some((vr: any) => vr.exit_code === 0),
   ).length;
   if (urlsChecked > 0 && deadUrls > urlsChecked * 0.6) return 3;
   if (testableItems.length === 0) {
@@ -108,9 +108,13 @@ function buildPrompt(filename: string, analysis: any, research: any, implementat
   parts.push(`   - "partially_verified": some items verified, others untested but nothing wrong`);
   parts.push(`   - "not_verified": URLs dead, claims wrong, or content broken`);
   parts.push(`   - "outdated": tools deprecated/shut down/superseded`);
-  parts.push(`   NOTE: workflows/techniques that can't be mechanically tested are still "verified_useful" or "partially_verified" if URLs are live.`);
+  parts.push(
+    `   NOTE: workflows/techniques that can't be mechanically tested are still "verified_useful" or "partially_verified" if URLs are live.`,
+  );
   parts.push(`2. summary: 1-3 sentence recommendation`);
-  parts.push(`3. item_results: one entry per actionable item with item_name, research_summary, implementation_result, is_url_live, notes`);
+  parts.push(
+    `3. item_results: one entry per actionable item with item_name, research_summary, implementation_result, is_url_live, notes`,
+  );
   parts.push(`4. confidence: 0-10 numeric`);
   parts.push(`\nReturn ONLY valid JSON. No markdown fences.`);
   const maxConf = computeMaxConfidence(analysis, research, implementation);
@@ -118,7 +122,13 @@ function buildPrompt(filename: string, analysis: any, research: any, implementat
   return parts.join("\n");
 }
 
-async function verifyOne(neurolink: NeuroLink, filename: string, analysis: any, research: any, implementation: any): Promise<any> {
+async function verifyOne(
+  neurolink: NeuroLink,
+  filename: string,
+  analysis: any,
+  research: any,
+  implementation: any,
+): Promise<any> {
   const prompt = buildPrompt(filename, analysis, research, implementation);
   const r = await neurolink.generate({
     input: { text: prompt },
@@ -157,7 +167,8 @@ async function main() {
   console.log(`Parallel verifier: ${todo.length} entries to process, concurrency=${CONCURRENCY}, model=${MODEL}`);
 
   const neurolink = new NeuroLink();
-  let done = 0, errors = 0;
+  let done = 0,
+    errors = 0;
   const startTime = Date.now();
 
   // Persist progress periodically
@@ -184,7 +195,9 @@ async function main() {
         done++;
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
         const rate = (done / ((Date.now() - startTime) / 60000)).toFixed(1);
-        console.log(`  [w${id}] ${done}/${todo.length} (${elapsed}s, ${rate}/min) ${result.overall_score} c=${result.confidence}  ${filename.slice(0, 50)}`);
+        console.log(
+          `  [w${id}] ${done}/${todo.length} (${elapsed}s, ${rate}/min) ${result.overall_score} c=${result.confidence}  ${filename.slice(0, 50)}`,
+        );
       } catch (e: any) {
         errors++;
         const msg = (e?.message ?? String(e)).slice(0, 150);
@@ -213,4 +226,7 @@ async function main() {
   console.log(`\nParallel verify done: ${done} succeeded, ${errors} failed, in ${elapsedMin} min`);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

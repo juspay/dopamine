@@ -1,5 +1,5 @@
 // src/__tests__/config.test.ts
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import path from "node:path";
 import { CONFIG } from "../pipeline/config.js";
 
@@ -40,5 +40,32 @@ describe("CONFIG — multi-provider additions", () => {
   });
   it("IG_INCREMENTAL_MAX defaults to 200", () => {
     expect(CONFIG.IG_INCREMENTAL_MAX).toBe(200);
+  });
+});
+
+describe("CONFIG — model defaults", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("pins extraction to gemini-3.8-flash, the judges to gemini-3.1-flash-lite and embeddings to gemini-embedding-001", async () => {
+    const keys = ["MODEL", "TRIAGE_MODEL", "MAP_MODEL", "BRIEF_MODEL", "DIGEST_MODEL", "LINK_MODEL", "EMBEDDING_MODEL"];
+    for (const key of keys) vi.stubEnv(key, undefined);
+    vi.resetModules();
+    const { CONFIG: fresh } = await import("../pipeline/config.js");
+    expect([fresh.MODEL, fresh.BRIEF_MODEL, fresh.DIGEST_MODEL, fresh.LINK_MODEL]).toEqual(
+      Array(4).fill("gemini-3.8-flash"),
+    );
+    expect([fresh.MAP_MODEL, fresh.TRIAGE_MODEL]).toEqual(Array(2).fill("gemini-3.1-flash-lite"));
+    expect(fresh.EMBEDDING_MODEL).toBe("gemini-embedding-001");
+  });
+
+  it("lets an env var move a single step without moving the rest", async () => {
+    vi.stubEnv("MAP_MODEL", "gemini-2.5-flash");
+    vi.resetModules();
+    const { CONFIG: fresh } = await import("../pipeline/config.js");
+    expect(fresh.MAP_MODEL).toBe("gemini-2.5-flash");
+    expect(fresh.TRIAGE_MODEL).toBe("gemini-3.1-flash-lite");
   });
 });

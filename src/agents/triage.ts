@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import type { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { loadState } from "../pipeline/state.js";
 import { type Tier, type TriageFile, TriageLLMSchema, feedsApplyLoop } from "../schemas/triage.js";
 import type { MetadataEntry } from "../types/index.js";
@@ -171,6 +172,7 @@ export async function runTriageAgent(neurolink: NeuroLink): Promise<void> {
           disableTools: true,
           timeout: "60s",
         });
+        assertNotTruncated(res, "triage");
         return safeJsonParse(res.content);
       },
       CONFIG.MAX_RETRIES,

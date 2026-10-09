@@ -9,6 +9,7 @@ import {
 } from "../schemas/classification.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { getVideoFiles, extractPkFromFilename, getThumbnailPath, extractVideoFrames } from "../utils/video.js";
@@ -111,9 +112,10 @@ export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneI
             schema: ClassificationSchema,
             output: { format: "json" },
             disableTools: true,
-            maxTokens: 1024,
-            timeout: "120s",
+            maxTokens: 4096, // thinking tokens share this cap
+            timeout: "180s", // gemini-3.8-flash tail reached 105s
           });
+          assertNotTruncated(response, "classifier");
           return LenientClassificationSchema.parse(safeJsonParse(response.content));
         },
         CONFIG.MAX_RETRIES,
@@ -211,9 +213,10 @@ export async function runClassifierAgent(neurolink: NeuroLink, laneItems?: LaneI
           schema: ClassificationSchema,
           output: { format: "json" },
           disableTools: true, // REQUIRED: Gemini rejects tools + JSON schema together
-          maxTokens: 1024,
-          timeout: "120s",
+          maxTokens: 4096, // thinking tokens share this cap
+          timeout: "180s", // gemini-3.8-flash tail reached 105s
         });
+        assertNotTruncated(response, "classifier");
         return LenientClassificationSchema.parse(safeJsonParse(response.content));
       },
       CONFIG.MAX_RETRIES,

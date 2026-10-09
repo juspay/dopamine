@@ -1,6 +1,7 @@
 import { type NeuroLink } from "@juspay/neurolink";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { validateAndNormalizeUrl } from "./link-extractor.js";
 import { checkUrl } from "../utils/url-check.js";
@@ -180,12 +181,12 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
 
     console.log(`\n[${i + 1}/${uniqueNames.size}] Resolving: ${link.name}`);
 
-    // Pinned to a text model rather than CONFIG.MODEL. Historically this was
+    // Selected by CONFIG.LINK_MODEL rather than CONFIG.MODEL. Historically this was
     // load-bearing: CONFIG.MODEL was an image-preview model that routed these
     // prompts through executeImageGeneration and returned empty parts whenever
     // Vertex's safety filter tripped on a benign description (e.g. "Personal
     // account inferred from filename" → "No content parts"). CONFIG.MODEL is a
-    // text-capable model again, so the pin is now just insulation against it
+    // text-capable model again, so the split is now just insulation against it
     // being pointed back at an image model.
     let resolved: string | null = null;
     const r1 = await exponentialBackoff(
@@ -193,11 +194,13 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
         const response = await neurolink.generate({
           input: { text: prompt },
           provider: "vertex",
-          model: "gemini-2.5-flash",
+          model: CONFIG.LINK_MODEL,
           disableTools: true,
-          maxTokens: 256,
+          // Thinking tokens share this cap: 256 truncated the URL mid-string on gemini-3.8-flash.
+          maxTokens: 2048,
           timeout: "30s",
         });
+        assertNotTruncated(response, "link-resolver");
         const content = response.content.trim();
         // Model may return "NONE" when it cannot find a URL — treat as failure
         if (/^NONE$/i.test(content)) return null;

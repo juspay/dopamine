@@ -61,7 +61,7 @@ to score — or the number measures memorisation rather than generalisation.
 | `ARM` | `baseline` | judge | Selects the judge prompt variant |
 | `LIMIT` | `0` (all) | judge | Cap videos judged, for a cheap smoke run |
 | `SPLIT` | `all` | facets, portfolio | `train` / `test` / `all` fold selection |
-| `MAP_MODEL` | `gemini-2.5-flash` | judge, facets | Judge model, matching `CONFIG.MAP_MODEL` |
+| `MAP_MODEL` | `gemini-3.1-flash-lite` | judge, facets | Judge model, matching `CONFIG.MAP_MODEL` |
 | `TOPK` | `6` | portfolio | Prefilter candidates per video |
 | `FLOOR` | `0.5` | portfolio | Similarity floor |
 | `MIN_LABELS` | `8` | facets | Confirmed videos a project needs before facets are derived |

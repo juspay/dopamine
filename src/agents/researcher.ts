@@ -15,6 +15,7 @@
 import { type NeuroLink } from "@juspay/neurolink";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import type { AnalysisEntry } from "./analyzer.js";
 import { checkUrls } from "../utils/url-check.js";
@@ -326,9 +327,12 @@ async function processBatch(
         model: CONFIG.MODEL,
         output: { format: "text" },
         enabledToolNames: ["websearchGrounding"],
-        maxTokens: 8192,
-        timeout: "180s",
+        // A grounded batch runs up to ~22 tool steps: measured 95% of 8192 and a
+        // 147s slowest batch against the old 180s limit on gemini-3.8-flash.
+        maxTokens: 16384,
+        timeout: "300s",
       });
+      assertNotTruncated(response, "researcher");
       return response.content;
     },
     CONFIG.MAX_RETRIES,
@@ -408,18 +412,34 @@ async function processBatch(
 }
 
 /**
+ * Neurolink's websearchGrounding tool reads GOOGLE_VERTEX_PROJECT, not the
+ * GOOGLE_CLOUD_PROJECT_ID this pipeline is configured with. Left unset, every
+ * search call fails and the model answers from memory (or apologises): 1545 of
+ * 3755 stored research items read "No research data available." for this reason.
+ */
+function ensureGroundingProject(): void {
+  process.env.GOOGLE_VERTEX_PROJECT ??= process.env.GOOGLE_CLOUD_PROJECT_ID;
+}
+
+/**
  * Split the research text into sections per item.
  */
-function splitResearchByItem(text: string, count: number): string[] {
+export function splitResearchByItem(text: string, count: number): string[] {
   const sections: string[] = [];
 
   for (let i = 1; i <= count; i++) {
-    // Try to find section boundaries like "1." or "**1." or "Item 1:" etc.
+    // Try to find section boundaries like "1." or "**1." or "Item 1:" etc. The
+    // "## 1." / "### 1." form is tried first: gemini-3.x writes each item as a
+    // heading with numbered sub-lists under it, which the plain "1." pattern
+    // matches at the wrong place. Headings of level 4+ (the sub-sections) are
+    // deliberately not matched.
     const startPatterns = [
+      new RegExp(`(?:^|\\n)#{2,3}\\s*\\*{0,2}${i}[\\.\\)]\\s`, "m"),
       new RegExp(`(?:^|\\n)\\s*\\*{0,2}${i}[\\.\\)]\\s`, "m"),
       new RegExp(`(?:^|\\n)\\s*Item\\s+${i}[:\\s]`, "mi"),
     ];
     const endPatterns = [
+      new RegExp(`(?:^|\\n)#{2,3}\\s*\\*{0,2}${i + 1}[\\.\\)]\\s`, "m"),
       new RegExp(`(?:^|\\n)\\s*\\*{0,2}${i + 1}[\\.\\)]\\s`, "m"),
       new RegExp(`(?:^|\\n)\\s*Item\\s+${i + 1}[:\\s]`, "mi"),
     ];
@@ -476,6 +496,7 @@ function extractGitHubInfo(text: string): string {
 
 export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
   console.log("\n=== ResearchAgent (Step 13) ===");
+  ensureGroundingProject();
 
   // Load analysis state
   const analysisState = await loadState<Record<string, AnalysisEntry>>(CONFIG.STATE.ANALYSIS, {});

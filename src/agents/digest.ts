@@ -8,6 +8,7 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { type Digest, DigestSchema } from "../schemas/digest.js";
 import { hasSearchSchema, openSearchDb } from "../search/db.js";
 import { safeJsonParse } from "../utils/json-repair.js";
@@ -342,6 +343,7 @@ function neurolinkGenerate(neurolink: NeuroLink): GenerateFn {
           maxTokens: 4096,
           timeout: "120s",
         });
+        assertNotTruncated(response, "digest");
         return DigestSchema.parse(safeJsonParse(response.content));
       },
       CONFIG.MAX_RETRIES,

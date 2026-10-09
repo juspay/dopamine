@@ -5,6 +5,7 @@ import fs from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { acquireLock, releaseLock } from "../pipeline/lock.js";
 import { MapJudgeSchema, MapVerdictSchema } from "../schemas/mapping.js";
 import { type Project, facetHash, loadProjects, portfolioHash, projectFacets } from "../schemas/projects.js";
@@ -309,9 +310,11 @@ export function judgePrompt(video: JudgeVideo, projects: Project[]): string {
     "across two projects is a real overlap, not a sign the reason is too vague. What makes a",
     "reason too vague is naming nothing specific at all.",
     "",
-    "A weak link is an applies=false. There is no partial credit and nothing downstream",
-    "rescues a borderline accept — the strength of each accepted match is measured",
-    "separately, not taken from your answer. Judge only whether it applies at all.",
+    "If you can name a concrete change but are unsure it is worth a maintainer's time, answer",
+    "applies=true. The strength of each accepted match is measured separately from similarity",
+    "and weak ones are filtered out before anyone sees them, but a rejection cannot be",
+    "recovered. Reserve applies=false for links that are only superficial (the REJECT list",
+    "above) or where you cannot name any concrete change.",
     "",
     "For EACH project return applies (boolean) and reason (<140 chars).",
     "The reason must state the SPECIFIC change, or — when rejecting — why the apparent link is superficial.",
@@ -481,6 +484,7 @@ function neurolinkJudge(neurolink: NeuroLink): JudgeFn {
           maxTokens: 4096,
           timeout: "120s",
         });
+        assertNotTruncated(response, "project-mapper");
         return safeJsonParse(response.content);
       },
       CONFIG.MAX_RETRIES,

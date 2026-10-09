@@ -64,7 +64,7 @@ npm run build && npm run search:index && npm run map:projects
 |---|---|---|
 | `MAP_PREFILTER_TOPK` | `4` | Max candidate projects per video sent to the judge |
 | `MAP_PREFILTER_MIN` | `0.55` | Cosine floor for a candidate |
-| `MAP_MODEL` | `gemini-2.5-flash` | Text-only judgement model |
+| `MAP_MODEL` | `gemini-3.1-flash-lite` | Text-only judgement model |
 
 ## Privacy
 
