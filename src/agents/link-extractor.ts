@@ -5,6 +5,7 @@ import { LinksSchema, type Links } from "../schemas/links.js";
 import { tolerantOutput } from "../schemas/tolerant.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { getThumbnailPath, extractVideoFrames } from "../utils/video.js";
@@ -250,9 +251,12 @@ export async function runLinkExtractAgent(neurolink: NeuroLink, laneItems?: Lane
           schema: LinksSchema,
           output: { format: "json" },
           disableTools: true, // REQUIRED: Gemini rejects tools + JSON schema together
-          maxTokens: 4096,
-          timeout: "120s",
+          // Thinking shares this cap: 4096 truncated 10 of 16 calls on gemini-2.5-flash
+          // (thinking alone reached 3935) and a 34-link video used 2.9k on gemini-3.8-flash.
+          maxTokens: 8192,
+          timeout: "180s",
         });
+        assertNotTruncated(response, "link-extractor");
         return tolerantOutput(LinksSchema).parse(safeJsonParse(response.content));
       },
       CONFIG.MAX_RETRIES,

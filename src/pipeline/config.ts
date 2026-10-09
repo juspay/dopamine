@@ -1,6 +1,22 @@
 // src/pipeline/config.ts
 import path from "node:path";
 
+/** Newest GA Gemini on Vertex (location global) as of the last model audit. */
+const DEFAULT_TEXT_MODEL = "gemini-3.8-flash";
+
+/**
+ * The two judgement steps (project mapping, triage) are pinned by evidence, not
+ * recency. With the same prompt every flash model after gemini-2.5-flash is
+ * stricter, which costs these steps because a rejection is unrecoverable
+ * downstream. Measured:
+ *   mapping F1 vs 144 human labels (all / surfaced): 2.5-flash 68/67,
+ *     3.1-flash-lite 69/65, 3.5-flash 69/64, 3.8-flash 64/59
+ *   triage vs stored tiers on 219 videos (apply-gate agreement): 3.1-flash-lite
+ *     211, 3.5-flash 202, 3.8-flash 203 (a 2.5-flash re-run agrees on 213)
+ * Re-run `npm run eval:judge` before moving either.
+ */
+const DEFAULT_JUDGE_MODEL = "gemini-3.1-flash-lite";
+
 export const CONFIG = {
   // Set INSTAGRAM_USERNAME in .env for real runs; "user" is only a placeholder default.
   INSTAGRAM_USERNAME: process.env.INSTAGRAM_USERNAME ?? "user",
@@ -73,8 +89,21 @@ export const CONFIG = {
    * global. That is not a stale failure: every one of those six agents fails on
    * every new video until this points at a live model, and 18 classifications
    * in the corpus carry the InvalidModelError to show for it.
+   *
+   * `gemini-3.8-flash` is the newest GA Gemini on Vertex (global). It is a
+   * reasoning model: thinking tokens come out of the same `maxTokens` cap as
+   * the answer (~240-340 of them on a one-line reply), so a tight cap truncates
+   * the answer. Every call site checks for that via assertNotTruncated.
    */
-  MODEL: process.env.MODEL ?? "gemini-2.5-flash",
+  MODEL: process.env.MODEL ?? DEFAULT_TEXT_MODEL,
+  /**
+   * Deliberately NOT moved to gemini-embedding-2. The mapping floors below
+   * (MAP_PREFILTER_MIN_Z / TOPK) were calibrated against human labels on this
+   * exact model, so changing it invalidates them. It also breaks Neurolink's
+   * Vertex `embedMany`, which throws ("held 1 vectors for 3 texts") for
+   * gemini-embedding-2. Switching needs a re-run of the labelled recall sweep
+   * first.
+   */
   EMBEDDING_MODEL: process.env.EMBEDDING_MODEL ?? "gemini-embedding-001",
 
   // Daily digest push (Shooter-compatible /api/notify endpoint).
@@ -83,7 +112,7 @@ export const CONFIG = {
   // without moving the vision model. It previously HAD to differ: CONFIG.MODEL
   // was an image-preview model that returned free text or empty parts for
   // text-only JSON prompts. That is no longer the reason they are separate.
-  DIGEST_MODEL: process.env.DIGEST_MODEL ?? "gemini-2.5-flash",
+  DIGEST_MODEL: process.env.DIGEST_MODEL ?? DEFAULT_TEXT_MODEL,
   DIGEST_PUSH_URL:
     process.env.DIGEST_PUSH_URL ?? `http://localhost:${process.env.SHOOTER_LOCAL_PORT ?? "54006"}/api/notify`,
 
@@ -126,12 +155,15 @@ export const CONFIG = {
   MAP_PREFILTER_MIN_Z: Number.parseFloat(process.env.MAP_PREFILTER_MIN_Z ?? "0.5"),
   /** Below this many videos a per-project spread is noise, so ranking stays on raw cosine. */
   MAP_BASELINE_MIN_VIDEOS: Number.parseInt(process.env.MAP_BASELINE_MIN_VIDEOS ?? "30", 10),
-  MAP_MODEL: process.env.MAP_MODEL ?? "gemini-2.5-flash",
+  MAP_MODEL: process.env.MAP_MODEL ?? DEFAULT_JUDGE_MODEL,
 
   // Actionability triage (runs before the apply-loop; text-only, like digest/mapper).
-  TRIAGE_MODEL: process.env.TRIAGE_MODEL ?? "gemini-2.5-flash",
+  TRIAGE_MODEL: process.env.TRIAGE_MODEL ?? DEFAULT_JUDGE_MODEL,
   // Per-project action brief (synthesize mapped learnings → concrete actions).
-  BRIEF_MODEL: process.env.BRIEF_MODEL ?? "gemini-2.5-flash",
+  BRIEF_MODEL: process.env.BRIEF_MODEL ?? DEFAULT_TEXT_MODEL,
+  // Link-name -> URL lookup. Kept apart from MODEL so pointing MODEL back at an
+  // image model cannot break it (see agents/link-resolver.ts).
+  LINK_MODEL: process.env.LINK_MODEL ?? DEFAULT_TEXT_MODEL,
   // Deliberately 1, not 2. Raising it would suppress most projects' briefs
   // outright while mapping recall is still low, trading a visible-but-labelled
   // hunch for no output at all. Single-source briefs are instead marked

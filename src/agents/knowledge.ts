@@ -6,6 +6,7 @@ import { KnowledgeSchema, type Knowledge } from "../schemas/knowledge.js";
 import { tolerantOutput } from "../schemas/tolerant.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { getThumbnailPath, extractVideoFrames } from "../utils/video.js";
@@ -47,8 +48,10 @@ Return ONLY valid JSON matching the schema provided. No markdown fences.`;
 
 const FRAMES_ONLY_NOTE =
   "\n\nNote: You are analyzing video frames (images), not the full video file. " +
-  "Audio/speech is not available. For the transcript field, describe any visible text, captions, " +
-  "speech bubbles, or on-screen text you can read. If none is visible, set it to an empty string.";
+  "Audio/speech is not available. For the transcript field, transcribe all legible visible text — " +
+  "captions, speech bubbles, on-screen text, page and slide content — in full, in reading order, " +
+  "frame by frame. Write at least one timestamped visual_description entry for every distinct frame. " +
+  "If none is visible, set it to an empty string.";
 
 const TRANSCRIPT_WITH_FRAMES_NOTE =
   "\n\nOfficial transcript provided — use it verbatim for the transcript field. " +
@@ -183,8 +186,10 @@ export async function runKnowledgeAgent(neurolink: NeuroLink, laneItems?: LaneIt
           output: { format: "json" },
           disableTools: true,
           maxTokens: 16384,
-          timeout: "180s",
+          // gemini-3.8-flash latency is bimodal: one call took 177s against the old 180s limit.
+          timeout: "300s",
         });
+        assertNotTruncated(response, "knowledge");
         const raw = safeJsonParse(response.content) as Record<string, unknown>;
         if (raw && typeof raw === "object") {
           for (const f of ["transcript", "visual_description"]) {

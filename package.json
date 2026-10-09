@@ -67,7 +67,7 @@
     "*.json": ["biome format --write --no-errors-on-unmatched"]
   },
   "dependencies": {
-    "@juspay/neurolink": "^9.79.1",
+    "@juspay/neurolink": "^12.49.14",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/compression": "^1.8.1",
     "chrome-remote-interface": "^0.33.3",

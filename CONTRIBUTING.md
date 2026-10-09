@@ -80,6 +80,7 @@ Create `src/agents/my-agent.ts`. Follow the existing agent pattern:
 import { type NeuroLink } from "@juspay/neurolink";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 
 export async function runMyAgent(neurolink: NeuroLink): Promise<void> {
@@ -113,9 +114,10 @@ export async function runMyAgent(neurolink: NeuroLink): Promise<void> {
         schema: YourZodSchema,
         output: { format: "json" },
         disableTools: true,    // Required for Gemini structured output
-        maxTokens: 4096,
+        maxTokens: 4096,       // Thinking tokens share this cap: leave room above the answer
         timeout: "120s",
       });
+      assertNotTruncated(response, "yourAgent"); // a cut-off answer must fail, not parse
       return YourZodSchema.parse(JSON.parse(response.content));
     }, CONFIG.MAX_RETRIES, CONFIG.RETRY_BASE_DELAY_MS);
 

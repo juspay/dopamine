@@ -5,7 +5,7 @@
 [![semantic-release](https://img.shields.io/badge/semantic--release-angular-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green?logo=node.js)](https://nodejs.org/)
-[![NeuroLink](https://img.shields.io/badge/NeuroLink-9.x-purple)](https://www.npmjs.com/package/@juspay/neurolink)
+[![NeuroLink](https://img.shields.io/badge/NeuroLink-12.x-purple)](https://www.npmjs.com/package/@juspay/neurolink)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
@@ -42,7 +42,7 @@ npm run build && npm run pipeline
 
 ## What It Does
 
-Dopamine processes your Instagram saved videos through a 16-step AI pipeline:
+Dopamine processes your Instagram saved videos through a 21-step AI pipeline:
 
 1. **Collect metadata** from Instagram via instagrapi (Python)
 2. **Download videos** to local storage
@@ -100,7 +100,7 @@ videos/             Downloaded videos, thumbnails, and JSON state files
 | ClassifierAgent | Gemini | Vision-based video classification |
 | KnowledgeAgent | Gemini | Full transcript + visual description extraction |
 | LinkExtractAgent | Gemini | Extracts every URL/tool/resource from video |
-| LinkResolverAgent | Gemini | Resolves and verifies URLs via web search grounding |
+| LinkResolverAgent | Gemini | Looks up each tool's official URL (plain text call, no search grounding), then verifies it is live |
 | CatalogAgent | No | Merges all data into catalog.json + catalog.csv |
 | OrganizerAgent | No | Copies/symlinks videos into category folders |
 | MarkdownAgent | No | Generates per-video markdown + INDEX.md |
@@ -234,11 +234,14 @@ Copy `.env.example` to `.env` and fill in the values:
 | `GOOGLE_CLOUD_PROJECT_ID` | No | -- | GCP project ID (used by `run-pipeline.sh`) |
 | `GOOGLE_CLOUD_LOCATION` | No | -- | GCP region (used by `run-pipeline.sh`) |
 | `VERTEX_PROJECT` | Yes | `your-gcp-project-id` | Vertex AI project ID (used by NeuroLink) |
-| `VERTEX_LOCATION` | No | `global` | Vertex AI location (`global` for 3.x models, `us-central1` for 2.x) |
-| `MODEL` | No | `gemini-3.1-flash-image-preview` | Gemini model ID for all AI agents |
+| `VERTEX_LOCATION` | No | `global` | Vertex AI location (`global` for Gemini 3.x) |
+| `MODEL` | No | `gemini-3.8-flash` | Gemini model for the vision/extraction agents (classify, knowledge, links, analysis, research, verification) |
+| `BRIEF_MODEL`, `DIGEST_MODEL`, `LINK_MODEL` | No | `gemini-3.8-flash` | Text-only steps: project briefs, daily digest, link-name lookup |
+| `TRIAGE_MODEL`, `MAP_MODEL` | No | `gemini-3.1-flash-lite` | The two judgement steps (triage tier, project-mapping judge). Chosen on labelled evidence: newer flash models are stricter and lose recall here (see `src/pipeline/config.ts`) |
+| `EMBEDDING_MODEL` | No | `gemini-embedding-001` | Embeddings for the search index and project mapping (changing it invalidates the calibrated mapping thresholds) |
 | `KB_CATEGORIES` | No | `AI & Machine Learning,Tech & Coding,Business & Marketing,UI/UX Design` | Comma-separated categories for knowledge extraction |
 | `START_STEP` | No | `0` | Pipeline start step (0-indexed) |
-| `END_STEP` | No | `16` | Pipeline end step (exclusive, 0-indexed) |
+| `END_STEP` | No | all (21) | Pipeline end step (exclusive, 0-indexed) |
 | `PORT` | No | `3000` | Webhook + cron server port |
 | `DASHBOARD_PORT` | No | `3001` | Dashboard static server port |
 | `VIDEO_SIZE_THRESHOLD` | No | `20971520` (code); `.env.example` sets `0` | Bytes; videos larger than this use a thumbnail. `0` = always use thumbnails (recommended) |
@@ -301,6 +304,7 @@ The webhook server automatically triggers a full pipeline run every day at **3:0
 import { type NeuroLink } from "@juspay/neurolink";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 
 export async function runMyAgent(neurolink: NeuroLink): Promise<void> {
   // Load input state
@@ -319,9 +323,10 @@ export async function runMyAgent(neurolink: NeuroLink): Promise<void> {
       schema: YourZodSchema,       // Zod schema for structured output
       output: { format: "json" },
       disableTools: true,          // REQUIRED: Gemini rejects tools + JSON schema
-      maxTokens: 4096,
+      maxTokens: 4096,             // Thinking tokens share this cap: leave room above the answer
       timeout: "120s",
     });
+    assertNotTruncated(response, "myAgent"); // throws if cut off by maxTokens or a stopped turn
 
     // Save after every item for resume support
     await saveState(CONFIG.STATE.MY_OUTPUT, output);

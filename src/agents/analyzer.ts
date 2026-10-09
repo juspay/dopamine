@@ -10,6 +10,7 @@
 import path from "node:path";
 import type { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { type Analysis, AnalysisSchema } from "../schemas/analysis.js";
 import { type Takeaway, takeawayText } from "../schemas/knowledge.js";
@@ -46,6 +47,7 @@ const ANALYSIS_PROMPT = `You are an expert technology analyst. Extract ALL actio
 - A tool/website mentioned by name (e.g. "Lordicon", "Figma", "Vertex AI", "BigQuery") IS an actionable item of type "tool_install" or "api_setup". Extract it even without an install command.
 - A technique or workflow described in steps (e.g. "create a sitemap and submit it") IS an actionable item of type "workflow" or "technique".
 - A GitHub repo or website URL IS an actionable item — extract it with the URL filled in.
+- Use an umbrella item only when its members share the same install step AND the same url; otherwise give each distinct tool, website, repo, URL or named technique its own item.
 - Empty array [] is ONLY valid for genuinely non-actionable content (pure entertainment, pet videos, decor showcases with no tools mentioned). If ANY tool/technique is named in any field, extract it.
 
 For each actionable item:
@@ -191,9 +193,11 @@ export async function runAnalyzerAgent(neurolink: NeuroLink, overrides: Analyzer
           temperature: 0.1, // Lower temp -> more deterministic extraction. Default 0.7
           // was causing ~16% of entries to randomly return 0 items
           // even when the KB content clearly listed tools.
-          maxTokens: 8192,
-          timeout: "180s",
+          // 8192 truncated dense videos on gemini-2.5-flash (output reached 8178).
+          maxTokens: 16384,
+          timeout: "240s",
         });
+        assertNotTruncated(response, "analyzer");
         return tolerantOutput(AnalysisSchema).parse(safeJsonParse(response.content));
       },
       CONFIG.MAX_RETRIES,

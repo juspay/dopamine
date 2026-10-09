@@ -16,6 +16,7 @@ import { VerificationReportSchema, type VerificationReport } from "../schemas/ve
 import { tolerantOutput } from "../schemas/tolerant.js";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import { makeRefreshGate } from "../pipeline/refresh.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
@@ -258,9 +259,12 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
           schema: VerificationReportSchema,
           output: { format: "json" },
           disableTools: true,
-          maxTokens: 4096,
-          timeout: "120s",
+          // Measured: a 50-item video needs ~5.5k tokens incl. thinking; 4096 truncated
+          // 23 of 27 calls on gemini-2.5-flash and failed every attempt on 4 of 8 videos.
+          maxTokens: 8192,
+          timeout: "180s",
         });
+        assertNotTruncated(response, "verifier");
         return tolerantOutput(VerificationReportSchema).parse(safeJsonParse(response.content));
       },
       CONFIG.MAX_RETRIES,

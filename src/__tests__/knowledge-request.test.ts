@@ -5,8 +5,10 @@ import type { AcquiredAssets } from "../types/index.js";
 
 const FRAMES_ONLY_NOTE =
   "\n\nNote: You are analyzing video frames (images), not the full video file. " +
-  "Audio/speech is not available. For the transcript field, describe any visible text, captions, " +
-  "speech bubbles, or on-screen text you can read. If none is visible, set it to an empty string.";
+  "Audio/speech is not available. For the transcript field, transcribe all legible visible text — " +
+  "captions, speech bubbles, on-screen text, page and slide content — in full, in reading order, " +
+  "frame by frame. Write at least one timestamped visual_description entry for every distinct frame. " +
+  "If none is visible, set it to an empty string.";
 
 const frames = (n: number): Buffer[] => Array.from({ length: n }, (_, i) => Buffer.from(`f${i}`));
 

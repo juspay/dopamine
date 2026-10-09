@@ -22,6 +22,8 @@ const { blobToVector } = await import(`${R}/dist/search/db.js`);
 const { cosineSim } = await import(`${R}/dist/search/rank.js`);
 const { loadProjects, projectFacets } = await import(`${R}/dist/schemas/projects.js`);
 const { MapJudgeSchema } = await import(`${R}/dist/schemas/mapping.js`);
+const { CONFIG } = await import(`${R}/dist/pipeline/config.js`);
+const { assertNotTruncated } = await import(`${R}/dist/utils/generation.js`);
 const { safeJsonParse } = await import(`${R}/dist/utils/json-repair.js`);
 
 const ARM = process.env.ARM ?? "baseline";
@@ -200,13 +202,16 @@ async function judge(prompt) {
       const res = await neurolink.generate({
         input: { text: prompt },
         provider: "vertex",
-        model: process.env.MAP_MODEL ?? "gemini-2.5-flash",
+        model: CONFIG.MAP_MODEL,
         schema: MapJudgeSchema,
         output: { format: "json" },
         disableTools: true,
         maxTokens: 4096,
         timeout: "120s",
       });
+      // A salvaged partial judgement would otherwise count as a verdict and
+      // silently lower measured recall for the model under test.
+      assertNotTruncated(res, "judge-eval");
       // safeJsonParse returns the VALUE, not a {success,value} wrapper — that
       // wrapper belongs to exponentialBackoff, which production wraps around it.
       const parsed = safeJsonParse(res.content);

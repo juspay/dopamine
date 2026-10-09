@@ -22,6 +22,8 @@ const { projectBaselines } = await import(`${R}/dist/agents/project-mapper.js`);
 const { blobToVector } = await import(`${R}/dist/search/db.js`);
 const { cosineSim } = await import(`${R}/dist/search/rank.js`);
 const { loadProjects, projectFacets } = await import(`${R}/dist/schemas/projects.js`);
+const { CONFIG } = await import(`${R}/dist/pipeline/config.js`);
+const { assertNotTruncated } = await import(`${R}/dist/utils/generation.js`);
 
 const SPLIT = process.env.SPLIT ?? "all";
 const ONLY = (process.env.ONLY ?? "").split(",").filter(Boolean);
@@ -142,11 +144,12 @@ async function describe(project, cluster) {
   const res = await neurolink.generate({
     input: { text: prompt },
     provider: "vertex",
-    model: process.env.MAP_MODEL ?? "gemini-2.5-flash",
+    model: CONFIG.MAP_MODEL,
     disableTools: true,
-    maxTokens: 2048,
+    maxTokens: 4096, // thinking tokens share this cap
     timeout: "120s",
   });
+  assertNotTruncated(res, "derive-facets");
   return String(res.content ?? "")
     .trim()
     .replace(/^["'\s]+|["'\s]+$/g, "")

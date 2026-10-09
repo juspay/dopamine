@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import type { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
+import { assertNotTruncated } from "../utils/generation.js";
 import type { BriefAction, ProjectBriefs } from "../schemas/brief.js";
 import { BriefLLMSchema, CORROBORATION_MIN } from "../schemas/brief.js";
 import { type Project, loadProjects } from "../schemas/projects.js";
@@ -290,6 +291,7 @@ export async function runProjectBriefAgent(neurolink: NeuroLink): Promise<void> 
         output: { format: "json" },
         disableTools: true,
       });
+      assertNotTruncated(response, "project-brief");
       return safeJsonParse(response.content);
     };
 
