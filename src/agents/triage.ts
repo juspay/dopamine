@@ -8,7 +8,7 @@ import type { NeuroLink } from "@juspay/neurolink";
 import { CONFIG } from "../pipeline/config.js";
 import { assertNotTruncated } from "../utils/generation.js";
 import { loadState } from "../pipeline/state.js";
-import { type Tier, type TriageFile, TriageLLMSchema, feedsApplyLoop } from "../schemas/triage.js";
+import { TIERS, type Tier, type TriageFile, TriageLLMSchema, feedsApplyLoop } from "../schemas/triage.js";
 import type { MetadataEntry } from "../types/index.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { exponentialBackoff } from "../utils/rate-limit.js";
@@ -75,6 +75,87 @@ export function triagePrompt(input: TriageInput): string {
   ].join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// System 1 (decide) path
+// ---------------------------------------------------------------------------
+
+/** What each tier means, for a decision model. Mirrors the rubric in triagePrompt. */
+const TIER_CRITERIA: Record<Tier, string> = {
+  "apply-now":
+    "A concrete tool, library or technique a software/AI builder could adopt or implement in a project now: dev tools, coding techniques, AI/ML methods, frameworks, product or growth tactics they could ship.",
+  "evaluate-later": "Professionally promising but needs assessment first: a trend to watch, a tool to pilot.",
+  "reference-only":
+    "Genuine knowledge worth keeping and searching, but nothing to BUILD for their products: domain facts, a personal-life how-to (cooking, parenting, home, health, personal finance), or a concept.",
+  skip: "Saved to enjoy, no learning intent: comedy, anime/manga, memes, aesthetics, vlogs, food/travel/decor showcases.",
+};
+
+const TIER_QUESTION =
+  "Triage this saved social video into ONE actionability tier, for a software engineer / AI builder who saves videos to learn from and apply to their software projects. Judge by what the video actually IS. Personal-life learnings (recipes, baby care, home decor) are reference-only or skip, not apply-now.";
+
+export interface TierDecision {
+  tier: string;
+  confidence: number;
+}
+
+/** One calibrated answer, or null when no decision provider answered. */
+export type DecideTier = (input: TriageInput) => Promise<TierDecision | null>;
+
+export function neurolinkDecideTier(neurolink: NeuroLink, provider: string, model = ""): DecideTier {
+  return async (input) => {
+    const result = await neurolink.tryDecide({
+      ...(provider ? { provider } : {}),
+      ...(model ? { model } : {}),
+      state: {
+        category: input.category,
+        subcategory: input.subcategory,
+        tags: input.tags,
+        description: input.description,
+        caption: input.caption.slice(0, 500),
+      },
+      questions: { tier: { type: "choice", instructions: TIER_QUESTION, criteria: TIER_CRITERIA } },
+    });
+    const answer = result?.answers.tier;
+    return answer?.type === "choice" ? { tier: answer.choice, confidence: answer.confidence } : null;
+  };
+}
+
+export interface SystemOneCounts {
+  decided: number;
+  fellBack: number;
+}
+
+/**
+ * Ask the decision model first; keep its tier only when it is a real tier and
+ * at least `minConfidence` sure. Anything else — low confidence, an unknown
+ * tier, no provider, a thrown error — goes to `fallback`, so enabling System 1
+ * can never make a run worse than the generate path.
+ */
+export function withSystemOne(opts: {
+  decide: DecideTier;
+  fallback: (prompt: string, input: TriageInput) => Promise<unknown>;
+  minConfidence: number;
+  label: string;
+}): { generate: (prompt: string, input: TriageInput) => Promise<unknown>; counts: () => SystemOneCounts } {
+  let decided = 0;
+  let fellBack = 0;
+  return {
+    generate: async (prompt, input) => {
+      const verdict = await opts.decide(input).catch(() => null);
+      if (verdict && (TIERS as readonly string[]).includes(verdict.tier) && verdict.confidence >= opts.minConfidence) {
+        decided++;
+        return {
+          tier: verdict.tier,
+          confidence: verdict.confidence >= 0.8 ? "high" : "medium",
+          reason: `${opts.label}: ${verdict.tier} (${verdict.confidence.toFixed(2)})`,
+        };
+      }
+      fellBack++;
+      return opts.fallback(prompt, input);
+    },
+    counts: () => ({ decided, fellBack }),
+  };
+}
+
 /** Validate/clamp the model output. Anything malformed → conservative reference-only. */
 export function parseTriage(raw: unknown): { tier: Tier; confidence: "high" | "medium" | "low"; reason: string } {
   const parsed = TriageLLMSchema.safeParse(raw);
@@ -95,7 +176,7 @@ export interface TriageDeps {
   captionByPk: Map<string, string>;
   prior: TriageFile;
   model: string;
-  generate: (prompt: string) => Promise<unknown>;
+  generate: (prompt: string, input: TriageInput) => Promise<unknown>;
 }
 
 /** Incremental: re-triage only videos whose classifier signal (hash) changed. */
@@ -125,7 +206,7 @@ export async function runTriage(d: TriageDeps): Promise<TriageFile> {
       continue;
     }
     try {
-      const { tier, confidence, reason } = parseTriage(await d.generate(triagePrompt(input)));
+      const { tier, confidence, reason } = parseTriage(await d.generate(triagePrompt(input), input));
       out[id] = { tier, confidence, reason, hash };
     } catch (err) {
       // One bad video never aborts the run; keep prior if we have it.
@@ -182,7 +263,34 @@ export async function runTriageAgent(neurolink: NeuroLink): Promise<void> {
     return result.value;
   };
 
-  const triage = await runTriage({ classifications, captionByPk, prior, model: CONFIG.TRIAGE_MODEL, generate });
+  const systemOne =
+    CONFIG.TRIAGE_ENGINE === "decide"
+      ? withSystemOne({
+          decide: neurolinkDecideTier(neurolink, CONFIG.TRIAGE_DECIDE_PROVIDER, CONFIG.TRIAGE_DECIDE_MODEL),
+          fallback: (prompt) => generate(prompt),
+          minConfidence: CONFIG.TRIAGE_DECIDE_MIN_CONFIDENCE,
+          label: `System 1${CONFIG.TRIAGE_DECIDE_PROVIDER ? ` ${CONFIG.TRIAGE_DECIDE_PROVIDER}` : ""}`,
+        })
+      : null;
+  // The engine is part of the cache key: a tier from a decision model must not
+  // be served as if Gemini had produced it, and vice versa.
+  const model = systemOne
+    ? `decide:${CONFIG.TRIAGE_DECIDE_PROVIDER || "auto"}/${CONFIG.TRIAGE_DECIDE_MODEL || "default"}@${CONFIG.TRIAGE_DECIDE_MIN_CONFIDENCE}+${CONFIG.TRIAGE_MODEL}`
+    : CONFIG.TRIAGE_MODEL;
+
+  const triage = await runTriage({
+    classifications,
+    captionByPk,
+    prior,
+    model,
+    generate: systemOne ? systemOne.generate : (prompt) => generate(prompt),
+  });
+  if (systemOne) {
+    const { decided, fellBack } = systemOne.counts();
+    console.log(
+      `  System 1 decided ${decided}; ${fellBack} went to ${CONFIG.TRIAGE_MODEL} (low confidence or no answer)`,
+    );
+  }
   await writeAtomic(CONFIG.STATE.TRIAGE, JSON.stringify(triage, null, 2));
 
   const counts: Record<string, number> = {};

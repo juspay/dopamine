@@ -237,6 +237,7 @@ Copy `.env.example` to `.env` and fill in the values:
 | `VERTEX_LOCATION` | No | `global` | Vertex AI location (`global` for Gemini 3.x) |
 | `MODEL` | No | `gemini-3.8-flash` | Gemini model for the vision/extraction agents (classify, knowledge, links, analysis, research, verification) |
 | `BRIEF_MODEL`, `DIGEST_MODEL`, `LINK_MODEL` | No | `gemini-3.8-flash` | Text-only steps: project briefs, daily digest, link-name lookup |
+| `TRIAGE_ENGINE` | No | `generate` | `decide` asks a System 1 decision model (TypeSafe Jev or XOR via Neurolink `decide()`) for the triage tier first and falls back to `TRIAGE_MODEL` below `TRIAGE_DECIDE_MIN_CONFIDENCE` (default `0.6` for provider `xor`, `0.8` otherwise) or on any error. Pick the provider with `TRIAGE_DECIDE_PROVIDER` and, behind a LiteLLM proxy, the model with `TRIAGE_DECIDE_MODEL` (the Juspay LiteLLM proxy serves XOR as `jev-latest`). A hosted provider receives each video's category, tags, description and caption |
 | `TRIAGE_MODEL`, `MAP_MODEL` | No | `gemini-3.1-flash-lite` | The two judgement steps (triage tier, project-mapping judge). Chosen on labelled evidence: newer flash models are stricter and lose recall here (see `src/pipeline/config.ts`) |
 | `EMBEDDING_MODEL` | No | `gemini-embedding-001` | Embeddings for the search index and project mapping (changing it invalidates the calibrated mapping thresholds) |
 | `KB_CATEGORIES` | No | `AI & Machine Learning,Tech & Coding,Business & Marketing,UI/UX Design` | Comma-separated categories for knowledge extraction |

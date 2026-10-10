@@ -69,3 +69,68 @@ describe("CONFIG — model defaults", () => {
     expect(fresh.TRIAGE_MODEL).toBe("gemini-3.1-flash-lite");
   });
 });
+
+describe("CONFIG — triage engine", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("defaults to the generate path with a 0.8 decision floor", async () => {
+    for (const key of [
+      "TRIAGE_ENGINE",
+      "TRIAGE_DECIDE_PROVIDER",
+      "TRIAGE_DECIDE_MODEL",
+      "TRIAGE_DECIDE_MIN_CONFIDENCE",
+    ])
+      vi.stubEnv(key, undefined);
+    vi.resetModules();
+    const { CONFIG: fresh } = await import("../pipeline/config.js");
+    expect([
+      fresh.TRIAGE_ENGINE,
+      fresh.TRIAGE_DECIDE_PROVIDER,
+      fresh.TRIAGE_DECIDE_MODEL,
+      fresh.TRIAGE_DECIDE_MIN_CONFIDENCE,
+    ]).toEqual(["generate", "", "", 0.8]);
+  });
+
+  it("enables decide only for the exact value, and ignores an unparseable floor", async () => {
+    vi.stubEnv("TRIAGE_ENGINE", "decide");
+    vi.stubEnv("TRIAGE_DECIDE_PROVIDER", "xor");
+    vi.stubEnv("TRIAGE_DECIDE_MODEL", "jev-latest");
+    vi.stubEnv("TRIAGE_DECIDE_MIN_CONFIDENCE", "high");
+    vi.resetModules();
+    const on = (await import("../pipeline/config.js")).CONFIG;
+    expect([
+      on.TRIAGE_ENGINE,
+      on.TRIAGE_DECIDE_PROVIDER,
+      on.TRIAGE_DECIDE_MODEL,
+      on.TRIAGE_DECIDE_MIN_CONFIDENCE,
+    ]).toEqual(["decide", "xor", "jev-latest", 0.6]);
+
+    vi.stubEnv("TRIAGE_ENGINE", "DECIDE");
+    vi.stubEnv("TRIAGE_DECIDE_MIN_CONFIDENCE", "0.75");
+    vi.resetModules();
+    const off = (await import("../pipeline/config.js")).CONFIG;
+    expect([off.TRIAGE_ENGINE, off.TRIAGE_DECIDE_MIN_CONFIDENCE]).toEqual(["generate", 0.75]);
+  });
+
+  it.each([
+    ["xor", 0.6],
+    ["XOR", 0.6],
+    ["typesafe", 0.8],
+    ["", 0.8],
+  ])("defaults the floor for provider %j to %d", async (provider, floor) => {
+    vi.stubEnv("TRIAGE_DECIDE_PROVIDER", provider);
+    vi.stubEnv("TRIAGE_DECIDE_MIN_CONFIDENCE", undefined);
+    vi.resetModules();
+    expect((await import("../pipeline/config.js")).CONFIG.TRIAGE_DECIDE_MIN_CONFIDENCE).toBe(floor);
+  });
+
+  it("lets an explicit floor override the provider default", async () => {
+    vi.stubEnv("TRIAGE_DECIDE_PROVIDER", "xor");
+    vi.stubEnv("TRIAGE_DECIDE_MIN_CONFIDENCE", "0.9");
+    vi.resetModules();
+    expect((await import("../pipeline/config.js")).CONFIG.TRIAGE_DECIDE_MIN_CONFIDENCE).toBe(0.9);
+  });
+});

@@ -5,6 +5,14 @@ import path from "node:path";
 const DEFAULT_TEXT_MODEL = "gemini-3.8-flash";
 
 /**
+ * Default System 1 confidence floor per decision provider, from the measured
+ * apply-gate agreement (see TRIAGE_DECIDE_MIN_CONFIDENCE). XOR is calibrated
+ * well enough to trust at 0.6; anything unmeasured gets the stricter 0.8.
+ */
+const DECIDE_FLOOR_BY_PROVIDER: Readonly<Record<string, number>> = { xor: 0.6 };
+const DEFAULT_DECIDE_FLOOR = 0.8;
+
+/**
  * The two judgement steps (project mapping, triage) are pinned by evidence, not
  * recency. With the same prompt every flash model after gemini-2.5-flash is
  * stricter, which costs these steps because a rejection is unrecoverable
@@ -159,6 +167,39 @@ export const CONFIG = {
 
   // Actionability triage (runs before the apply-loop; text-only, like digest/mapper).
   TRIAGE_MODEL: process.env.TRIAGE_MODEL ?? DEFAULT_JUDGE_MODEL,
+  /**
+   * "decide" asks a System 1 decision model (Neurolink `decide()`: TypeSafe Jev,
+   * XOR, ...) for the tier first and falls back to TRIAGE_MODEL below
+   * TRIAGE_DECIDE_MIN_CONFIDENCE or on any failure. Off by default: a hosted
+   * decision provider receives each video's category, tags, description and
+   * caption, so only enable it with a provider you are happy to send those to
+   * (XOR is open-weights and can be self-hosted).
+   */
+  TRIAGE_ENGINE: process.env.TRIAGE_ENGINE === "decide" ? ("decide" as const) : ("generate" as const),
+  /** Decision provider name; empty lets Neurolink pick the first configured one. */
+  TRIAGE_DECIDE_PROVIDER: process.env.TRIAGE_DECIDE_PROVIDER ?? "",
+  /**
+   * Model to send; empty uses the provider's own default. Needed behind the
+   * Juspay LiteLLM proxy, which serves XOR under the name `jev-latest` and
+   * refuses the XOR provider's default name (`xor-1.1`).
+   */
+  TRIAGE_DECIDE_MODEL: process.env.TRIAGE_DECIDE_MODEL ?? "",
+  /**
+   * A tier below this goes to TRIAGE_MODEL instead. Confidence is calibrated per
+   * model and route, so the floor is too. Apply-gate agreement with the stored
+   * tier, by floor (videos handled / demotions):
+   *   TypeSafe Jev direct (jev-1.13.0, 221 videos): 0.8 -> 109/109 (49%, 0);
+   *     0.6 -> 156/160 (72%, 4)
+   *   XOR as jev-latest via the Juspay LiteLLM proxy (225 videos): 0.8 -> 43/43 (19%, 0);
+   *     0.6 -> 139/139 (62%, 0)
+   * A demotion drops a video out of the apply loop for good. The default is 0.6
+   * for provider "xor" (no demotions, three times the coverage) and 0.8 for
+   * everything else, the floor with no demotions on both routes. An explicit
+   * value always wins.
+   */
+  TRIAGE_DECIDE_MIN_CONFIDENCE:
+    Number.parseFloat(process.env.TRIAGE_DECIDE_MIN_CONFIDENCE ?? "") ||
+    (DECIDE_FLOOR_BY_PROVIDER[(process.env.TRIAGE_DECIDE_PROVIDER ?? "").toLowerCase()] ?? DEFAULT_DECIDE_FLOOR),
   // Per-project action brief (synthesize mapped learnings → concrete actions).
   BRIEF_MODEL: process.env.BRIEF_MODEL ?? DEFAULT_TEXT_MODEL,
   // Link-name -> URL lookup. Kept apart from MODEL so pointing MODEL back at an
