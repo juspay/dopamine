@@ -2,6 +2,7 @@ import { type NeuroLink } from "@juspay/neurolink";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { assertNotTruncated } from "../utils/generation.js";
+import { makeRefreshGate } from "../pipeline/refresh.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { validateAndNormalizeUrl } from "./link-extractor.js";
 import { checkUrl } from "../utils/url-check.js";
@@ -13,6 +14,28 @@ interface LinkEntry {
   type: string;
   description: string;
   timestamp: string;
+}
+
+/** Why a lookup produced no URL: the model declined, answered with an invalid URL, or with a dead one. */
+type LookupOutcome = "none" | "invalid" | "dead";
+
+/** One failed lookup, remembered so the same name is not asked about again every run. */
+export interface LinkAttempt {
+  attempted_at: string;
+  outcome: LookupOutcome;
+}
+
+export type LinkAttempts = Record<string, LinkAttempt>;
+
+/** The hint is part of the key: the same name with a new hint URL is a new question. */
+export function attemptKey(name: string, hint: string | null): string {
+  return `${name.trim().toLowerCase()}|${(hint ?? "").trim().toLowerCase()}`;
+}
+
+/** The partial URL the extractor saw, if any; "" and "null" mean it saw none. */
+function hintOf(url: string | null): string | null {
+  const trimmed = (url ?? "").trim();
+  return trimmed === "" || trimmed === "null" ? null : trimmed;
 }
 
 /**
@@ -66,6 +89,27 @@ function isGarbageName(name: string): boolean {
   return false;
 }
 
+/**
+ * Names that cannot have a URL however the model is asked: loopback addresses
+ * and IPs, and a few generic words that are not a product or a page. Used only
+ * for links that came with no URL hint at all.
+ *
+ * Deliberately narrow. Every broader rule that was tried collided with a name
+ * the model has really resolved: a leading "/" hit "/v1/systemone schema", a
+ * trailing "link" hit "skillry video link (hover)", and a loopback prefix hit
+ * "localhost nullmotion". The failure cache handles everything else after one
+ * attempt, so this only saves that first call.
+ */
+const UNRESOLVABLE_ADDRESS =
+  /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d{1,5})?(\/\S*)?$|^(\d{1,3}\.){3}\d{1,3}(:\d{1,5})?(\/\S*)?$/i;
+const UNRESOLVABLE_GENERIC =
+  /^(website|blog|calendar|dashboards?|analytics dashboard|technical report|live demo|cryptocurrency|machine learning|embeddings|rag|llm api|free llm api|ftp|http|mp4|ai|social media analytics|local development server)$/i;
+
+export function isUnresolvableName(name: string): boolean {
+  const n = name.trim();
+  return UNRESOLVABLE_ADDRESS.test(n) || UNRESOLVABLE_GENERIC.test(n);
+}
+
 /** Instagram username pattern: letters, digits, underscores, dots — no spaces. */
 const INSTAGRAM_HANDLE = /^@?([a-zA-Z0-9._]{1,30})$/;
 
@@ -101,7 +145,8 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
 
   // --- First pass: fix obvious cases without API ---
   let fixedLocally = 0,
-    removedGarbage = 0;
+    removedGarbage = 0,
+    skippedUnresolvable = 0;
   const needsApi: Array<{ fname: string; idx: number; link: LinkEntry }> = [];
 
   for (const [fname, entry] of Object.entries(links)) {
@@ -135,6 +180,9 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
         links[fname].links[idx].url = fixedAndValid;
         fixedLocally++;
         console.log(`Fixed locally: ${link.name} -> ${fixedAndValid}`);
+      } else if (hintOf(link.url) === null && isUnresolvableName(link.name)) {
+        // Kept in links_v2.json with no URL; it just never costs a model call.
+        skippedUnresolvable++;
       } else {
         needsApi.push({ fname, idx, link });
       }
@@ -149,7 +197,33 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
   }
 
   console.log(
-    `Removed garbage: ${removedGarbage}, Fixed locally: ${fixedLocally}, Unique names for API: ${uniqueNames.size}`,
+    `Removed garbage: ${removedGarbage}, Fixed locally: ${fixedLocally}, Unique names for API: ${uniqueNames.size}` +
+      (skippedUnresolvable > 0 ? `, Skipped as unresolvable: ${skippedUnresolvable}` : ""),
+  );
+
+  // --- Failure cache: do not re-ask about a name the model already could not resolve ---
+  const attempts = await loadState<LinkAttempts>(CONFIG.STATE.LINK_ATTEMPTS, {});
+  const candidateKeys = new Set([...uniqueNames.values()].map((l) => attemptKey(l.name, hintOf(l.url))));
+  const gate = makeRefreshGate({ ttlDays: CONFIG.LINK_RETRY_TTL_DAYS, maxPerRun: CONFIG.LINK_RETRY_MAX_PER_RUN });
+  let skippedRecent = 0,
+    deferred = 0,
+    retriedStale = 0;
+  for (const [nameKey, link] of [...uniqueNames.entries()]) {
+    const decision = gate.decide(attempts[attemptKey(link.name, hintOf(link.url))], "attempted_at");
+    if (decision.reprocess) {
+      if (decision.reason === "stale") retriedStale++;
+      continue;
+    }
+    uniqueNames.delete(nameKey);
+    if (decision.reason === "budget") deferred++;
+    else skippedRecent++;
+  }
+  // Forget failures for names that are no longer unresolved (resolved elsewhere, or the video is gone).
+  for (const key of Object.keys(attempts)) if (!candidateKeys.has(key)) delete attempts[key];
+  console.log(
+    `Failure cache: ${skippedRecent} failed within ${CONFIG.LINK_RETRY_TTL_DAYS}d (skipped), ` +
+      `${retriedStale} expired (asking again), ${deferred} expired but over the per-run budget (deferred), ` +
+      `${uniqueNames.size} to ask now`,
   );
 
   // Build a reverse index: nameKey -> all (fname, idx) entries needing it
@@ -166,6 +240,9 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
     saveCounter = 0;
 
   for (const [i, [nameKey, link]] of [...uniqueNames.entries()].entries()) {
+    // Taken before the URL is written back below: `link` is the same object stored in links_v2,
+    // so a resolved URL would otherwise turn into the "hint" and miss the record being cleared.
+    const attemptId = attemptKey(link.name, hintOf(link.url));
     const context = [
       link.description ? `Description: ${link.description}` : "",
       link.url ? `Possible hint: ${link.url}` : "",
@@ -189,6 +266,8 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
     // text-capable model again, so the split is now just insulation against it
     // being pointed back at an image model.
     let resolved: string | null = null;
+    // Why there is no URL, when the model answered; stays null if the lookup itself errored.
+    let outcome: LookupOutcome | null = null;
     const r1 = await exponentialBackoff(
       async () => {
         const response = await neurolink.generate({
@@ -211,10 +290,13 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
       CONFIG.RETRY_BASE_DELAY_MS,
     );
 
+    if (r1.success && !r1.value) outcome = "none";
+
     if (r1.success && r1.value) {
       // Validate the resolved URL — the model must not have invented paths
       const validated = validateAndNormalizeUrl(r1.value);
       if (validated === null) {
+        outcome = "invalid";
         console.log(`  -> Resolved URL failed validation (hallucinated?): ${r1.value}`);
       } else {
         // Optionally check liveness: only drop definitively-dead (404/410) links.
@@ -222,6 +304,7 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
         // not permanently drop a live URL because of a bot-block or transient failure.
         const checkResult = await checkUrl(validated, { timeoutMs: 8_000, retries: 0 });
         if (checkResult.status === "dead") {
+          outcome = "dead";
           console.log(`  -> Resolved URL is dead (${checkResult.httpCode}): ${validated}`);
           // Leave url as null rather than storing a 404 link
         } else {
@@ -238,15 +321,23 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
         links[fname].links[idx].url = resolved;
       }
       resolvedCount++;
+      delete attempts[attemptId];
     } else {
       failedCount++;
       console.log(`  FAILED to resolve`);
+      // A lookup that errored (network, quota) says nothing about the name, so it is asked again next run.
+      if (outcome !== null) {
+        attempts[attemptId] = { attempted_at: new Date().toISOString(), outcome };
+      } else {
+        console.log(`  (lookup errored; not cached, will be asked again next run)`);
+      }
     }
 
     // Save incrementally so progress survives restarts (resume mode)
     saveCounter++;
     if (saveCounter >= saveEvery) {
       await saveState(CONFIG.STATE.LINKS_V2, links);
+      await saveState(CONFIG.STATE.LINK_ATTEMPTS, attempts);
       saveCounter = 0;
     }
 
@@ -255,5 +346,6 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
 
   // Final save
   await saveState(CONFIG.STATE.LINKS_V2, links);
+  await saveState(CONFIG.STATE.LINK_ATTEMPTS, attempts);
   console.log(`\nLink resolution complete. Resolved: ${resolvedCount}, Failed: ${failedCount}`);
 }

@@ -68,6 +68,8 @@ export const CONFIG = {
     CLASSIFICATIONS: path.resolve("videos", "classifications.json"),
     KNOWLEDGE_BASE: path.resolve("videos", "knowledge_base.json"),
     LINKS_V2: path.resolve("videos", "links_v2.json"),
+    /** Failed link lookups, so the resolver stops re-asking the model about the same names every run. */
+    LINK_ATTEMPTS: path.resolve("videos", "link_attempts.json"),
     CATALOG: path.resolve("videos", "catalog.json"),
     CATALOG_CSV: path.resolve("videos", "catalog.csv"),
     ANALYSIS: path.resolve("videos", "analysis.json"),
@@ -230,6 +232,17 @@ export const CONFIG = {
   // instead of billing for every stale entry on the first run after this lands.
   REFRESH_TTL_DAYS: Number.parseInt(process.env.REFRESH_TTL_DAYS ?? "30", 10),
   REFRESH_MAX_PER_RUN: Number.parseInt(process.env.REFRESH_MAX_PER_RUN ?? "20", 10),
+
+  /**
+   * A link name the model could not resolve is not asked about again until this
+   * many days have passed. Measured over 27 runs: 88-100% of each run's ~140-157
+   * names were repeats of the previous run, 107 of 147 had failed in every run,
+   * and the model answered NONE for 93-96% of them, so the step spent ~15 of
+   * ~43 minutes re-asking questions that had already been answered.
+   */
+  LINK_RETRY_TTL_DAYS: Number.parseInt(process.env.LINK_RETRY_TTL_DAYS ?? "30", 10),
+  /** Most expired failures one run asks about again, so the backlog drains a slice at a time. */
+  LINK_RETRY_MAX_PER_RUN: Number.parseInt(process.env.LINK_RETRY_MAX_PER_RUN ?? "20", 10),
 
   DELAY_BETWEEN_REQUESTS_MS: Number.parseInt(process.env.DELAY_MS ?? "500", 10),
   MAX_RETRIES: 5,

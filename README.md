@@ -257,7 +257,8 @@ Copy `.env.example` to `.env` and fill in the values:
 
 > **Advanced tuning:** additional optional knobs (`CLASSIFY_FRAMES`, `MIN_VISUAL_CHARS`,
 > `PROPERTIES_CONCURRENCY`, `DELAY_MS`, `COMMAND_TIMEOUT_MS`, `URL_TIMEOUT_MS`,
-> `SANDBOX_MAX_AGE_DAYS`, `LOG_LEVEL`, `DASHBOARD_HOST`, `IG_SESSION_ID`) are documented
+> `SANDBOX_MAX_AGE_DAYS`, `LOG_LEVEL`, `DASHBOARD_HOST`, `IG_SESSION_ID`, `LINK_RETRY_TTL_DAYS`,
+> `LINK_RETRY_MAX_PER_RUN`) are documented
 > with their defaults in [`.env.example`](.env.example).
 
 ---
