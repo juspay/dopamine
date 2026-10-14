@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import type { NeuroLink } from "@juspay/neurolink";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { KNOWN_LINKS, agreesWithKnownLink } from "../agents/link-aliases.js";
+import { validateAndNormalizeUrl } from "../agents/link-extractor.js";
 import { type LinkAttempts, attemptKey, isUnresolvableName, runLinkResolverAgent } from "../agents/link-resolver.js";
 import { CONFIG } from "../pipeline/config.js";
 
@@ -266,5 +268,129 @@ describe("runLinkResolverAgent unresolvable names", () => {
 
     await runLinkResolverAgent(nl);
     expect(generate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("known links", () => {
+  it("are valid https URLs under lower-case, trimmed names", () => {
+    for (const [name, known] of Object.entries(KNOWN_LINKS)) {
+      expect(name).toBe(name.trim().toLowerCase());
+      for (const url of [known.url, ...(known.keep ?? [])]) {
+        expect(url.startsWith("https://")).toBe(true);
+        expect(validateAndNormalizeUrl(url)).not.toBeNull();
+      }
+    }
+  });
+
+  it("are applied without a model call, whatever the case or spacing, in every video", async () => {
+    await writeLinks({ "a.mp4": [link("Claude Code")], "b.mp4": [link("  CODEX "), link("claude-code")] });
+    const { generate, nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect(generate).not.toHaveBeenCalled();
+    const links = await readLinks();
+    expect(links["a.mp4"].links[0].url).toBe(KNOWN_LINKS["claude code"].url);
+    expect(links["b.mp4"].links[0].url).toBe(KNOWN_LINKS.codex.url);
+    expect(links["b.mp4"].links[1].url).toBe(KNOWN_LINKS["claude-code"].url);
+  });
+
+  it("are not applied when the extractor saw a hint URL", async () => {
+    await writeLinks({ "a.mp4": [link("Codex", "see bio")] });
+    const { generate, nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect(asked(generate)).toEqual(["Codex"]);
+    expect((await readLinks())["a.mp4"].links[0].url).toBe("see bio");
+  });
+
+  it("match the whole name only", async () => {
+    await writeLinks({ "a.mp4": [link("Codex agent"), link("Claude Code login")] });
+    const { generate, nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect(asked(generate).sort()).toEqual(["Claude Code login", "Codex agent"]);
+  });
+
+  it("drop the failure record the name had before it was aliased", async () => {
+    await writeLinks({ "a.mp4": [link("Codex")] });
+    await writeAttempts({ "codex|": { attempted_at: daysAgo(1), outcome: "none" } });
+    const { nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect(await readAttempts()).toEqual({});
+  });
+});
+
+describe("agreesWithKnownLink", () => {
+  it.each([
+    ["Codex", "https://github.com/openai/codex"],
+    ["Codex", "https://GitHub.com/OpenAI/Codex/"],
+    ["Codex", "http://www.github.com/openai/codex?tab=readme"],
+    ["Codex", "https://github.com/openai/codex/releases"],
+    ["Codex", "https://codex.gitnexus.io/docs"],
+    ["OpenClaw", "https://openclaw.ai/"],
+    ["Claude Code", "https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview"],
+    ["Not in the table", "https://anything.example/"],
+  ])("accepts %j stored as %j", (name, stored) => expect(agreesWithKnownLink(name, stored)).toBe(true));
+  it.each([
+    ["Codex", "https://openai.com/blog/"],
+    ["Codex", "https://github.com/openai/codex-evil"], // a prefix of the path is not a parent of it
+    ["Codex", "https://github.com/openai"],
+    ["Gemini CLI", "https://github.com/reidjs/gemini-cli"],
+    ["Claude Code", "https://www.anthropic.com/"],
+    ["Codex", ""],
+  ])("rejects %j stored as %j", (name, stored) => expect(agreesWithKnownLink(name, stored)).toBe(false));
+});
+
+describe("known links replacing a stored URL", () => {
+  it("replace a looser or wrong stored URL in every video, without a model call", async () => {
+    await writeLinks({
+      "a.mp4": [link("Codex", "https://openai.com/blog/"), link("Gemini CLI", "https://github.com/reidjs/gemini-cli")],
+      "b.mp4": [
+        link("claude code", "https://www.anthropic.com/"),
+        link("OpenClaw", "https://github.com/puni-puni/OpenClaw`"),
+      ],
+    });
+    const { generate, nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect(generate).not.toHaveBeenCalled();
+    const links = await readLinks();
+    expect(links["a.mp4"].links.map((l) => l.url)).toEqual([KNOWN_LINKS.codex.url, KNOWN_LINKS["gemini cli"].url]);
+    expect(links["b.mp4"].links.map((l) => l.url)).toEqual([KNOWN_LINKS["claude code"].url, KNOWN_LINKS.openclaw.url]);
+  });
+
+  it("keep a stored URL that is the page, under it, or under a keep prefix", async () => {
+    const stored = [
+      ["Codex", "https://github.com/openai/codex"],
+      ["Codex", "https://github.com/OpenAI/Codex/releases/"],
+      ["Codex", "https://codex.gitnexus.io/"],
+      ["OpenClaw", "https://openclaw.ai"],
+      ["Claude Code", "https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview"],
+    ] as const;
+    await writeLinks({ "a.mp4": stored.map(([name, url]) => link(name, url)) });
+    const { generate, nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect(generate).not.toHaveBeenCalled();
+    expect((await readLinks())["a.mp4"].links.map((l) => l.url)).toEqual(stored.map(([, url]) => url));
+  });
+
+  it("leave other names alone, even when their URL looks loose", async () => {
+    await writeLinks({ "a.mp4": [link("Open WebUI", "https://openai.com/blog/")] });
+    const { nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect((await readLinks())["a.mp4"].links[0].url).toBe("https://openai.com/blog/");
+  });
+
+  it("settle after one run: the second run changes nothing", async () => {
+    await writeLinks({ "a.mp4": [link("Codex", "https://openai.com/blog/")] });
+    const { nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    const first = await fs.readFile(state.LINKS_V2, "utf8");
+    await runLinkResolverAgent(nl);
+    expect(await fs.readFile(state.LINKS_V2, "utf8")).toBe(first);
   });
 });
