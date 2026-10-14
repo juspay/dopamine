@@ -5,6 +5,7 @@ import { assertNotTruncated } from "../utils/generation.js";
 import { makeRefreshGate } from "../pipeline/refresh.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { validateAndNormalizeUrl } from "./link-extractor.js";
+import { agreesWithKnownLink, knownLinkFor } from "./link-aliases.js";
 import { checkUrl } from "../utils/url-check.js";
 
 /** Link entry as stored in links_v2.json. */
@@ -146,7 +147,9 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
   // --- First pass: fix obvious cases without API ---
   let fixedLocally = 0,
     removedGarbage = 0,
-    skippedUnresolvable = 0;
+    skippedUnresolvable = 0,
+    knownCount = 0,
+    replacedCount = 0;
   const needsApi: Array<{ fname: string; idx: number; link: LinkEntry }> = [];
 
   for (const [fname, entry] of Object.entries(links)) {
@@ -162,6 +165,19 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
     links[fname].links = cleaned;
 
     for (const [idx, link] of links[fname].links.entries()) {
+      // A checked-in page for products the model never resolves. It fills a missing URL and replaces a
+      // stored one that does not agree with it (see link-aliases.ts); a partial hint from the extractor
+      // is left to the lookup below instead.
+      const known = knownLinkFor(link.name);
+      const hasPartialHint = needsResolution(link.url) && hintOf(link.url) !== null;
+      if (known && !hasPartialHint && !agreesWithKnownLink(link.name, link.url ?? "")) {
+        if (!needsResolution(link.url)) replacedCount++;
+        links[fname].links[idx].url = known;
+        knownCount++;
+        console.log(`Known link: ${link.name} -> ${known}`);
+        continue;
+      }
+
       if (!needsResolution(link.url)) continue;
 
       // Try Instagram handle resolution (no API needed)
@@ -198,7 +214,8 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
 
   console.log(
     `Removed garbage: ${removedGarbage}, Fixed locally: ${fixedLocally}, Unique names for API: ${uniqueNames.size}` +
-      (skippedUnresolvable > 0 ? `, Skipped as unresolvable: ${skippedUnresolvable}` : ""),
+      (skippedUnresolvable > 0 ? `, Skipped as unresolvable: ${skippedUnresolvable}` : "") +
+      (knownCount > 0 ? `, Known links applied: ${knownCount} (${replacedCount} replaced a stored URL)` : ""),
   );
 
   // --- Failure cache: do not re-ask about a name the model already could not resolve ---
