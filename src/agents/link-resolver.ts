@@ -92,14 +92,16 @@ function isGarbageName(name: string): boolean {
 
 /**
  * Names that cannot have a URL however the model is asked: loopback addresses
- * and IPs, and a few generic words that are not a product or a page. Used only
- * for links that came with no URL hint at all.
+ * and IPs, and a few generic words that are not a product or a page. Links with
+ * such a name that came with no URL hint at all are dropped from links_v2.json:
+ * the search index and the dashboard already ignore a link without a URL, so
+ * nothing downstream loses anything.
  *
- * Deliberately narrow. Every broader rule that was tried collided with a name
- * the model has really resolved: a leading "/" hit "/v1/systemone schema", a
- * trailing "link" hit "skillry video link (hover)", and a loopback prefix hit
- * "localhost nullmotion". The failure cache handles everything else after one
- * attempt, so this only saves that first call.
+ * Deliberately narrow, because a false match now deletes a link. Every broader
+ * rule that was tried collided with a name the model has really resolved: a
+ * leading "/" hit "/v1/systemone schema", a trailing "link" hit "skillry video
+ * link (hover)", and a loopback prefix hit "localhost nullmotion". The failure
+ * cache handles everything else after one attempt.
  */
 const UNRESOLVABLE_ADDRESS =
   /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d{1,5})?(\/\S*)?$|^(\d{1,3}\.){3}\d{1,3}(:\d{1,5})?(\/\S*)?$/i;
@@ -147,7 +149,7 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
   // --- First pass: fix obvious cases without API ---
   let fixedLocally = 0,
     removedGarbage = 0,
-    skippedUnresolvable = 0,
+    removedUnresolvable = 0,
     knownCount = 0,
     replacedCount = 0;
   const needsApi: Array<{ fname: string; idx: number; link: LinkEntry }> = [];
@@ -158,6 +160,17 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
       if (isGarbageName(link.name)) {
         removedGarbage++;
         console.log(`Removed garbage: ${link.name}`);
+        return false;
+      }
+      // Dropped here, before the indexes below are taken. A handle-shaped name that the Instagram rule
+      // below would resolve ("blog" described as a creator's account) is not dropped.
+      if (
+        hintOf(link.url) === null &&
+        isUnresolvableName(link.name) &&
+        tryResolveInstagramHandle(link.name, link.description) === null
+      ) {
+        removedUnresolvable++;
+        console.log(`Removed unresolvable: ${link.name}`);
         return false;
       }
       return true;
@@ -196,9 +209,6 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
         links[fname].links[idx].url = fixedAndValid;
         fixedLocally++;
         console.log(`Fixed locally: ${link.name} -> ${fixedAndValid}`);
-      } else if (hintOf(link.url) === null && isUnresolvableName(link.name)) {
-        // Kept in links_v2.json with no URL; it just never costs a model call.
-        skippedUnresolvable++;
       } else {
         needsApi.push({ fname, idx, link });
       }
@@ -214,7 +224,7 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
 
   console.log(
     `Removed garbage: ${removedGarbage}, Fixed locally: ${fixedLocally}, Unique names for API: ${uniqueNames.size}` +
-      (skippedUnresolvable > 0 ? `, Skipped as unresolvable: ${skippedUnresolvable}` : "") +
+      (removedUnresolvable > 0 ? `, Removed as unresolvable: ${removedUnresolvable}` : "") +
       (knownCount > 0 ? `, Known links applied: ${knownCount} (${replacedCount} replaced a stored URL)` : ""),
   );
 
