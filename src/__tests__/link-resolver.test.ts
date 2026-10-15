@@ -111,7 +111,7 @@ describe("isUnresolvableName", () => {
     "flags the generic word %j",
     (name) => expect(isUnresolvableName(name)).toBe(true),
   );
-  // Each of these is a name the model has really resolved, or a real tool; none may be skipped.
+  // Each of these is a name the model has really resolved, or a real tool; none may be dropped.
   it.each([
     "localhost nullmotion",
     "/v1/systemone schema",
@@ -250,24 +250,72 @@ describe("runLinkResolverAgent failure cache", () => {
 });
 
 describe("runLinkResolverAgent unresolvable names", () => {
-  it("never asks the model about them but leaves the links in place", async () => {
+  it("drops them without asking the model and keeps the other links", async () => {
     await writeLinks({ "a.mp4": [link("127.0.0.1"), link("Website"), link("Real Tool")] });
     const { generate, nl } = fakeModel(() => "NONE");
 
     await runLinkResolverAgent(nl);
     expect(asked(generate)).toEqual(["Real Tool"]);
-    const links = (await readLinks())["a.mp4"].links;
-    expect(links.map((l) => l.name)).toEqual(["127.0.0.1", "Website", "Real Tool"]);
-    expect(links.every((l) => l.url === null)).toBe(true);
+    expect((await readLinks())["a.mp4"].links.map((l) => l.name)).toEqual(["Real Tool"]);
     expect(Object.keys(await readAttempts())).toEqual(["real tool|"]);
   });
 
-  it("still asks when such a name arrived with a hint URL", async () => {
+  it("drops them in every video, leaving an empty list where nothing else was found", async () => {
+    await writeLinks({ "a.mp4": [link("localhost:3000")], "b.mp4": [link("Website"), link("MP4")] });
+    const { generate, nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect(generate).not.toHaveBeenCalled();
+    expect(await readLinks()).toEqual({ "a.mp4": { links: [] }, "b.mp4": { links: [] } });
+  });
+
+  it("writes a resolved URL onto the right link when earlier ones were dropped", async () => {
+    await writeLinks({ "a.mp4": [link("Website"), link("Real Tool"), link("Blog"), link("Other Tool")] });
+    const { nl } = fakeModel((prompt) => (prompt.includes('"Real Tool"') ? "https://foo.example/" : "NONE"));
+
+    await runLinkResolverAgent(nl);
+    expect((await readLinks())["a.mp4"].links.map((l) => [l.name, l.url])).toEqual([
+      ["Real Tool", "https://foo.example/"],
+      ["Other Tool", null],
+    ]);
+  });
+
+  it("changes nothing on the next run", async () => {
+    await writeLinks({ "a.mp4": [link("Website"), link("Real Tool")] });
+    const { nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    const after = await readLinks();
+    await runLinkResolverAgent(nl);
+    expect(await readLinks()).toEqual(after);
+  });
+
+  it("keeps one that arrived with a hint URL and still asks about it", async () => {
     await writeLinks({ "a.mp4": [link("Website", "see bio")] });
     const { generate, nl } = fakeModel(() => "NONE");
 
     await runLinkResolverAgent(nl);
     expect(generate).toHaveBeenCalledTimes(1);
+    expect((await readLinks())["a.mp4"].links.map((l) => l.name)).toEqual(["Website"]);
+  });
+
+  it("keeps one that already has a URL", async () => {
+    await writeLinks({ "a.mp4": [link("Blog", "https://foo.example/blog")] });
+    const { generate, nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect(generate).not.toHaveBeenCalled();
+    expect((await readLinks())["a.mp4"].links[0].url).toBe("https://foo.example/blog");
+  });
+
+  it("keeps a handle-shaped one that the Instagram rule resolves", async () => {
+    const account = { ...link("Blog"), description: "A creator's Instagram account" };
+    await writeLinks({ "a.mp4": [account] });
+    const { generate, nl } = fakeModel(() => "NONE");
+
+    await runLinkResolverAgent(nl);
+    expect(generate).not.toHaveBeenCalled();
+    expect((await readLinks())["a.mp4"].links[0].url).toBe("https://www.instagram.com/Blog/");
   });
 });
 
