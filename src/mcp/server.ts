@@ -57,6 +57,11 @@ function initEmbedFn(): Promise<EmbedFn | null> {
     embedInitAttempts++;
     try {
       const { createAIProvider } = await import("@juspay/neurolink");
+      // Importing neurolink (>= 12.27.2) unrefs process.stdin and only re-refs it
+      // for "data"/"readable" listeners added afterwards. The stdio transport's
+      // listener was added before this lazy import, so without this the server
+      // exits cleanly a few seconds after the warmup, mid-session.
+      process.stdin.ref();
       const provider = await createAIProvider("vertex");
       return (t: string) => provider.embed(t, EMBEDDING_MODEL);
     } catch (err) {
