@@ -32,6 +32,8 @@
     "youtube:auth": "node dist/sources/youtube/auth.js",
     "dashboard": "node dist/agents/dashboard.js",
     "merge-kb": "node dist/scripts/merge-knowledge-bases.js",
+    "sources:preview": "node dist/scripts/sources-preview.js",
+    "check:instagram": "node dist/scripts/compare-instagram-state.js",
     "start": "node dist/server/webhook.js",
     "serve": "node dist/server/dashboard-server.js",
     "dashboard:data": "node dist/dashboard/data-builder.js",

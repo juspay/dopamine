@@ -28,11 +28,24 @@ import { runProjectBriefAgent } from "../agents/project-brief.js";
 import { runTriageAgent } from "../agents/triage.js";
 import { CONFIG } from "../pipeline/config.js";
 import { type LaneItem, acquireAll } from "../pipeline/lanes.js";
+import {
+  type AcquireTally,
+  acquireHooksFor,
+  applySourcePolicy,
+  finishSourceRun,
+  mergeWithStored,
+  parseSince,
+  settleAcquire,
+} from "../pipeline/source-policy.js";
 import { loadState } from "../pipeline/state.js";
 import { runSearchIndexer } from "../search/indexer.js";
+import { loadLedger, saveLedger } from "../sources/attempts.js";
+import { type SourceOutcome, alertFailing, loadHealth, saveHealth } from "../sources/health.js";
 import { igMetadataToSourceItem } from "../sources/instagram/map.js";
 import { getEnabledCollectors } from "../sources/registry.js";
-import type { MetadataEntry, SourceItem } from "../types/index.js";
+import { loadDoneIds } from "../sources/select.js";
+import { ingestSourceItems, loadItemIndex } from "../sources/store.js";
+import type { MetadataEntry, SourceItem, SourceKind } from "../types/index.js";
 import { getLogger } from "../utils/logger.js";
 import { resetMetrics, type StepCounts } from "../utils/metrics.js";
 
@@ -128,27 +141,93 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   // the collection step no longer clobbers it with SourceItem[].
   let collectedItems: SourceItem[] = [];
   let collectionRan = false;
+  // How each non-Instagram source did this run, folded into source_health.json after acquisition.
+  const sourceOutcomes = new Map<string, SourceOutcome>();
+  const noteOutage = (source: string, error: string): void => {
+    if (sourceOutcomes.get(source)?.ok === false) return;
+    sourceOutcomes.set(source, { ok: false, error });
+  };
+  const policyDeps = async () => ({
+    now: new Date(),
+    max: CONFIG.SOURCE_MAX_NEW_PER_RUN,
+    since: parseSince(CONFIG.SOURCE_SINCE),
+    store: (batch: SourceItem[]) => ingestSourceItems(batch),
+    done: await loadDoneIds(),
+    ledger: await loadLedger(),
+  });
 
   const runCollectionStep = async (): Promise<StepCounts> => {
     const collectors = getEnabledCollectors(CONFIG.SOURCES);
     console.log(`\n=== Collection — ${collectors.map((c) => c.source).join(", ")} ===`);
-    const collected = await Promise.all(collectors.map((c) => c.collect()));
-    collectedItems = collected.flat();
+    const collected = await Promise.all(
+      collectors.map(async (c) => {
+        try {
+          const items = await c.collect();
+          if (c.source !== "instagram") sourceOutcomes.set(c.source, { ok: true });
+          return items;
+        } catch (err) {
+          // Instagram failing fails the step, as it always has; another source must not take it down.
+          if (c.source === "instagram") throw err;
+          const error = String(err).split("\n")[0];
+          console.error(`  [sources] ${c.source} collection failed: ${error}`);
+          sourceOutcomes.set(c.source, { ok: false, error });
+          return [];
+        }
+      }),
+    );
+    // A collector may report only what is new (or, for YouTube, everything); either way the
+    // stored items that still need work must be offered too, or a backlog never drains.
+    const enabled = new Set(collectors.map((c) => c.source));
+    const batch = collected.flat();
+    const offered =
+      enabled.size > 1 || !enabled.has("instagram") ? mergeWithStored(batch, await loadItemIndex(), enabled) : batch;
+    const { items, remaining } = await applySourcePolicy(offered, await policyDeps());
+    collectedItems = items;
     collectionRan = true;
+    for (const [source, left] of Object.entries(remaining)) {
+      const picked = items.filter((i) => i.source === source).length;
+      console.log(`  [sources] ${source}: selected ${picked}, ${left} remaining`);
+    }
     console.log(`  Collected ${collectedItems.length} new item(s); metadata.json updated via ingest.`);
     return { processed: collectedItems.length };
   };
 
   const runAcquisitionStep = async (): Promise<StepCounts> => {
+    const registry = new Map(getEnabledCollectors(CONFIG.SOURCES).map((c) => [c.source, c] as const));
     let items = collectedItems;
     if (!collectionRan) {
       // Collection step was skipped (e.g. --start>0): reconstruct the item list
       // from the canonical accumulating store so partial runs still work.
       const meta = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
-      items = meta.filter((e) => e.media_type === 2).map(igMetadataToSourceItem);
+      const instagramItems = meta.filter((e) => e.media_type === 2).map(igMetadataToSourceItem);
+      // Unfinished items of the other enabled sources, through the same cap and ledger.
+      const stored = mergeWithStored([], await loadItemIndex(), new Set(registry.keys()));
+      const { items: others } = await applySourcePolicy(stored, { ...(await policyDeps()), store: async () => {} });
+      items = [...instagramItems, ...others];
     }
-    const registry = new Map(getEnabledCollectors(CONFIG.SOURCES).map((c) => [c.source, c] as const));
-    laneItems = await acquireAll(items, registry);
+    const ledgerRef = { current: await loadLedger() };
+    const ledgerBefore = ledgerRef.current;
+    const tallies = new Map<SourceKind, AcquireTally>();
+    const hooks = acquireHooksFor(
+      ledgerRef,
+      () => new Date(),
+      (source, err) => noteOutage(source, err.message.split("\n")[0]),
+      tallies,
+    );
+    laneItems = await acquireAll(items, registry, 4, hooks);
+    // Several failures and no success from one source means it is down: don't blame its items.
+    for (const outage of settleAcquire(tallies, ledgerRef, ledgerBefore)) {
+      console.error(
+        `  [sources] ${outage.source}: every acquisition failed (${outage.error}); treating the source as down.`,
+      );
+      noteOutage(outage.source, outage.error);
+    }
+    if (items.some((i) => i.source !== "instagram")) await saveLedger(ledgerRef.current);
+    if (sourceOutcomes.size > 0) {
+      const { health, failing } = finishSourceRun(sourceOutcomes, { health: await loadHealth(), now: new Date() });
+      await saveHealth(health);
+      await alertFailing(failing);
+    }
     console.log(`\n=== Acquisition — ${laneItems.length}/${items.length} item(s) acquired ===`);
     return { processed: laneItems.length, skipped: items.length - laneItems.length };
   };
@@ -156,7 +235,7 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
   const steps: PipelineStep[] = [
     { name: "Source-agnostic collection", run: () => runCollectionStep() }, //  0
     { name: "Asset acquisition", run: () => runAcquisitionStep() }, //  1
-    { name: "Properties extraction", run: () => runPropertiesAgent() }, //  2
+    { name: "Properties extraction", run: () => runPropertiesAgent(laneItems) }, //  2
     { name: "Classification", run: () => runClassifierAgent(neurolink, laneItems) }, //  3
     // Triage decides each video's actionability tier; gates the apply-loop below
     { name: "Triage", run: () => runTriageAgent(neurolink) }, //  4

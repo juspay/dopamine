@@ -35,6 +35,12 @@ export const CONFIG = {
   // Which source providers to enable (comma-separated). Default: instagram only.
   SOURCES: process.env.SOURCES ?? "instagram",
 
+  // Non-Instagram sources hand the pipeline at most this many not-yet-done items per
+  // run, so enabling a source with a large history drains over several runs.
+  SOURCE_MAX_NEW_PER_RUN: Number.parseInt(process.env.SOURCE_MAX_NEW_PER_RUN ?? "25", 10),
+  // Optional ISO date: items published before it are left out. Parsed where it is used.
+  SOURCE_SINCE: process.env.SOURCE_SINCE || undefined,
+
   // Instagram saved-posts backend: "instagrapi" (default, private API) or
   // "gallerydl" (cookie-auth fallback, used when instagrapi is soft-blocked).
   IG_COLLECTOR: process.env.IG_COLLECTOR ?? "instagrapi",
@@ -63,7 +69,12 @@ export const CONFIG = {
     // but owned by the Python collectors (scripts/download_videos.py,
     // scripts/collect_saved_gallerydl.py), which hardcode the path. No TS code
     // reads it — do not delete the file, and do not re-add a constant nothing uses.
-    YOUTUBE_KNOWN_IDS: path.resolve("videos", "youtube_known_ids.json"),
+    /** Non-Instagram items (id -> SourceItem). Written only by the pipeline. */
+    SOURCE_ITEMS: path.resolve("videos", "source_items.json"),
+    /** Per-item failure/empty ledger for non-Instagram items. */
+    SOURCE_ATTEMPTS: path.resolve("videos", "source_attempts.json"),
+    /** Last success/failure per source, for the 24h alert. */
+    SOURCE_HEALTH: path.resolve("videos", "source_health.json"),
     PROPERTIES: path.resolve("videos", "video_properties.json"),
     CLASSIFICATIONS: path.resolve("videos", "classifications.json"),
     KNOWLEDGE_BASE: path.resolve("videos", "knowledge_base.json"),

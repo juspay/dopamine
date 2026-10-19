@@ -9,7 +9,8 @@ import { CONFIG } from "../pipeline/config.js";
 import { assertNotTruncated } from "../utils/generation.js";
 import { loadState } from "../pipeline/state.js";
 import { TIERS, type Tier, type TriageFile, TriageLLMSchema, feedsApplyLoop } from "../schemas/triage.js";
-import type { MetadataEntry } from "../types/index.js";
+import { loadItemIndex } from "../sources/store.js";
+import type { MetadataEntry, SourceItem } from "../types/index.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import { exponentialBackoff } from "../utils/rate-limit.js";
 import { makeVideoId } from "../utils/video-id.js";
@@ -174,9 +175,22 @@ export function parseTriage(raw: unknown): { tier: Tier; confidence: "high" | "m
 export interface TriageDeps {
   classifications: Record<string, ClassificationEntry>;
   captionByPk: Map<string, string>;
+  /** Captions for non-Instagram items, keyed by classification filename. Consulted only
+   *  when the pk lookup finds nothing, so an Instagram item's triage input never changes. */
+  captionById?: ReadonlyMap<string, string>;
   prior: TriageFile;
   model: string;
   generate: (prompt: string, input: TriageInput) => Promise<unknown>;
+}
+
+/** filename -> caption for every item that is not from Instagram (its text, else its title). */
+export function captionsForNonInstagram(index: ReadonlyMap<string, SourceItem>): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [id, item] of index) {
+    if (item.source === "instagram") continue;
+    out.set(id, item.caption_text ?? item.title ?? "");
+  }
+  return out;
 }
 
 /** Incremental: re-triage only videos whose classifier signal (hash) changed. */
@@ -199,7 +213,7 @@ export async function runTriage(d: TriageDeps): Promise<TriageFile> {
       if (cached) out[id] = cached;
       continue;
     }
-    const input = triageInput(cls, d.captionByPk.get(String(cls.pk ?? "")) ?? "");
+    const input = triageInput(cls, d.captionByPk.get(String(cls.pk ?? "")) ?? d.captionById?.get(filename) ?? "");
     const hash = triageHash(input, d.model);
     if (cached && cached.hash === hash) {
       out[id] = cached;
@@ -235,6 +249,7 @@ export async function runTriageAgent(neurolink: NeuroLink): Promise<void> {
   const classifications = await loadState<Record<string, ClassificationEntry>>(CONFIG.STATE.CLASSIFICATIONS, {});
   const metadata = await loadState<MetadataEntry[]>(CONFIG.STATE.METADATA, []);
   const captionByPk = new Map(metadata.map((m) => [String(m.pk), (m as { caption_text?: string }).caption_text ?? ""]));
+  const captionById = captionsForNonInstagram(await loadItemIndex());
   const prior = await loadJson<TriageFile>(CONFIG.STATE.TRIAGE, {});
 
   // A `timeout` is mandatory here: without it a stalled Vertex call hangs the
@@ -281,6 +296,7 @@ export async function runTriageAgent(neurolink: NeuroLink): Promise<void> {
   const triage = await runTriage({
     classifications,
     captionByPk,
+    captionById,
     prior,
     model,
     generate: systemOne ? systemOne.generate : (prompt) => generate(prompt),

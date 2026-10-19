@@ -24,7 +24,9 @@
         {#each records as record}
           <a href={'/video/' + encodeURIComponent(record.id)} class="rail-card" title={record.title}>
             <div class="rail-thumb">
-              <Img src={record.thumb} alt={record.title} classes="rail-thumb-img" />
+              {#if record.thumb}
+                <Img src={record.thumb} alt={record.title} classes="rail-thumb-img" />
+              {/if}
               {#if record.durationSec > 0}
                 <span class="rail-dur">{fmtDuration(record.durationSec)}</span>
               {/if}

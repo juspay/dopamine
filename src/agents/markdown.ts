@@ -9,7 +9,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
-import type { MetadataEntry, VideoProperties } from "../types/index.js";
+import { loadItemIndex } from "../sources/store.js";
+import type { MetadataEntry, SourceItem, VideoProperties } from "../types/index.js";
 import { takeawayText, type Takeaway } from "../schemas/knowledge.js";
 
 // ---------------------------------------------------------------------------
@@ -160,11 +161,31 @@ function findMetadata(filename: string, kbEntry: KnowledgeEntry, index: Metadata
 // Markdown generation for a single video
 // ---------------------------------------------------------------------------
 
-function generateMarkdown(
+/** The fields generateMarkdown reads from an item's metadata. A MetadataEntry fits; so does
+ *  the thinner record `metaFromItem` builds for a non-Instagram item. */
+export interface MarkdownMeta {
+  username?: string | null;
+  full_name?: string | null;
+  caption_text?: string | null;
+  taken_at?: string | null;
+  like_count?: number;
+}
+
+/** Metadata for an item that has no Instagram record: its channel or handle, text and date. */
+export function metaFromItem(item: SourceItem): MarkdownMeta {
+  return {
+    username: item.author,
+    full_name: null,
+    caption_text: item.caption_text ?? item.title,
+    taken_at: item.published_at,
+  };
+}
+
+export function generateMarkdown(
   filename: string,
   kbEntry: KnowledgeEntry,
   classification: ClassificationEntry | undefined,
-  metadata: MetadataEntry | undefined,
+  metadata: MarkdownMeta | undefined,
   videoProps: VideoProperties | undefined,
 ): { content: string; category: string } {
   // Gather data from all sources
@@ -390,6 +411,8 @@ export async function runMarkdownAgent(): Promise<void> {
   const videoProps = await loadState<Record<string, VideoProperties>>(CONFIG.STATE.PROPERTIES, {});
   console.log(`  video_properties.json: ${Object.keys(videoProps).length} entries`);
 
+  const items = await loadItemIndex();
+
   // Build metadata index
   const metaIndex = buildMetadataIndex(metadataList);
   console.log(`Metadata indexed: ${metaIndex.byPk.size} by pk, ${metaIndex.byUsernamePk.size} by filename`);
@@ -403,7 +426,10 @@ export async function runMarkdownAgent(): Promise<void> {
 
   for (const [filename, kbEntry] of Object.entries(knowledgeBase)) {
     const classification = classifications[filename];
-    const meta = findMetadata(filename, kbEntry, metaIndex);
+    const known = items.get(filename);
+    const meta: MarkdownMeta | undefined =
+      findMetadata(filename, kbEntry, metaIndex) ??
+      (known && known.source !== "instagram" ? metaFromItem(known) : undefined);
     const props = videoProps[filename];
 
     // Generate markdown

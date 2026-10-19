@@ -4,7 +4,7 @@ import { makeYoutubeCollector } from "./youtube/collector.js";
 import type { SourceCollector } from "./types.js";
 import type { SourceKind } from "../types/index.js";
 
-const FACTORY_MAP: Record<SourceKind, () => SourceCollector> = {
+export const SOURCE_FACTORIES: Record<SourceKind, () => SourceCollector> = {
   instagram: makeInstagramCollector,
   youtube: makeYoutubeCollector,
 };
@@ -18,14 +18,16 @@ export function getEnabledCollectors(sourcesEnv: string | undefined): SourceColl
   for (const token of raw.split(",")) {
     const name = token.trim();
     if (name === "") continue;
-    if (!(name in FACTORY_MAP)) {
-      console.warn(`[registry] Unknown source "${name}" — ignoring. Valid: ${Object.keys(FACTORY_MAP).join(", ")}`);
+    if (!(name in SOURCE_FACTORIES)) {
+      console.warn(
+        `[registry] Unknown source "${name}" — ignoring. Valid: ${Object.keys(SOURCE_FACTORIES).join(", ")}`,
+      );
       continue;
     }
     const kind = name as SourceKind;
     if (seen.has(kind)) continue;
     seen.add(kind);
-    collectors.push(FACTORY_MAP[kind]());
+    collectors.push(SOURCE_FACTORIES[kind]());
   }
   return collectors;
 }

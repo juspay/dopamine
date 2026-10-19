@@ -6,10 +6,13 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { createAIProvider } from "@juspay/neurolink";
 import { normalizeToolUrl } from "../dashboard/data-builder.js";
+import { sourceUrlFor } from "../dashboard/source-fields.js";
 import { deriveTitle } from "../dashboard/title.js";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
 import { type Takeaway, takeawayText, takeawayTitleText } from "../schemas/knowledge.js";
+import { loadItemIndex } from "../sources/store.js";
+import type { SourceItem } from "../types/index.js";
 import { exponentialBackoff } from "../utils/rate-limit.js";
 import { makeVideoId } from "../utils/video-id.js";
 import { openSearchDb, vectorToBlob } from "./db.js";
@@ -44,6 +47,8 @@ interface CatEntry {
   taken_at?: string;
   caption?: string;
   instagram_user?: string;
+  /** Absent on Instagram records; the catalog carries it for the others. */
+  source?: string;
 }
 
 interface AnalysisEntry {
@@ -72,6 +77,8 @@ export interface SearchStates {
   research: Record<string, ResearchEntry>;
   verifications: Record<string, VerifEntry>;
   linksV2: Record<string, LinksEntry>;
+  /** Items by id, for the original-page link of a non-Instagram record. */
+  items?: ReadonlyMap<string, SourceItem>;
 }
 
 export interface SearchToolRow {
@@ -89,6 +96,8 @@ export interface SearchRecord {
   creator: string;
   takenAt: string;
   sourceUrl: string;
+  /** "instagram", "youtube", ... */
+  source: string;
   verification: string;
   implementability: number;
   usefulness: string;
@@ -207,6 +216,7 @@ interface RecordInputs {
   verifEntry: VerifEntry | undefined;
   resEntry: ResearchEntry | undefined;
   linksEntry: LinksEntry | undefined;
+  item: SourceItem | undefined;
 }
 
 /**
@@ -258,7 +268,8 @@ function buildRecord(inputs: RecordInputs): SearchRecord {
     category,
     creator,
     takenAt: catEntry?.taken_at ?? "",
-    sourceUrl: code ? `https://www.instagram.com/reel/${code}/` : "",
+    sourceUrl: code ? `https://www.instagram.com/reel/${code}/` : (sourceUrlFor(inputs.item) ?? ""),
+    source: catEntry?.source ?? "instagram",
     verification,
     implementability: anEntry?.implementability_score ?? 0,
     usefulness: anEntry?.usefulness_prediction ?? "unknown",
@@ -300,6 +311,7 @@ export function buildSearchRecords(states: SearchStates): SearchRecord[] {
         verifEntry: states.verifications[filename],
         resEntry: states.research[filename],
         linksEntry: states.linksV2[filename],
+        item: states.items?.get(filename),
       }),
     );
   }
@@ -343,12 +355,12 @@ function pruneAndUpsert(db: DatabaseSync, records: SearchRecord[]): void {
     );
     const getHash = db.prepare("SELECT doc_hash FROM videos WHERE id = ?");
     const upsertVideo = db.prepare(`
-      INSERT INTO videos (id, title, category, creator, taken_at, source_url, verification,
+      INSERT INTO videos (id, title, category, creator, taken_at, source_url, source, verification,
                           implementability, usefulness, takeaways_json, topics_json, doc_hash)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET
         title=excluded.title, category=excluded.category, creator=excluded.creator,
-        taken_at=excluded.taken_at, source_url=excluded.source_url,
+        taken_at=excluded.taken_at, source_url=excluded.source_url, source=excluded.source,
         verification=excluded.verification, implementability=excluded.implementability,
         usefulness=excluded.usefulness, takeaways_json=excluded.takeaways_json,
         topics_json=excluded.topics_json, doc_hash=excluded.doc_hash
@@ -368,6 +380,7 @@ function pruneAndUpsert(db: DatabaseSync, records: SearchRecord[]): void {
         r.creator,
         r.takenAt,
         r.sourceUrl,
+        r.source,
         r.verification,
         r.implementability,
         r.usefulness,
@@ -471,6 +484,7 @@ export async function runSearchIndexer(options: { dbPath?: string; embedder?: Em
     research: await loadState(CONFIG.STATE.RESEARCH, {}),
     verifications: await loadState(CONFIG.STATE.VERIFICATIONS, {}),
     linksV2: await loadState(CONFIG.STATE.LINKS_V2, {}),
+    items: await loadItemIndex(),
   };
   const dashboardMeta = await loadState<{ generatedAt?: string }>(path.resolve("dashboard", "data", "meta.json"), {});
   const records = buildSearchRecords(states);

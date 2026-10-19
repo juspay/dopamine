@@ -10,19 +10,28 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
+import { loadItemIndex } from "../sources/store.js";
+import type { SourceItem } from "../types/index.js";
 
 /** Minimal classification entry shape — only category is needed. */
 interface ClassificationEntry {
   category?: string;
 }
 
+/**
+ * Instagram videos (and ids nothing knows about) are symlinked into the category folders.
+ * Another source's video lives elsewhere, so a link built from its id would be broken.
+ */
+export function isOrganizable(filename: string, index: ReadonlyMap<string, SourceItem>): boolean {
+  const item = index.get(filename);
+  return item === undefined || item.source === "instagram";
+}
+
 export async function runOrganizerAgent(): Promise<void> {
   console.log("\n=== OrganizerAgent ===");
+  const itemIndex = await loadItemIndex();
 
-  const classifications = await loadState<Record<string, ClassificationEntry>>(
-    CONFIG.STATE.CLASSIFICATIONS,
-    {}
-  );
+  const classifications = await loadState<Record<string, ClassificationEntry>>(CONFIG.STATE.CLASSIFICATIONS, {});
 
   console.log(`  classifications.json: ${Object.keys(classifications).length} entries`);
 
@@ -33,6 +42,7 @@ export async function runOrganizerAgent(): Promise<void> {
   const categoryCounts = new Map<string, number>();
 
   for (const [filename, info] of Object.entries(classifications)) {
+    if (!isOrganizable(filename, itemIndex)) continue;
     const category = info.category || "Uncategorized";
     // Sanitize category name for use as directory name (mirrors Python)
     const safeCategory = category.replace(/\//g, "-").replace(/\\/g, "-");
@@ -62,9 +72,7 @@ export async function runOrganizerAgent(): Promise<void> {
   // Print summary
   console.log("Videos organized by category:");
   console.log("-".repeat(40));
-  const sortedCategories = [...categoryCounts.entries()].sort((a, b) =>
-    a[0].localeCompare(b[0])
-  );
+  const sortedCategories = [...categoryCounts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   for (const [category, count] of sortedCategories) {
     console.log(`  ${category}: ${count}`);
   }

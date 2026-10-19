@@ -61,11 +61,12 @@ export interface FfprobeOutput {
 // Multi-provider source model
 // ---------------------------------------------------------------------------
 
-/** Supported content-source providers. (Reserved future: "twitter" | "article".) */
-export type SourceKind = "instagram" | "youtube";
+/** Supported content-source providers, as a runtime list so tests can walk it. */
+export const SOURCE_KINDS = ["instagram", "youtube"] as const;
+export type SourceKind = (typeof SOURCE_KINDS)[number];
 
-/** Supported content formats. (Reserved future: "text_post" | "image_post" | "article_link".) */
-export type ContentType = "short_video" | "long_video";
+/** Supported content formats. (Reserved future: "image_post" | "article_link".) */
+export type ContentType = "short_video" | "long_video" | "text_post";
 
 /**
  * Local assets resolved for a SourceItem before AI processing. Each agent builds

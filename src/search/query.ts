@@ -13,6 +13,8 @@ export interface SearchHit {
   topTools: string[];
   verification: string;
   sourceUrl: string;
+  /** "instagram", "youtube", ... */
+  source: string;
   score: number;
 }
 
@@ -48,6 +50,7 @@ interface VideoRow {
   creator: string;
   taken_at: string;
   source_url: string;
+  source: string;
   verification: string;
   implementability: number;
   usefulness: string;
@@ -68,6 +71,7 @@ function hydrateHit(db: DatabaseSync, id: string, score: number): SearchHit | nu
     topTools: toolRows.map((t) => t.name),
     verification: row.verification,
     sourceUrl: row.source_url,
+    source: row.source,
     score,
   };
 }
@@ -76,7 +80,7 @@ export function hybridSearch(
   db: DatabaseSync,
   queryText: string,
   queryVector: ArrayLike<number> | null,
-  opts: { category?: string; limit?: number; queryModel?: string } = {},
+  opts: { category?: string; source?: string; limit?: number; queryModel?: string } = {},
 ): SearchResult {
   const limit = clampLimit(opts.limit, 10);
 
@@ -115,6 +119,7 @@ export function hybridSearch(
     const hit = hydrateHit(db, id, score);
     if (!hit) continue;
     if (opts.category && hit.category !== opts.category) continue;
+    if (opts.source && hit.source !== opts.source) continue;
     hits.push(hit);
     if (hits.length >= limit) break;
   }
@@ -152,6 +157,7 @@ export function getVideo(db: DatabaseSync, id: string): VideoDetail | null {
     creator: row.creator,
     takenAt: row.taken_at,
     sourceUrl: row.source_url,
+    source: row.source,
     verification: row.verification,
     implementability: row.implementability,
     usefulness: row.usefulness,

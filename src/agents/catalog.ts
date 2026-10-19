@@ -1,7 +1,7 @@
 /**
  * CatalogAgent — port of generate_catalog.py
  *
- * Reads metadata.json (SourceItem[] or legacy MetadataEntry[]), video_properties.json,
+ * Reads metadata.json and source_items.json (through loadItemIndex), video_properties.json,
  * classifications.json. Emits catalog.json (array of unified records) and catalog.csv.
  */
 
@@ -9,20 +9,40 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState, saveState } from "../pipeline/state.js";
-import { igMetadataToSourceItem } from "../sources/instagram/map.js";
-import type { MetadataEntry, VideoProperties, SourceItem } from "../types/index.js";
+import { loadItemIndex } from "../sources/store.js";
+import type { VideoProperties, SourceItem } from "../types/index.js";
 
 interface ClassificationEntry {
-  pk?: string | null; username?: string | null; category?: string; subcategory?: string;
-  tags?: string[]; description?: string; language?: string; mood?: string;
+  pk?: string | null;
+  username?: string | null;
+  category?: string;
+  subcategory?: string;
+  tags?: string[];
+  description?: string;
+  language?: string;
+  mood?: string;
 }
 
 export interface CatalogRecord {
-  filename: string; source: string; content_type: string; author: string;
-  category: string; subcategory: string; tags: string[]; description: string;
-  duration_seconds: number; resolution: string; file_size_mb: number;
-  instagram_user: string; caption: string; hashtags: string[];
-  language: string; mood: string; taken_at: string; like_count: number; comment_count: number;
+  filename: string;
+  source: string;
+  content_type: string;
+  author: string;
+  category: string;
+  subcategory: string;
+  tags: string[];
+  description: string;
+  duration_seconds: number;
+  resolution: string;
+  file_size_mb: number;
+  instagram_user: string;
+  caption: string;
+  hashtags: string[];
+  language: string;
+  mood: string;
+  taken_at: string;
+  like_count: number;
+  comment_count: number;
 }
 
 function extractHashtags(caption: string): string[] {
@@ -36,11 +56,6 @@ function parseFilenameUser(filename: string): string | null {
 }
 function csvEscape(v: string): string {
   return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
-}
-
-/** metadata.json may hold SourceItems (new) or legacy MetadataEntry[] — normalize. */
-function asSourceItem(e: SourceItem | MetadataEntry): SourceItem {
-  return "source" in e && "id" in e ? (e as SourceItem) : igMetadataToSourceItem(e as MetadataEntry);
 }
 
 /** Build one catalog record (pure; exported for testing). */
@@ -80,30 +95,53 @@ export function buildCatalogRecord(
   };
 }
 
-export async function runCatalogAgent(): Promise<void> {
-  console.log("\n=== CatalogAgent ===");
-  const rawMeta = await loadState<Array<SourceItem | MetadataEntry>>(CONFIG.STATE.METADATA, []);
-  const items = rawMeta.map(asSourceItem);
-  const itemById = new Map(items.map((it) => [it.id, it] as const));
-  const videoProps = await loadState<Record<string, VideoProperties>>(CONFIG.STATE.PROPERTIES, {});
-  const classifications = await loadState<Record<string, ClassificationEntry>>(CONFIG.STATE.CLASSIFICATIONS, {});
-
-  console.log(`  metadata.json: ${items.length} entries`);
-  console.log(`  classifications.json: ${Object.keys(classifications).length} entries`);
-
-  const catalog: CatalogRecord[] = Object.keys(classifications)
+/** One record per classification, sorted by filename (pure; exported for testing). */
+export function buildCatalog(
+  classifications: Record<string, ClassificationEntry>,
+  videoProps: Record<string, VideoProperties>,
+  itemById: ReadonlyMap<string, SourceItem>,
+): CatalogRecord[] {
+  return Object.keys(classifications)
     .sort()
     .map((filename) =>
       buildCatalogRecord(filename, classifications[filename], videoProps[filename], itemById.get(filename)),
     );
+}
+
+export async function runCatalogAgent(): Promise<void> {
+  console.log("\n=== CatalogAgent ===");
+  const itemById = await loadItemIndex();
+  const videoProps = await loadState<Record<string, VideoProperties>>(CONFIG.STATE.PROPERTIES, {});
+  const classifications = await loadState<Record<string, ClassificationEntry>>(CONFIG.STATE.CLASSIFICATIONS, {});
+
+  console.log(`  metadata.json + source_items.json: ${itemById.size} items`);
+  console.log(`  classifications.json: ${Object.keys(classifications).length} entries`);
+
+  const catalog = buildCatalog(classifications, videoProps, itemById);
 
   await saveState(CONFIG.STATE.CATALOG, catalog);
   console.log(`Saved ${CONFIG.STATE.CATALOG} (${catalog.length} records)`);
 
   const fieldnames = [
-    "filename", "source", "content_type", "author", "category", "subcategory", "tags",
-    "description", "duration_seconds", "resolution", "file_size_mb", "instagram_user",
-    "caption", "hashtags", "language", "mood", "taken_at", "like_count", "comment_count",
+    "filename",
+    "source",
+    "content_type",
+    "author",
+    "category",
+    "subcategory",
+    "tags",
+    "description",
+    "duration_seconds",
+    "resolution",
+    "file_size_mb",
+    "instagram_user",
+    "caption",
+    "hashtags",
+    "language",
+    "mood",
+    "taken_at",
+    "like_count",
+    "comment_count",
   ] as const;
   const lines = [fieldnames.join(",")];
   for (const r of catalog) {

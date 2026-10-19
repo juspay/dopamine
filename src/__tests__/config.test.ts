@@ -17,8 +17,8 @@ describe("CONFIG — multi-provider additions", () => {
     expect(path.isAbsolute(CONFIG.YOUTUBE_VIDEOS_DIR)).toBe(true);
     expect(CONFIG.YOUTUBE_VIDEOS_DIR).toMatch(/videos[/\\]youtube$/);
   });
-  it("STATE.YOUTUBE_KNOWN_IDS ends with youtube_known_ids.json", () => {
-    expect(CONFIG.STATE.YOUTUBE_KNOWN_IDS).toMatch(/youtube_known_ids\.json$/);
+  it("no longer tracks youtube ids in a known-ids file: the retry ledger and knowledge base decide what is left", () => {
+    expect("YOUTUBE_KNOWN_IDS" in CONFIG.STATE).toBe(false);
   });
   it("exposes a YOUTUBE credentials object", () => {
     expect(CONFIG.YOUTUBE).toBeDefined();
