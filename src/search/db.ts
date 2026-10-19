@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS videos (
   creator TEXT NOT NULL,
   taken_at TEXT NOT NULL DEFAULT '',
   source_url TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'instagram',
   verification TEXT NOT NULL DEFAULT 'unknown',
   implementability REAL NOT NULL DEFAULT 0,
   usefulness TEXT NOT NULL DEFAULT 'unknown',
@@ -69,6 +70,7 @@ CREATE INDEX IF NOT EXISTS project_mappings_project ON project_mappings(project)
  */
 const ADDED_COLUMNS: { table: string; column: string; decl: string }[] = [
   { table: "project_vectors", column: "model", decl: "TEXT NOT NULL DEFAULT ''" },
+  { table: "videos", column: "source", decl: "TEXT NOT NULL DEFAULT 'instagram'" },
 ];
 
 /** Migrate in any columns added after a table's original creation. */

@@ -20,9 +20,16 @@ export interface IndexRecord {
   title: string;
   username: string;
   fullName: string;
+  /** Where the item came from: "instagram", "youtube", ... */
+  source: string;
+  contentType: string;
+  author: string;
+  /** Link to the original watch or post page; null for Instagram. */
+  sourceUrl: string | null;
   category: string;
   subcategory: string;
   tags: string[];
+  /** Empty when a non-Instagram item has no thumbnail file. */
   thumb: string;
   date: string;
   likes: number;

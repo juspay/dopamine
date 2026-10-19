@@ -2,7 +2,6 @@
 import fs from "node:fs/promises";
 import { execa } from "execa";
 import { CONFIG } from "../../pipeline/config.js";
-import { loadState, saveState } from "../../pipeline/state.js";
 import { buildOAuthClient } from "./auth.js";
 import { mapYtVideo, type YtVideoRaw } from "./map.js";
 import { acquireYoutube } from "./download.js";
@@ -25,17 +24,10 @@ export async function collectYoutubeItems(listFn: YtListFn, thresholdSeconds: nu
   return items;
 }
 
-/** Split items into those not yet seen, and the union of all ids (for persistence). */
-export function dedupeNewItems(items: SourceItem[], knownIds: Set<string>): { fresh: SourceItem[]; allIds: string[] } {
-  const fresh = items.filter((i) => !knownIds.has(i.id));
-  const allIds = [...new Set([...knownIds, ...items.map((i) => i.id)])];
-  return { fresh, allIds };
-}
-
 /** Parse an ISO-8601 duration (e.g. "PT4M13S") to seconds. */
 function isoDurationToSeconds(d: string): number {
   const m = d.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  return (parseInt(m?.[1] ?? "0", 10) * 3600) + (parseInt(m?.[2] ?? "0", 10) * 60) + parseInt(m?.[3] ?? "0", 10);
+  return parseInt(m?.[1] ?? "0", 10) * 3600 + parseInt(m?.[2] ?? "0", 10) * 60 + parseInt(m?.[3] ?? "0", 10);
 }
 
 // googleapis bundles its own google-auth-library copy; its OAuth2Client type differs
@@ -68,16 +60,17 @@ function makeRealListFn(): YtListFn {
   };
 }
 
-export function makeYoutubeCollector(): SourceCollector {
+/**
+ * Lists every liked video on every call and remembers nothing. Which ones still need work is
+ * the pipeline's decision (knowledge base, retry ledger, per-run cap), so a video whose download
+ * failed is offered again, and previewing this collector cannot hide anything from a real run.
+ */
+export function makeYoutubeCollector(listFn: YtListFn = makeRealListFn()): SourceCollector {
   return {
     source: "youtube",
 
     async collect(): Promise<SourceItem[]> {
-      const all = await collectYoutubeItems(makeRealListFn(), CONFIG.YT_DOWNLOAD_MAX_SECONDS);
-      const known = new Set(await loadState<string[]>(CONFIG.STATE.YOUTUBE_KNOWN_IDS, []));
-      const { fresh, allIds } = dedupeNewItems(all, known);
-      await saveState(CONFIG.STATE.YOUTUBE_KNOWN_IDS, allIds);
-      return fresh;
+      return collectYoutubeItems(listFn, CONFIG.YT_DOWNLOAD_MAX_SECONDS);
     },
 
     async acquire(item: SourceItem): Promise<AcquiredAssets | null> {
@@ -86,10 +79,18 @@ export function makeYoutubeCollector(): SourceCollector {
         return { stdout: r.stdout, stderr: r.stderr };
       };
       const readVtt = async (p: string): Promise<string | null> => {
-        try { return await fs.readFile(p, "utf8"); } catch { return null; }
+        try {
+          return await fs.readFile(p, "utf8");
+        } catch {
+          return null;
+        }
       };
       const listDir = async (dir: string): Promise<string[]> => {
-        try { return await fs.readdir(dir); } catch { return []; }
+        try {
+          return await fs.readdir(dir);
+        } catch {
+          return [];
+        }
       };
       await fs.mkdir(CONFIG.YOUTUBE_VIDEOS_DIR, { recursive: true });
       return acquireYoutube(item, { run, readVtt, listDir, outDir: CONFIG.YOUTUBE_VIDEOS_DIR });

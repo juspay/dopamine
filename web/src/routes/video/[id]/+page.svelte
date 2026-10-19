@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { loadDetail } from '$lib/data.svelte.js';
-  import { fmtDate, fmtNumber, fmtDuration, igUrl, thinReasonLabel } from '$lib/format.js';
+  import { fmtDate, fmtNumber, fmtDuration, igUrl, sourceLabel, thinReasonLabel } from '$lib/format.js';
   import type { VideoDetail, LinkItem } from '$lib/types.js';
 
   import Breadcrumbs from '$lib/components/Breadcrumbs.svelte';
@@ -92,6 +92,17 @@
               Instagram
             </a>
           {/if}
+          {#if detail.sourceUrl}
+            <a
+              href={detail.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="ig-link"
+              aria-label={'Open original on ' + sourceLabel(detail.source)}
+            >
+              Open original on {sourceLabel(detail.source)}
+            </a>
+          {/if}
           <span class="meta-sep" aria-hidden="true">·</span>
           <span class="meta-item">{fmtDate(detail.date)}</span>
           <span class="meta-sep" aria-hidden="true">·</span>
@@ -132,7 +143,7 @@
               <track kind="captions" />
               Your browser does not support the video element.
             </video>
-          {:else}
+          {:else if detail.thumb}
             <img
               class="thumb-img"
               src={detail.thumb}
