@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { IndexRecord } from '$lib/types.js';
-  import { fmtDuration, fmtDate, fmtNumber } from '$lib/format.js';
+  import { fmtDuration, fmtDate, fmtNumber, sourceLabel } from '$lib/format.js';
   import CategoryChip from './CategoryChip.svelte';
   import TagChip from './TagChip.svelte';
   import ProjectChip from './ProjectChip.svelte';
@@ -29,11 +29,19 @@
 -->
 <article class="video-card">
   <div class="thumb-wrap">
-    <Img src={record.thumb} alt={record.title} classes="thumb-img" />
+    {#if record.thumb}
+      <Img src={record.thumb} alt={record.title} classes="thumb-img" />
+    {:else}
+      <div class="thumb-placeholder" aria-hidden="true">{sourceLabel(record.source)}</div>
+    {/if}
 
     <div class="overlay-cat">
       <CategoryChip cat={record.category} />
     </div>
+
+    {#if record.source && record.source !== 'instagram'}
+      <div class="overlay-src">{sourceLabel(record.source)}</div>
+    {/if}
 
     {#if record.durationSec > 0}
       <div class="overlay-dur">{duration}</div>
@@ -127,6 +135,33 @@
     top: var(--space-2);
     left: var(--space-2);
     z-index: 2;
+  }
+
+  /* Source badge: only for items that are not from Instagram */
+  .overlay-src {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    z-index: 2;
+    background: var(--scrim);
+    color: var(--text);
+    font-size: var(--fs-0);
+    font-weight: var(--fw-semibold);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    line-height: 1.4;
+  }
+
+  /* Neutral frame for an item with no thumbnail file */
+  .thumb-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--faint);
+    font-size: var(--fs-1);
+    font-weight: var(--fw-semibold);
   }
 
   .overlay-dur {

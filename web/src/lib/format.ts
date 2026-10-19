@@ -101,6 +101,16 @@ export function igUrl(code: string): string {
   return `https://instagram.com/reel/${encodeURIComponent(code)}/`;
 }
 
+// ── Source ─────────────────────────────────────────────────────────────────
+
+const SOURCE_LABEL: Record<string, string> = { instagram: 'Instagram', youtube: 'YouTube', x: 'X' };
+
+/** Display name of a source; an unknown one is shown with a capital letter. */
+export function sourceLabel(source: string): string {
+  if (!source) return '';
+  return SOURCE_LABEL[source] ?? source.charAt(0).toUpperCase() + source.slice(1);
+}
+
 // ── Verification ───────────────────────────────────────────────────────────
 
 const VERIF_LABEL: Record<string, string> = {

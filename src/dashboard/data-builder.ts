@@ -26,6 +26,7 @@ import type { CatalogRecord } from "../agents/catalog.js";
 import { CONFIG } from "../pipeline/config.js";
 import { loadState } from "../pipeline/state.js";
 import { type ProjectBriefs, briefSourceCount } from "../schemas/brief.js";
+import { loadItemIndex } from "../sources/store.js";
 import { type Takeaway, takeawayText, takeawayTitleText } from "../schemas/knowledge.js";
 import { type ActionabilityDisplay, type TriageFile, type Tier as TriageTier, UNTRIAGED } from "../schemas/triage.js";
 import type { MetadataEntry, VideoProperties } from "../types/index.js";
@@ -34,6 +35,7 @@ import { catBg, catColor } from "./colors.js";
 import { type QualityInput, type Tier, qualityScore, tierOf } from "./quality.js";
 import { computeRelated } from "./related.js";
 import type { RelInput } from "./related.js";
+import { resolveThumb, resolveVideoFile, sourceUrlFor } from "./source-fields.js";
 import { deriveTitle } from "./title.js";
 
 /** Dashboard author: prefer catalog author, then instagram_user, then the username fallback. */
@@ -55,6 +57,8 @@ interface IndexRecord {
   source: string;
   contentType: string;
   author: string;
+  /** Link to the original watch or post page; null for Instagram. */
+  sourceUrl: string | null;
   category: string;
   subcategory: string;
   tags: string[];
@@ -430,6 +434,7 @@ export async function buildDashboardData(): Promise<void> {
   const projectBriefs = await loadState<ProjectBriefs>(CONFIG.STATE.PROJECT_BRIEFS, {});
   const triageFile = await loadState<TriageFile>(CONFIG.STATE.TRIAGE, {});
   const triageById = new Map<string, TriageTier>(Object.entries(triageFile).map(([id, e]) => [id, e.tier]));
+  const itemIndex = await loadItemIndex();
 
   console.log(`Catalog: ${catalog.length}, KB: ${Object.keys(knowledge).length}`);
   console.log(`Analysis: ${Object.keys(analysis).length}, Verif: ${Object.keys(verifications).length}`);
@@ -447,7 +452,11 @@ export async function buildDashboardData(): Promise<void> {
   ]);
   console.log(`Total unique filenames: ${allFilenames.size}`);
 
-  const videosDirBasename = path.basename(CONFIG.VIDEOS_DIR);
+  const fileExists = (p: string): Promise<boolean> =>
+    fs.access(p).then(
+      () => true,
+      () => false,
+    );
 
   // Build normalized video records
   type NormalizedVideo = VideoDetail & { _filename: string };
@@ -496,19 +505,12 @@ export async function buildDashboardData(): Promise<void> {
 
     // Thumbnail: use original filename stem (before any id sanitization)
     const stem = filename.endsWith(".mp4") ? filename.slice(0, -4) : filename;
-    const thumb = `/videos/thumbnails/${stem}.jpg`;
+    const item = itemIndex.get(filename);
+    const thumb = await resolveThumb(item, stem, fileExists);
+    const sourceUrl = sourceUrlFor(item);
 
-    // Check if video file exists
-    const videoFilePath = path.join(CONFIG.VIDEOS_DIR, filename);
-    let hasVideo = false;
-    let videoPath: string | null = null;
-    try {
-      await fs.access(videoFilePath);
-      hasVideo = true;
-      videoPath = `/videos/${videosDirBasename}/${encodeURIComponent(filename)}`;
-    } catch {
-      // file absent
-    }
+    // Where the item's source keeps its video, and whether the file is there
+    const { hasVideo, videoPath } = await resolveVideoFile(item, filename, fileExists);
 
     // No verification record: distinguish "analysed but had no actionable items
     // to verify" (definitive → not_verifiable) from "never analysed" (→ unknown).
@@ -616,6 +618,7 @@ export async function buildDashboardData(): Promise<void> {
       source,
       contentType,
       author,
+      sourceUrl,
       category,
       subcategory,
       tags,
@@ -704,6 +707,7 @@ export async function buildDashboardData(): Promise<void> {
     source: v.source,
     contentType: v.contentType,
     author: v.author,
+    sourceUrl: v.sourceUrl,
     category: v.category,
     subcategory: v.subcategory,
     tags: v.tags,
@@ -742,6 +746,7 @@ export async function buildDashboardData(): Promise<void> {
       source: v.source,
       contentType: v.contentType,
       author: v.author,
+      sourceUrl: v.sourceUrl,
       category: v.category,
       subcategory: v.subcategory,
       tags: v.tags,
