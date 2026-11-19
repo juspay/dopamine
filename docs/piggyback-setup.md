@@ -96,3 +96,27 @@ set `IG_COLLECTOR=instagrapi` (now incremental, low-volume) or `gallerydl`.
 | `IG_PIGGYBACK_SCROLL_MS` | `2200` | pause between scrolls |
 | `IG_PIGGYBACK_SETTLE_MS` | `3000` | wait after the last scroll for in-flight responses to settle |
 | `IG_PIGGYBACK_CHROME` | macOS Chrome path | Chrome binary override |
+
+## When a VPN blocks Instagram
+
+If every harvest fails with `captured 0 saved-feed responses` (exit code 3) while a VPN is
+connected, check whether the VPN is the cause:
+
+```bash
+curl -s -m 10 -o /dev/null -w "%{http_code}\n" https://www.instagram.com/                  # 000 = blocked
+curl -s -m 10 --interface en0 -o /dev/null -w "%{http_code}\n" https://www.instagram.com/  # 200 = fine off the VPN
+```
+
+If the first fails and the second works, set `DOPAMINE_EGRESS_INTERFACE=en0` in `.env`
+(use the interface your own network is on). The harvester then starts a proxy on loopback
+for the length of the run and sends its Chrome and its video downloads out through that
+interface. It needs no admin rights. Whether going around the VPN is acceptable on your
+machine is your decision.
+
+For a login you do by hand while the VPN is on, keep the proxy running in one terminal
+(`npm run egress:proxy`) and open Chrome through it:
+
+```bash
+open -na "Google Chrome" --args --user-data-dir="$HOME/.dopamine-ig-profile" \
+  --proxy-server=http://127.0.0.1:9460 https://www.instagram.com/
+```

@@ -13,6 +13,7 @@ import CDP from "chrome-remote-interface";
 import { CONFIG } from "../config.js";
 import { ingestMetadata } from "../ingest.js";
 import { isSavedFeedUrl, webResponseToEntries } from "./map-web-media.js";
+import { egressGet, resolveEgressAddress, startEgressProxy } from "../../net/egress.js";
 import { launchChrome, waitForPort } from "./chrome.js";
 import type { MetadataEntry } from "../../types/index.js";
 
@@ -37,7 +38,7 @@ const SAVED_URL = `https://www.instagram.com/${USER}/saved/all-posts/`;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Download new videos straight from their (fresh, signed) CDN url — no IG API. */
-async function downloadNew(entries: MetadataEntry[]): Promise<number> {
+async function downloadNew(entries: MetadataEntry[], egressAddress: string | null): Promise<number> {
   let n = 0;
   for (const e of entries) {
     if (e.media_type !== 2 || !e.video_url) continue;
@@ -53,12 +54,12 @@ async function downloadNew(entries: MetadataEntry[]): Promise<number> {
       /* missing → download */
     }
     try {
-      const r = await fetch(e.video_url);
-      if (!r.ok) continue;
+      const bytes = await egressGet(e.video_url, egressAddress);
+      if (bytes === null) continue;
       await fs.mkdir(CONFIG.VIDEOS_DIR, { recursive: true });
       // Persisting a saved reel's bytes to disk IS the harvester's purpose, and
       // `dest` is sanitized above — the http-to-file flow is intentional here.
-      await fs.writeFile(dest, Buffer.from(await r.arrayBuffer())); // codeql[js/http-to-file-access]
+      await fs.writeFile(dest, bytes); // codeql[js/http-to-file-access]
       n++;
     } catch (err) {
       console.error(`[piggyback] download failed ${e.pk}: ${String(err).split("\n")[0]}`);
@@ -69,7 +70,12 @@ async function downloadNew(entries: MetadataEntry[]): Promise<number> {
 
 export async function harvest(): Promise<void> {
   if (!USER) throw new Error("INSTAGRAM_USERNAME must be set to build the saved-page URL");
-  const chrome = launchChrome(PORT, PROFILE);
+  // With DOPAMINE_EGRESS_INTERFACE set, the browser and the downloads leave through that
+  // interface, so a VPN that blocks Instagram on the default route does not stop the harvest.
+  const egressAddress = resolveEgressAddress(CONFIG.EGRESS_INTERFACE);
+  const proxy = egressAddress ? await startEgressProxy({ localAddress: egressAddress }) : undefined;
+  if (proxy) console.log(`[piggyback] sending traffic out through ${CONFIG.EGRESS_INTERFACE}`);
+  const chrome = launchChrome(PORT, PROFILE, { proxyUrl: proxy?.url });
   let client: CDP.Client | undefined;
   try {
     // Passing `chrome` lets the wait abort the moment the browser dies instead
@@ -137,11 +143,12 @@ export async function harvest(): Promise<void> {
     await fs.mkdir(path.dirname(CONFIG.STATE.METADATA_INCOMING), { recursive: true });
     await fs.writeFile(CONFIG.STATE.METADATA_INCOMING, JSON.stringify(batch, null, 2), "utf8");
     const { added, updated, total } = await ingestMetadata(batch);
-    const dl = await downloadNew(batch);
+    const dl = await downloadNew(batch, egressAddress);
     console.log(`[piggyback] ingest +${added} new, ~${updated} refreshed, ${total} total; downloaded ${dl} mp4(s)`);
   } finally {
     if (client) await client.close().catch(() => {});
     chrome.kill();
+    await proxy?.close();
   }
 }
 

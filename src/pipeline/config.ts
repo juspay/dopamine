@@ -41,6 +41,10 @@ export const CONFIG = {
   // Optional ISO date: items published before it are left out. Parsed where it is used.
   SOURCE_SINCE: process.env.SOURCE_SINCE || undefined,
 
+  // Network interface (for example "en0") that Dopamine's own browser and downloads leave
+  // through, for when a VPN on the default route blocks Instagram, YouTube or X. Unset: default route.
+  EGRESS_INTERFACE: process.env.DOPAMINE_EGRESS_INTERFACE || undefined,
+
   // Instagram saved-posts backend: "instagrapi" (default, private API) or
   // "gallerydl" (cookie-auth fallback, used when instagrapi is soft-blocked).
   IG_COLLECTOR: process.env.IG_COLLECTOR ?? "instagrapi",
