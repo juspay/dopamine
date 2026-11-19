@@ -1,5 +1,5 @@
 // src/pipeline/piggyback/chrome.ts
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 
 const CHROME = process.env.IG_PIGGYBACK_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
@@ -30,20 +30,26 @@ export function chromeStderr(child: object): string {
   return (stderrBuffers.get(child) ?? []).join("\n").trim();
 }
 
+/** The flags Chrome is started with. `proxyUrl` sends all of its traffic through that proxy. */
+export function chromeArgs(port: number, profileDir: string, opts: { proxyUrl?: string } = {}): string[] {
+  return [
+    "--headless=new",
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${profileDir}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-background-networking",
+    "--window-size=1280,2000",
+    ...(opts.proxyUrl ? [`--proxy-server=${opts.proxyUrl}`] : []),
+    "about:blank",
+  ];
+}
+
 /** Launch a headless Chrome bound to the given DevTools port + persistent profile. */
-export function launchChrome(port: number, profileDir: string): ChildProcess {
+export function launchChrome(port: number, profileDir: string, opts: { proxyUrl?: string } = {}): ChildProcess {
   const child = spawn(
     CHROME,
-    [
-      "--headless=new",
-      `--remote-debugging-port=${port}`,
-      `--user-data-dir=${profileDir}`,
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-background-networking",
-      "--window-size=1280,2000",
-      "about:blank",
-    ],
+    chromeArgs(port, profileDir, opts),
     // stderr is piped rather than ignored: when Chrome refuses to start (a
     // profile still locked by a crashed instance is the usual cause) its
     // complaint is the only thing that identifies the failure.
