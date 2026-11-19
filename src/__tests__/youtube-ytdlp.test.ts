@@ -1,5 +1,5 @@
 // src/__tests__/youtube-ytdlp.test.ts
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildCaptionArgs, buildVideoArgs } from "../sources/youtube/ytdlp.js";
 
 describe("buildCaptionArgs", () => {

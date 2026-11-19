@@ -1,13 +1,12 @@
 // src/__tests__/youtube-collector.test.ts
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as state from "../pipeline/state.js";
 import {
+  type YtListFn,
+  type YtListPage,
   collectYoutubeItems,
   makeYoutubeCollector,
-  type YtListPage,
-  type YtListFn,
 } from "../sources/youtube/collector.js";
-import type { SourceItem } from "../types/index.js";
 
 const raw = (id: string, dur: number) => ({
   id,
@@ -40,8 +39,9 @@ describe("makeYoutubeCollector().collect", () => {
     vi.restoreAllMocks();
   });
 
-  const listOf = (...ids: string[]): YtListFn =>
-    vi.fn(async () => ({ items: ids.map((id) => raw(id, 600)), nextPageToken: null }) as YtListPage);
+  const listOf = (...ids: string[]) => ({
+    feeds: [{ name: "liked", list: async () => ids.map((id) => raw(id, 600)) }],
+  });
 
   it("returns every listed item on every call, so an unfinished one is offered again", async () => {
     const collector = makeYoutubeCollector(listOf("a", "b"));
