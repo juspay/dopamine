@@ -63,6 +63,14 @@ export const CONFIG = {
     refreshToken: process.env.YOUTUBE_REFRESH_TOKEN,
   },
 
+  // Own playlists to ingest as well as liked videos and Watch Later (comma-separated ids).
+  YOUTUBE_PLAYLIST_IDS: (process.env.YOUTUBE_PLAYLIST_IDS ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id !== ""),
+  // Netscape cookie file for listing Watch Later with yt-dlp. Outside the repo, mode 600.
+  YT_COOKIES_FILE: process.env.YT_COOKIES_FILE || undefined,
+
   // Download the mp4 only for YouTube videos at/under this duration (seconds).
   YT_DOWNLOAD_MAX_SECONDS: Number.parseInt(process.env.YT_DOWNLOAD_MAX_SECONDS ?? "300", 10),
 

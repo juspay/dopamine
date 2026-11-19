@@ -1,6 +1,6 @@
 // src/__tests__/youtube-map.test.ts
-import { describe, it, expect } from "vitest";
-import { deriveContentType, youtubeId, mapYtVideo, type YtVideoRaw } from "../sources/youtube/map.js";
+import { describe, expect, it } from "vitest";
+import { type YtVideoRaw, deriveContentType, mapYtVideo, youtubeId } from "../sources/youtube/map.js";
 
 describe("deriveContentType", () => {
   it("classifies <= threshold as short_video (boundary included)", () => {
@@ -20,9 +20,14 @@ describe("youtubeId", () => {
 
 describe("mapYtVideo", () => {
   const raw: YtVideoRaw = {
-    id: "vid1", title: "T", channelId: "UC1", channelTitle: "Chan",
-    durationSeconds: 700, publishedAt: "2024-01-01T00:00:00Z",
-    thumbnailUrl: "https://img/x.jpg", description: "desc",
+    id: "vid1",
+    title: "T",
+    channelId: "UC1",
+    channelTitle: "Chan",
+    durationSeconds: 700,
+    publishedAt: "2024-01-01T00:00:00Z",
+    thumbnailUrl: "https://img/x.jpg",
+    description: "desc",
   };
   it("maps to a SourceItem with youtube id/source/content_type/author/url/yt", () => {
     const item = mapYtVideo(raw, 300);
@@ -38,9 +43,14 @@ describe("mapYtVideo", () => {
 
   it("maps null channelTitle and channelId to null author and null yt.channelId", () => {
     const rawNullChannel: YtVideoRaw = {
-      id: "vid2", title: "T2", channelId: null, channelTitle: null,
-      durationSeconds: 30, publishedAt: null,
-      thumbnailUrl: null, description: null,
+      id: "vid2",
+      title: "T2",
+      channelId: null,
+      channelTitle: null,
+      durationSeconds: 30,
+      publishedAt: null,
+      thumbnailUrl: null,
+      description: null,
     };
     const item = mapYtVideo(rawNullChannel, 300);
     expect(item.author).toBeNull();

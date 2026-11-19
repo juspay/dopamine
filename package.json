@@ -30,6 +30,7 @@
     "build:run": "npm run build && node dist/pipeline/runner.js",
     "pipeline": "node dist/pipeline/runner.js",
     "youtube:auth": "node dist/sources/youtube/auth.js",
+    "youtube:doctor": "node dist/sources/youtube/doctor.js",
     "dashboard": "node dist/agents/dashboard.js",
     "merge-kb": "node dist/scripts/merge-knowledge-bases.js",
     "sources:preview": "node dist/scripts/sources-preview.js",

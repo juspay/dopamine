@@ -1,5 +1,5 @@
 // src/sources/youtube/map.ts
-import type { SourceItem, ContentType } from "../../types/index.js";
+import type { ContentType, SourceItem } from "../../types/index.js";
 
 export interface YtVideoRaw {
   id: string;
