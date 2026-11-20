@@ -32,17 +32,17 @@ import {
 } from "../chunks/BZ84wCgC.js";
 import "../chunks/xihTtKlq.js";
 import { c as A, n as j } from "../chunks/CdnViQ5q.js";
-import { t as M } from "../chunks/DPhD9Nez.js";
-import { a as ee, c as N, l as P, o as F, s as te, t as ne, u as re } from "../chunks/DLokxzUJ.js";
-import { a as ie, d as I, f as L, i as R, p as z, r as B, s as V, t as ae } from "../chunks/Dt5KBvTb.js";
-import { n as oe, t as se } from "../chunks/BxqmUSMk.js";
-import { t as ce } from "../chunks/DrAFDkqO.js";
-import { t as le } from "../chunks/Cl_I9Zju.js";
-import { t as ue } from "../chunks/BbG86UsG.js";
-import { t as H } from "../chunks/CyjB8bAN.js";
-var U = C({ ssr: () => !1 }),
-  W = x(`<nav aria-label="Page sections"><!></nav>`);
-function de(t, n) {
+import { t as M } from "../chunks/Bx78KfBe.js";
+import { a as ee, c as te, l as N, o as P, s as ne, t as re, u as ie } from "../chunks/DVE2vMl6.js";
+import { a as ae, d as F, f as I, i as L, p as oe, r as R, s as z, t as se } from "../chunks/Dt5KBvTb.js";
+import { n as ce, t as le } from "../chunks/CvFAdykd.js";
+import { t as ue } from "../chunks/CAp_BbWp.js";
+import { t as de } from "../chunks/mFje50wz.js";
+import { t as fe } from "../chunks/BbG86UsG.js";
+import { t as pe } from "../chunks/CyjB8bAN.js";
+var B = C({ ssr: () => !1 }),
+  V = x(`<nav aria-label="Page sections"><!></nav>`);
+function me(t, n) {
   h(n, !0);
   let i = _(0);
   d(() => {
@@ -70,11 +70,11 @@ function de(t, n) {
     let a = document.getElementById(r.id);
     a && a.scrollIntoView({ behavior: `smooth`, block: `start` });
   }
-  var s = W(),
+  var s = V(),
     c = p(s);
   {
     let e = S(() => n.sections.map((e) => e.label));
-    V(c, {
+    z(c, {
       get items() {
         return o(e);
       },
@@ -86,20 +86,20 @@ function de(t, n) {
   }
   g(s), r(t, s), E();
 }
-var G = x(
+var H = x(
     `<a target="_blank" rel="noopener noreferrer" class="ext-link svelte-17etibv"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15,3 21,3 21,9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>`,
   ),
-  fe = x(
+  U = x(
     `<button class="toggle-btn svelte-17etibv"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg></button>`,
   ),
-  pe = x(`<p class="item-desc svelte-17etibv"> </p>`),
-  me = x(`<div class="code-block svelte-17etibv"><span class="code-label svelte-17etibv">Install</span> <!></div>`),
-  K = x(`<div class="code-block svelte-17etibv"><span class="code-label svelte-17etibv">Usage</span> <!></div>`),
-  he = x(`<div class="item-code svelte-17etibv"><!> <!></div>`),
-  ge = x(
+  he = x(`<p class="item-desc svelte-17etibv"> </p>`),
+  ge = x(`<div class="code-block svelte-17etibv"><span class="code-label svelte-17etibv">Install</span> <!></div>`),
+  _e = x(`<div class="code-block svelte-17etibv"><span class="code-label svelte-17etibv">Usage</span> <!></div>`),
+  W = x(`<div class="item-code svelte-17etibv"><!> <!></div>`),
+  ve = x(
     `<div class="actionable-item svelte-17etibv"><div class="item-header svelte-17etibv"><div class="item-left svelte-17etibv"><!> <span class="item-name svelte-17etibv"> </span></div> <div class="item-right svelte-17etibv"><span class="url-status svelte-17etibv"> </span> <!> <!></div></div> <!> <!></div>`,
   );
-function _e(t, n) {
+function ye(t, n) {
   h(n, !0);
   let s = _(!1),
     l = S(() => !!(n.item.installCommand || n.item.code)),
@@ -130,11 +130,11 @@ function _e(t, n) {
             ? `Dead`
             : n.item.urlStatus || `—`,
     );
-  var x = ge(),
+  var x = ve(),
     C = p(x),
     w = p(C),
     T = p(w);
-  I(T, {
+  F(T, {
     get text() {
       return n.item.type;
     },
@@ -148,7 +148,7 @@ function _e(t, n) {
   g(A);
   var M = m(A, 2),
     ee = (e) => {
-      var t = G();
+      var t = H();
       a(() => {
         v(t, `href`, n.item.url),
           v(t, `title`, `Open ${n.item.name ?? ``}`),
@@ -159,9 +159,9 @@ function _e(t, n) {
   u(M, (e) => {
     n.item.url && e(ee);
   });
-  var N = m(M, 2),
-    P = (t) => {
-      var n = fe(),
+  var te = m(M, 2),
+    N = (t) => {
+      var n = U(),
         i = p(n);
       g(n),
         a(() => {
@@ -174,32 +174,32 @@ function _e(t, n) {
         }),
         r(t, n);
     };
-  u(N, (e) => {
-    o(l) && e(P);
+  u(te, (e) => {
+    o(l) && e(N);
   }),
     g(k),
     g(C);
-  var F = m(C, 2),
-    te = (e) => {
-      var t = pe(),
+  var P = m(C, 2),
+    ne = (e) => {
+      var t = he(),
         o = p(t, !0);
       g(t), a(() => i(o, n.item.description)), r(e, t);
     };
-  u(F, (e) => {
-    n.item.description && e(te);
+  u(P, (e) => {
+    n.item.description && e(ne);
   });
-  var ne = m(F, 2),
-    re = (e) => {
-      z(e, {
+  var re = m(P, 2),
+    ie = (e) => {
+      oe(e, {
         get expand() {
           return o(s);
         },
         children: (e, t) => {
-          var i = he(),
+          var i = W(),
             a = p(i),
             o = (e) => {
-              var t = me();
-              R(m(p(t), 2), {
+              var t = ge();
+              L(m(p(t), 2), {
                 get text() {
                   return n.item.installCommand;
                 },
@@ -214,8 +214,8 @@ function _e(t, n) {
           });
           var s = m(a, 2),
             c = (e) => {
-              var t = K();
-              R(m(p(t), 2), {
+              var t = _e();
+              L(m(p(t), 2), {
                 get text() {
                   return n.item.code;
                 },
@@ -233,8 +233,8 @@ function _e(t, n) {
         $$slots: { default: !0 },
       });
     };
-  u(ne, (e) => {
-    o(l) && e(re);
+  u(re, (e) => {
+    o(l) && e(ie);
   }),
     g(x),
     a(() => {
@@ -249,35 +249,35 @@ function _e(t, n) {
     E();
 }
 s([`click`]);
-var ve = x(`<span class="rail-dur svelte-1ap7pnz"> </span>`),
-  q = x(
+var be = x(`<span class="rail-dur svelte-1ap7pnz"> </span>`),
+  xe = x(
     `<a class="rail-card svelte-1ap7pnz"><div class="rail-thumb svelte-1ap7pnz"><!> <!></div> <div class="rail-meta svelte-1ap7pnz"><p class="rail-title svelte-1ap7pnz"> </p> <span class="rail-creator svelte-1ap7pnz"> </span></div></a>`,
   ),
-  ye = x(`<div class="rail svelte-1ap7pnz"></div>`);
-function be(e, t) {
+  G = x(`<div class="rail svelte-1ap7pnz"></div>`);
+function Se(e, t) {
   h(t, !0);
   let s = S(() => t.ids.map((e) => j(e)).filter((e) => e !== void 0));
   var c = l(),
     d = f(c),
     _ = (e) => {
-      B(e, {
+      R(e, {
         direction: `horizontal`,
         showArrows: !0,
         dragToScroll: !0,
         hideScrollbar: !0,
         children: (e) => {
-          var t = ye();
+          var t = G();
           n(
             t,
             21,
             () => o(s),
             O,
             (e, t) => {
-              var n = q(),
+              var n = xe(),
                 s = p(n),
                 c = p(s),
                 l = (e) => {
-                  L(e, {
+                  I(e, {
                     get src() {
                       return o(t).thumb;
                     },
@@ -292,9 +292,9 @@ function be(e, t) {
               });
               var d = m(c, 2),
                 f = (e) => {
-                  var n = ve(),
+                  var n = be(),
                     s = p(n, !0);
-                  g(n), a((e) => i(s, e), [() => F(o(t).durationSec)]), r(e, n);
+                  g(n), a((e) => i(s, e), [() => P(o(t).durationSec)]), r(e, n);
                 };
               u(d, (e) => {
                 o(t).durationSec > 0 && e(f);
@@ -330,161 +330,184 @@ function be(e, t) {
     r(e, c),
     E();
 }
-var xe = x(
+var Ce = x(
     `<a target="_blank" rel="noopener noreferrer" class="ig-link svelte-vkyiuk" aria-label="Open Instagram reel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"></circle></svg> Instagram</a>`,
   ),
-  Se = x(`<a target="_blank" rel="noopener noreferrer" class="ig-link svelte-vkyiuk"> </a>`),
-  Ce = x(`<div class="tags-row svelte-vkyiuk" aria-label="Tags"></div>`),
-  we = x(`<div class="tags-row svelte-vkyiuk" aria-label="Applies to projects"></div>`),
+  we = x(`<a target="_blank" rel="noopener noreferrer" class="ig-link svelte-vkyiuk"> </a>`),
   Te = x(
+    `<span class="meta-sep svelte-vkyiuk" aria-hidden="true">·</span> <span class="meta-item svelte-vkyiuk"> </span>`,
+    1,
+  ),
+  Ee = x(
+    `<span class="meta-sep svelte-vkyiuk" aria-hidden="true">·</span> <span class="meta-item svelte-vkyiuk"> </span>`,
+    1,
+  ),
+  De = x(`<div class="tags-row svelte-vkyiuk" aria-label="Tags"></div>`),
+  Oe = x(`<div class="tags-row svelte-vkyiuk" aria-label="Applies to projects"></div>`),
+  ke = x(
     `<video class="video-player svelte-vkyiuk" controls="" preload="metadata"><track kind="captions"/> Your browser does not support the video element.</video>`,
     2,
   ),
-  Ee = x(`<img class="thumb-img svelte-vkyiuk" loading="lazy" decoding="async"/>`),
-  De = x(`<p class="thin-note svelte-vkyiuk"> </p>`),
-  Oe = x(`<li class="svelte-vkyiuk"> </li>`),
-  ke = x(`<ul class="takeaways-list svelte-vkyiuk"></ul>`),
-  Ae = x(`<p class="empty-text svelte-vkyiuk">No takeaways available.</p>`),
-  je = x(`<div class="transcript-body svelte-vkyiuk"><pre class="transcript-pre svelte-vkyiuk"> </pre></div>`),
-  Me = x(`<p class="empty-text svelte-vkyiuk">No transcript available.</p>`),
-  Ne = x(`<p class="prose svelte-vkyiuk"> </p>`),
-  Pe = x(`<p class="empty-text svelte-vkyiuk">No visual description available.</p>`),
-  Fe = x(`<div class="tools-list svelte-vkyiuk"></div>`),
-  Ie = x(`<p class="empty-text svelte-vkyiuk">No tools extracted.</p>`),
-  Le = x(`<span class="link-desc svelte-vkyiuk"> </span>`),
-  Re = x(
+  Ae = x(`<img class="thumb-img svelte-vkyiuk" loading="lazy" decoding="async"/>`),
+  je = x(`<p class="thin-note svelte-vkyiuk"> </p>`),
+  Me = x(`<li class="svelte-vkyiuk"> </li>`),
+  Ne = x(`<ul class="takeaways-list svelte-vkyiuk"></ul>`),
+  Pe = x(`<p class="empty-text svelte-vkyiuk">No takeaways available.</p>`),
+  Fe = x(`<div class="transcript-body svelte-vkyiuk"><pre class="transcript-pre svelte-vkyiuk"> </pre></div>`),
+  Ie = x(`<p class="empty-text svelte-vkyiuk">No transcript available.</p>`),
+  Le = x(`<p class="prose svelte-vkyiuk"> </p>`),
+  Re = x(`<p class="empty-text svelte-vkyiuk">No visual description available.</p>`),
+  ze = x(`<div class="tools-list svelte-vkyiuk"></div>`),
+  Be = x(`<p class="empty-text svelte-vkyiuk">No tools extracted.</p>`),
+  Ve = x(`<span class="link-desc svelte-vkyiuk"> </span>`),
+  He = x(
     `<li class="link-item svelte-vkyiuk"><a target="_blank" rel="noopener noreferrer" class="link-anchor svelte-vkyiuk"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" class="link-icon svelte-vkyiuk"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15,3 21,3 21,9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg> </a> <!></li>`,
   ),
-  ze = x(`<ul class="links-list svelte-vkyiuk"></ul>`),
-  Be = x(`<p class="empty-text svelte-vkyiuk">No links extracted.</p>`),
-  Ve = x(`<p class="sidebar-prose svelte-vkyiuk"> </p>`),
-  He = x(
+  Ue = x(`<ul class="links-list svelte-vkyiuk"></ul>`),
+  We = x(`<p class="empty-text svelte-vkyiuk">No links extracted.</p>`),
+  Ge = x(`<p class="sidebar-prose svelte-vkyiuk"> </p>`),
+  Ke = x(
     `<div class="stat-row svelte-vkyiuk"><dt class="svelte-vkyiuk">Usefulness</dt> <dd class="stat-text svelte-vkyiuk"> </dd></div>`,
   ),
-  Ue = x(
+  qe = x(
     `<div class="sidebar-card svelte-vkyiuk"><h3 class="sidebar-section-title svelte-vkyiuk">Related</h3> <!></div>`,
   ),
-  We = x(
-    `<div class="layout svelte-vkyiuk"><div class="main svelte-vkyiuk"><h1 class="title svelte-vkyiuk"> </h1> <div class="meta-row svelte-vkyiuk"><!> <!> <!> <!> <span class="meta-sep svelte-vkyiuk" aria-hidden="true">·</span> <span class="meta-item svelte-vkyiuk"> </span> <span class="meta-sep svelte-vkyiuk" aria-hidden="true">·</span> <span class="meta-item svelte-vkyiuk"> </span> <span class="meta-sep svelte-vkyiuk" aria-hidden="true">·</span> <span class="meta-item svelte-vkyiuk"> </span></div> <!> <!> <div class="media-wrap svelte-vkyiuk"><!></div> <!> <!>  <section class="content-section svelte-vkyiuk" id="takeaways" aria-labelledby="takeaways-heading"><h2 id="takeaways-heading" class="section-heading svelte-vkyiuk">Key Takeaways</h2> <!></section> <section class="content-section svelte-vkyiuk" id="transcript" aria-labelledby="transcript-heading"><h2 id="transcript-heading" class="section-heading svelte-vkyiuk">Transcript</h2> <!></section> <section class="content-section svelte-vkyiuk" id="onscreen" aria-labelledby="onscreen-heading"><h2 id="onscreen-heading" class="section-heading svelte-vkyiuk">On-screen</h2> <!></section> <section class="content-section svelte-vkyiuk" id="tools" aria-labelledby="tools-heading"><h2 id="tools-heading" class="section-heading svelte-vkyiuk">Tools &amp; Resources</h2> <!></section> <section class="content-section svelte-vkyiuk" id="links" aria-labelledby="links-heading"><h2 id="links-heading" class="section-heading svelte-vkyiuk">Links</h2> <!></section></div> <aside class="sidebar svelte-vkyiuk" aria-label="Video details and related"><div class="sidebar-card svelte-vkyiuk"><div class="verif-header svelte-vkyiuk"><!></div> <!> <dl class="stats-dl svelte-vkyiuk"><div class="stat-row svelte-vkyiuk"><dt class="svelte-vkyiuk">Implementability</dt> <dd class="svelte-vkyiuk"><div class="score-bar-wrap svelte-vkyiuk"><div class="progress-wrap svelte-vkyiuk"><!></div> <span class="score-val svelte-vkyiuk"> <span class="score-denom svelte-vkyiuk">/10</span></span></div></dd></div> <!></dl></div> <!></aside></div>`,
+  Je = x(
+    `<div class="layout svelte-vkyiuk"><div class="main svelte-vkyiuk"><h1 class="title svelte-vkyiuk"> </h1> <div class="meta-row svelte-vkyiuk"><!> <!> <!> <!> <span class="meta-sep svelte-vkyiuk" aria-hidden="true">·</span> <span class="meta-item svelte-vkyiuk"> </span> <!> <!></div> <!> <!> <div class="media-wrap svelte-vkyiuk"><!></div> <!> <!>  <section class="content-section svelte-vkyiuk" id="takeaways" aria-labelledby="takeaways-heading"><h2 id="takeaways-heading" class="section-heading svelte-vkyiuk">Key Takeaways</h2> <!></section> <section class="content-section svelte-vkyiuk" id="transcript" aria-labelledby="transcript-heading"><h2 id="transcript-heading" class="section-heading svelte-vkyiuk">Transcript</h2> <!></section> <section class="content-section svelte-vkyiuk" id="onscreen" aria-labelledby="onscreen-heading"><h2 id="onscreen-heading" class="section-heading svelte-vkyiuk">On-screen</h2> <!></section> <section class="content-section svelte-vkyiuk" id="tools" aria-labelledby="tools-heading"><h2 id="tools-heading" class="section-heading svelte-vkyiuk">Tools &amp; Resources</h2> <!></section> <section class="content-section svelte-vkyiuk" id="links" aria-labelledby="links-heading"><h2 id="links-heading" class="section-heading svelte-vkyiuk">Links</h2> <!></section></div> <aside class="sidebar svelte-vkyiuk" aria-label="Video details and related"><div class="sidebar-card svelte-vkyiuk"><div class="verif-header svelte-vkyiuk"><!></div> <!> <dl class="stats-dl svelte-vkyiuk"><div class="stat-row svelte-vkyiuk"><dt class="svelte-vkyiuk">Implementability</dt> <dd class="svelte-vkyiuk"><div class="score-bar-wrap svelte-vkyiuk"><div class="progress-wrap svelte-vkyiuk"><!></div> <span class="score-val svelte-vkyiuk"> <span class="score-denom svelte-vkyiuk">/10</span></span></div></dd></div> <!></dl></div> <!></aside></div>`,
   ),
-  Ge = x(`<div class="video-page svelte-vkyiuk"><!> <!></div>`);
-function Ke(s, c) {
+  Ye = x(`<div class="video-page svelte-vkyiuk"><!> <!></div>`);
+function Xe(s, c) {
   h(c, !0);
-  let l = () => b(M, `$page`, f),
-    [f, y] = T(),
-    x = S(() => decodeURIComponent(l().params.id ?? ``)),
-    C = _(null),
-    j = _(!0),
+  let l = () => b(M, `$page`, y),
+    [y, x] = T(),
+    C = S(() => decodeURIComponent(l().params.id ?? ``)),
+    j = _(null),
+    F = _(!0),
     I = _(!1);
   d(() => {
-    let t = o(x);
-    e(j, !0),
+    let t = o(C);
+    e(F, !0),
       e(I, !1),
-      e(C, null),
+      e(j, null),
       A(t).then((t) => {
-        e(C, t, !0), e(j, !1), t || e(I, !0);
+        e(j, t, !0), e(F, !1), t || e(I, !0);
       });
   });
   let L = S(() =>
-      o(C)
+      o(j)
         ? [
             { label: `Home`, href: `/` },
-            { label: o(C).category, href: `/category/${encodeURIComponent(o(C).category)}` },
-            { label: o(C).title },
+            { label: o(j).category, href: `/category/${encodeURIComponent(o(j).category)}` },
+            { label: o(j).title },
           ]
         : [{ label: `Home`, href: `/` }, { label: `Video` }],
     ),
-    R = [
+    oe = [
       { id: `takeaways`, label: `Takeaways` },
       { id: `transcript`, label: `Transcript` },
       { id: `onscreen`, label: `On-screen` },
       { id: `tools`, label: `Tools` },
       { id: `links`, label: `Links` },
     ];
-  var z = Ge();
+  var R = Ye();
   k(`vkyiuk`, (e) => {
     t(() => {
-      w.title = o(C) ? `${o(C).title} — Dopamine` : `Video — Dopamine`;
+      w.title = o(j) ? `${o(j).title} — Dopamine` : `Video — Dopamine`;
     });
   });
-  var B = p(z);
-  H(B, {
+  var z = p(R);
+  pe(z, {
     get items() {
       return o(L);
     },
   });
-  var V = m(B, 2),
+  var B = m(z, 2),
+    V = (e) => {
+      se(e, {});
+    },
+    H = (e) => {
+      fe(e, { message: `This video could not be found.`, icon: `◌` });
+    },
     U = (e) => {
-      ae(e, {});
-    },
-    W = (e) => {
-      ue(e, { message: `This video could not be found.`, icon: `◌` });
-    },
-    G = (e) => {
-      var t = We(),
+      var t = Je(),
         s = p(t),
         c = p(s),
         l = p(c, !0);
       g(c);
       var d = m(c, 2),
-        f = p(d);
-      se(f, {
+        h = p(d);
+      le(h, {
         get name() {
-          return o(C).username;
+          return o(j).username;
         },
         get fullName() {
-          return o(C).fullName;
+          return o(j).fullName;
         },
       });
-      var h = m(f, 2);
-      ne(h, {
+      var _ = m(h, 2);
+      re(_, {
         get cat() {
-          return o(C).category;
+          return o(j).category;
         },
       });
-      var _ = m(h, 2),
-        y = (e) => {
-          var t = xe();
-          a((e) => v(t, `href`, e), [() => N(o(C).code)]), r(e, t);
+      var y = m(_, 2),
+        b = (e) => {
+          var t = Ce();
+          a((e) => v(t, `href`, e), [() => te(o(j).code)]), r(e, t);
         };
-      u(_, (e) => {
-        o(C).code && e(y);
+      u(y, (e) => {
+        o(j).code && e(b);
       });
-      var b = m(_, 2),
-        x = (e) => {
-          var t = Se(),
+      var x = m(y, 2),
+        C = (e) => {
+          var t = we(),
             n = p(t);
           g(t),
             a(
               (e, r) => {
-                v(t, `href`, o(C).sourceUrl), v(t, `aria-label`, e), i(n, `Open original on ${r ?? ``}`);
+                v(t, `href`, o(j).sourceUrl), v(t, `aria-label`, e), i(n, `Open original on ${r ?? ``}`);
               },
-              [() => `Open original on ` + P(o(C).source), () => P(o(C).source)],
+              [() => `Open original on ` + N(o(j).source), () => N(o(j).source)],
             ),
             r(e, t);
         };
-      u(b, (e) => {
-        o(C).sourceUrl && e(x);
+      u(x, (e) => {
+        o(j).sourceUrl && e(C);
       });
-      var w = m(b, 4),
+      var w = m(x, 4),
         T = p(w, !0);
       g(w);
-      var E = m(w, 4),
-        k = p(E);
-      g(E);
-      var A = m(E, 4),
-        j = p(A, !0);
-      g(A), g(d);
-      var M = m(d, 2),
+      var E = m(w, 2),
+        k = (e) => {
+          var t = Te(),
+            n = m(f(t), 2),
+            s = p(n);
+          g(n), a((e) => i(s, `${e ?? ``} likes`), [() => ne(o(j).likes)]), r(e, t);
+        };
+      u(E, (e) => {
+        o(j).likes > 0 && e(k);
+      });
+      var A = m(E, 2),
+        M = (e) => {
+          var t = Ee(),
+            n = m(f(t), 2),
+            s = p(n, !0);
+          g(n), a((e) => i(s, e), [() => P(o(j).durationSec)]), r(e, t);
+        };
+      u(A, (e) => {
+        o(j).durationSec > 0 && e(M);
+      }),
+        g(d);
+      var F = m(d, 2),
         I = (e) => {
-          var t = Ce();
+          var t = De();
           n(
             t,
             21,
-            () => o(C).tags,
+            () => o(j).tags,
             O,
             (e, t) => {
-              oe(e, {
+              ce(e, {
                 get tag() {
                   return o(t);
                 },
@@ -494,19 +517,19 @@ function Ke(s, c) {
             g(t),
             r(e, t);
         };
-      u(M, (e) => {
-        o(C).tags.length > 0 && e(I);
+      u(F, (e) => {
+        o(j).tags.length > 0 && e(I);
       });
-      var L = m(M, 2),
-        z = (e) => {
-          var t = we();
+      var L = m(F, 2),
+        R = (e) => {
+          var t = Oe();
           n(
             t,
             21,
-            () => o(C).appliesTo,
+            () => o(j).appliesTo,
             O,
             (e, t) => {
-              ce(e, {
+              ue(e, {
                 get project() {
                   return o(t);
                 },
@@ -517,54 +540,54 @@ function Ke(s, c) {
             r(e, t);
         };
       u(L, (e) => {
-        (o(C).appliesTo ?? []).length > 0 && e(z);
+        (o(j).appliesTo ?? []).length > 0 && e(R);
       });
-      var B = m(L, 2),
-        V = p(B),
-        ae = (e) => {
-          var t = Te();
-          a(() => {
-            v(t, `src`, o(C).videoPath), v(t, `poster`, o(C).thumb), v(t, `aria-label`, o(C).title);
-          }),
-            r(e, t);
-        },
-        ue = (e) => {
-          var t = Ee();
-          a(() => {
-            v(t, `src`, o(C).thumb), v(t, `alt`, o(C).title);
-          }),
-            r(e, t);
-        };
-      u(V, (e) => {
-        o(C).videoPath ? e(ae) : o(C).thumb && e(ue, 1);
-      }),
-        g(B);
-      var H = m(B, 2),
-        U = (e) => {
-          var t = De(),
-            n = p(t, !0);
-          g(t), a((e) => i(n, e), [() => re(o(C).thinReason)]), r(e, t);
-        };
-      u(H, (e) => {
-        o(C).tier === `thin` && o(C).thinReason && e(U);
-      });
-      var W = m(H, 2);
-      de(W, {
-        get sections() {
-          return R;
-        },
-      });
-      var G = m(W, 2),
-        fe = m(p(G), 2),
-        pe = (e) => {
+      var z = m(L, 2),
+        se = p(z),
+        fe = (e) => {
           var t = ke();
+          a(() => {
+            v(t, `src`, o(j).videoPath), v(t, `poster`, o(j).thumb), v(t, `aria-label`, o(j).title);
+          }),
+            r(e, t);
+        },
+        pe = (e) => {
+          var t = Ae();
+          a(() => {
+            v(t, `src`, o(j).thumb), v(t, `alt`, o(j).title);
+          }),
+            r(e, t);
+        };
+      u(se, (e) => {
+        o(j).videoPath ? e(fe) : o(j).thumb && e(pe, 1);
+      }),
+        g(z);
+      var B = m(z, 2),
+        V = (e) => {
+          var t = je(),
+            n = p(t, !0);
+          g(t), a((e) => i(n, e), [() => ie(o(j).thinReason)]), r(e, t);
+        };
+      u(B, (e) => {
+        o(j).tier === `thin` && o(j).thinReason && e(V);
+      });
+      var H = m(B, 2);
+      me(H, {
+        get sections() {
+          return oe;
+        },
+      });
+      var U = m(H, 2),
+        he = m(p(U), 2),
+        ge = (e) => {
+          var t = Ne();
           n(
             t,
             21,
-            () => o(C).keyTakeaways,
+            () => o(j).keyTakeaways,
             O,
             (e, t) => {
-              var n = Oe(),
+              var n = Me(),
                 s = p(n, !0);
               g(n), a(() => i(s, o(t))), r(e, n);
             },
@@ -572,54 +595,54 @@ function Ke(s, c) {
             g(t),
             r(e, t);
         },
-        me = (e) => {
-          r(e, Ae());
+        _e = (e) => {
+          r(e, Pe());
         };
-      u(fe, (e) => {
-        o(C).keyTakeaways.length > 0 ? e(pe) : e(me, -1);
+      u(he, (e) => {
+        o(j).keyTakeaways.length > 0 ? e(ge) : e(_e, -1);
+      }),
+        g(U);
+      var W = m(U, 2),
+        ve = m(p(W), 2),
+        be = (e) => {
+          var t = Fe(),
+            n = p(t),
+            s = p(n, !0);
+          g(n), g(t), a(() => i(s, o(j).transcript)), r(e, t);
+        },
+        xe = (e) => {
+          r(e, Ie());
+        };
+      u(ve, (e) => {
+        o(j).transcript ? e(be) : e(xe, -1);
+      }),
+        g(W);
+      var G = m(W, 2),
+        Ye = m(p(G), 2),
+        Xe = (e) => {
+          var t = Le(),
+            n = p(t, !0);
+          g(t), a(() => i(n, o(j).visualDescription)), r(e, t);
+        },
+        Ze = S(() => o(j).visualDescription && !o(j).visualDescription.includes(`[object Object]`)),
+        Qe = (e) => {
+          r(e, Re());
+        };
+      u(Ye, (e) => {
+        o(Ze) ? e(Xe) : e(Qe, -1);
       }),
         g(G);
       var K = m(G, 2),
-        he = m(p(K), 2),
-        ge = (e) => {
-          var t = je(),
-            n = p(t),
-            s = p(n, !0);
-          g(n), g(t), a(() => i(s, o(C).transcript)), r(e, t);
-        },
-        ve = (e) => {
-          r(e, Me());
-        };
-      u(he, (e) => {
-        o(C).transcript ? e(ge) : e(ve, -1);
-      }),
-        g(K);
-      var q = m(K, 2),
-        ye = m(p(q), 2),
-        Ge = (e) => {
-          var t = Ne(),
-            n = p(t, !0);
-          g(t), a(() => i(n, o(C).visualDescription)), r(e, t);
-        },
-        Ke = S(() => o(C).visualDescription && !o(C).visualDescription.includes(`[object Object]`)),
-        qe = (e) => {
-          r(e, Pe());
-        };
-      u(ye, (e) => {
-        o(Ke) ? e(Ge) : e(qe, -1);
-      }),
-        g(q);
-      var J = m(q, 2),
-        Je = m(p(J), 2),
-        Ye = (e) => {
-          var t = Fe();
+        $e = m(p(K), 2),
+        et = (e) => {
+          var t = ze();
           n(
             t,
             21,
-            () => o(C).actionableItems,
+            () => o(j).actionableItems,
             O,
             (e, t) => {
-              _e(e, {
+              ye(e, {
                 get item() {
                   return o(t);
                 },
@@ -629,30 +652,30 @@ function Ke(s, c) {
             g(t),
             r(e, t);
         },
-        Xe = (e) => {
-          r(e, Ie());
+        tt = (e) => {
+          r(e, Be());
         };
-      u(Je, (e) => {
-        o(C).actionableItems.length > 0 ? e(Ye) : e(Xe, -1);
+      u($e, (e) => {
+        o(j).actionableItems.length > 0 ? e(et) : e(tt, -1);
       }),
-        g(J);
-      var Ze = m(J, 2),
-        Qe = m(p(Ze), 2),
-        $e = (e) => {
-          var t = ze();
+        g(K);
+      var nt = m(K, 2),
+        rt = m(p(nt), 2),
+        it = (e) => {
+          var t = Ue();
           n(
             t,
             21,
-            () => o(C).links,
+            () => o(j).links,
             O,
             (e, t) => {
-              var n = Re(),
+              var n = He(),
                 s = p(n),
                 c = m(p(s));
               g(s);
               var l = m(s, 2),
                 d = (e) => {
-                  var n = Le(),
+                  var n = Ve(),
                     s = p(n, !0);
                   g(n), a(() => i(s, o(t).description)), r(e, n);
                 };
@@ -669,97 +692,95 @@ function Ke(s, c) {
             g(t),
             r(e, t);
         },
-        et = (e) => {
-          r(e, Be());
+        at = (e) => {
+          r(e, We());
         };
-      u(Qe, (e) => {
-        o(C).links.length > 0 ? e($e) : e(et, -1);
+      u(rt, (e) => {
+        o(j).links.length > 0 ? e(it) : e(at, -1);
       }),
-        g(Ze),
+        g(nt),
         g(s);
-      var tt = m(s, 2),
-        Y = p(tt),
-        X = p(Y);
-      le(p(X), {
+      var ot = m(s, 2),
+        q = p(ot),
+        J = p(q);
+      de(p(J), {
         get score() {
-          return o(C).verification;
+          return o(j).verification;
         },
         get confidence() {
-          return o(C).confidence;
+          return o(j).confidence;
         },
       }),
-        g(X);
-      var nt = m(X, 2),
-        rt = (e) => {
-          var t = Ve(),
+        g(J);
+      var st = m(J, 2),
+        ct = (e) => {
+          var t = Ge(),
             n = p(t, !0);
-          g(t), a(() => i(n, o(C).verificationSummary)), r(e, t);
+          g(t), a(() => i(n, o(j).verificationSummary)), r(e, t);
         };
-      u(nt, (e) => {
-        o(C).verificationSummary && e(rt);
+      u(st, (e) => {
+        o(j).verificationSummary && e(ct);
       });
-      var it = m(nt, 2),
-        Z = p(it),
-        at = m(p(Z), 2),
-        Q = p(at),
-        $ = p(Q);
-      ie(p($), {
+      var Y = m(st, 2),
+        X = p(Y),
+        lt = m(p(X), 2),
+        Z = p(lt),
+        Q = p(Z);
+      ae(p(Q), {
         get value() {
-          return o(C).implementability;
+          return o(j).implementability;
         },
         max: 10,
       }),
-        g($);
-      var ot = m($, 2),
-        st = p(ot, !0);
-      D(), g(ot), g(Q), g(at), g(Z);
-      var ct = m(Z, 2),
-        lt = (e) => {
-          var t = He(),
+        g(Q);
+      var $ = m(Q, 2),
+        ut = p($, !0);
+      D(), g($), g(Z), g(lt), g(X);
+      var dt = m(X, 2),
+        ft = (e) => {
+          var t = Ke(),
             n = m(p(t), 2),
             s = p(n, !0);
-          g(n), g(t), a(() => i(s, o(C).usefulness)), r(e, t);
+          g(n), g(t), a(() => i(s, o(j).usefulness)), r(e, t);
         };
-      u(ct, (e) => {
-        o(C).usefulness && o(C).usefulness !== `unknown` && e(lt);
+      u(dt, (e) => {
+        o(j).usefulness && o(j).usefulness !== `unknown` && e(ft);
       }),
-        g(it),
-        g(Y);
-      var ut = m(Y, 2),
-        dt = (e) => {
-          var t = Ue();
-          be(m(p(t), 2), {
+        g(Y),
+        g(q);
+      var pt = m(q, 2),
+        mt = (e) => {
+          var t = qe();
+          Se(m(p(t), 2), {
             get ids() {
-              return o(C).relatedIds;
+              return o(j).relatedIds;
             },
           }),
             g(t),
             r(e, t);
         };
-      u(ut, (e) => {
-        o(C).relatedIds.length > 0 && e(dt);
+      u(pt, (e) => {
+        o(j).relatedIds.length > 0 && e(mt);
       }),
-        g(tt),
+        g(ot),
         g(t),
         a(
-          (e, t, n) => {
-            i(l, o(C).title),
+          (e) => {
+            i(l, o(j).title),
               i(T, e),
-              i(k, `${t ?? ``} likes`),
-              i(j, n),
-              v(Q, `aria-label`, `Implementability ${o(C).implementability ?? ``}/10`),
-              i(st, o(C).implementability);
+              v(Z, `aria-label`, `Implementability ${o(j).implementability ?? ``}/10`),
+              i(ut, o(j).implementability);
           },
-          [() => ee(o(C).date), () => te(o(C).likes), () => F(o(C).durationSec)],
+          [() => ee(o(j).date)],
         ),
         r(e, t);
     };
-  u(V, (e) => {
-    o(j) ? e(U) : o(I) || !o(C) ? e(W, 1) : e(G, -1);
+  u(B, (e) => {
+    o(F) ? e(V) : o(I) || !o(j) ? e(H, 1) : e(U, -1);
   }),
-    g(z),
-    r(s, z),
+    g(R),
+    r(s, R),
     E(),
-    y();
+    x();
 }
-export { Ke as component, U as universal };
+export { Xe as component, B as universal };
