@@ -105,10 +105,15 @@
           {/if}
           <span class="meta-sep" aria-hidden="true">·</span>
           <span class="meta-item">{fmtDate(detail.date)}</span>
-          <span class="meta-sep" aria-hidden="true">·</span>
-          <span class="meta-item">{fmtNumber(detail.likes)} likes</span>
-          <span class="meta-sep" aria-hidden="true">·</span>
-          <span class="meta-item">{fmtDuration(detail.durationSec)}</span>
+          <!-- A text post, or a source that reports no likes, has nothing to show here. -->
+          {#if detail.likes > 0}
+            <span class="meta-sep" aria-hidden="true">·</span>
+            <span class="meta-item">{fmtNumber(detail.likes)} likes</span>
+          {/if}
+          {#if detail.durationSec > 0}
+            <span class="meta-sep" aria-hidden="true">·</span>
+            <span class="meta-item">{fmtDuration(detail.durationSec)}</span>
+          {/if}
         </div>
 
         <!-- Tags -->
