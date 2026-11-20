@@ -16,15 +16,30 @@
 #   acquire_lock "$DIR/.locks/pipeline" || { echo "busy"; exit 0; }
 
 # Claim <lockdir>. Returns 0 on success, 1 if a live process already holds it.
-# On success, registers an EXIT/INT/TERM trap that releases the lock.
+# On success, registers an EXIT/INT/TERM trap that releases every lock this shell holds.
+# Every lock this shell holds. A trap replaces the one before it, so releasing only the
+# newest lock would leave the others behind for stale-lock recovery to clean up.
+_DOPAMINE_LOCKS=()
+
+_release_locks() {
+  local dir
+  for dir in "${_DOPAMINE_LOCKS[@]}"; do
+    rm -rf "$dir"
+  done
+}
+
+_register_lock() {
+  _DOPAMINE_LOCKS+=("$1")
+  trap _release_locks EXIT INT TERM
+}
+
 acquire_lock() {
   local lockdir="$1"
   mkdir -p "$(dirname "$lockdir")"
 
   if mkdir "$lockdir" 2>/dev/null; then
     printf '%s' "$$" > "$lockdir/pid"
-    # shellcheck disable=SC2064  # expand lockdir now, not at trap time
-    trap "rm -rf '$lockdir'" EXIT INT TERM
+    _register_lock "$lockdir"
     return 0
   fi
 
@@ -40,8 +55,7 @@ acquire_lock() {
   rm -rf "$lockdir"
   if mkdir "$lockdir" 2>/dev/null; then
     printf '%s' "$$" > "$lockdir/pid"
-    # shellcheck disable=SC2064
-    trap "rm -rf '$lockdir'" EXIT INT TERM
+    _register_lock "$lockdir"
     return 0
   fi
   # Lost the reclaim race to another starting run — it holds it, we yield.
