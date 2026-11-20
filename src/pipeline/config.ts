@@ -1,4 +1,5 @@
 // src/pipeline/config.ts
+import os from "node:os";
 import path from "node:path";
 
 /** Newest GA Gemini on Vertex (location global) as of the last model audit. */
@@ -63,6 +64,14 @@ export const CONFIG = {
     refreshToken: process.env.YOUTUBE_REFRESH_TOKEN,
   },
 
+  // X (see docs/x-harvest-setup.md). The harvester is its own scheduled job; the pipeline
+  // only reads what it captured.
+  X_VIDEOS_DIR: path.resolve("videos", "x"),
+  X_PROFILE_DIR: process.env.X_PROFILE_DIR || path.join(os.homedir(), ".dopamine-x-profile"),
+  X_HARVEST_PORT: Number.parseInt(process.env.X_HARVEST_PORT ?? "9456", 10),
+  X_HARVEST_SCROLLS: Number.parseInt(process.env.X_HARVEST_SCROLLS ?? "40", 10),
+  X_HARVEST_HEADLESS: /^(1|true|yes)$/i.test(process.env.X_HARVEST_HEADLESS ?? ""),
+
   // Own playlists to ingest as well as liked videos and Watch Later (comma-separated ids).
   YOUTUBE_PLAYLIST_IDS: (process.env.YOUTUBE_PLAYLIST_IDS ?? "")
     .split(",")
@@ -81,6 +90,10 @@ export const CONFIG = {
     // but owned by the Python collectors (scripts/download_videos.py,
     // scripts/collect_saved_gallerydl.py), which hardcode the path. No TS code
     // reads it — do not delete the file, and do not re-add a constant nothing uses.
+    /** Posts the X harvester captured (XPost[]). Written only by the harvester. */
+    X_INCOMING: path.resolve("videos", "x_incoming.json"),
+    /** The X harvester's last run and any cool-off. Written only by the harvester. */
+    X_HARVEST_STATUS: path.resolve("videos", "x_harvest_status.json"),
     /** Non-Instagram items (id -> SourceItem). Written only by the pipeline. */
     SOURCE_ITEMS: path.resolve("videos", "source_items.json"),
     /** Per-item failure/empty ledger for non-Instagram items. */
