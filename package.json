@@ -31,6 +31,7 @@
     "pipeline": "node dist/pipeline/runner.js",
     "youtube:auth": "node dist/sources/youtube/auth.js",
     "youtube:doctor": "node dist/sources/youtube/doctor.js",
+    "x:harvest": "node dist/pipeline/x-harvest/harvester.js",
     "dashboard": "node dist/agents/dashboard.js",
     "merge-kb": "node dist/scripts/merge-knowledge-bases.js",
     "sources:preview": "node dist/scripts/sources-preview.js",

@@ -18,8 +18,7 @@ export function resolveEgressAddress(
   const address = interfaces[iface]?.find((a) => a.family === "IPv4" && !a.internal)?.address;
   if (!address) {
     throw new Error(
-      `DOPAMINE_EGRESS_INTERFACE is "${iface}", but that interface has no IPv4 address right now. ` +
-        "Check it is connected (ifconfig), or unset the variable.",
+      `DOPAMINE_EGRESS_INTERFACE is "${iface}", but that interface has no IPv4 address right now. Check it is connected (ifconfig), or unset the variable.`,
     );
   }
   return address;

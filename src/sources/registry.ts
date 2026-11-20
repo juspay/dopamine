@@ -1,5 +1,6 @@
 // src/sources/registry.ts
 import { makeInstagramCollector } from "./instagram/collector.js";
+import { makeXCollector } from "./x/collector.js";
 import { makeYoutubeCollector } from "./youtube/collector.js";
 import type { SourceCollector } from "./types.js";
 import type { SourceKind } from "../types/index.js";
@@ -7,6 +8,7 @@ import type { SourceKind } from "../types/index.js";
 export const SOURCE_FACTORIES: Record<SourceKind, () => SourceCollector> = {
   instagram: makeInstagramCollector,
   youtube: makeYoutubeCollector,
+  x: makeXCollector,
 };
 
 /** Parse the comma-separated SOURCES string → one collector per unique known token.

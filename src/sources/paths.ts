@@ -12,5 +12,10 @@ export function localVideoPath(item: SourceItem | undefined, filename: string): 
   if (item.source === "youtube") {
     return item.yt?.videoId ? path.join(CONFIG.YOUTUBE_VIDEOS_DIR, `${item.yt.videoId}.mp4`) : null;
   }
+  if (item.source === "x") {
+    return item.x?.tweetId && /^\d{1,25}$/.test(item.x.tweetId)
+      ? path.join(CONFIG.X_VIDEOS_DIR, `${item.x.tweetId}.mp4`)
+      : null;
+  }
   return null;
 }

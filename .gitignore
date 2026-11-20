@@ -5,6 +5,8 @@ __pycache__/
 *.pyc
 videos/*_saved/
 videos/thumbnails/
+videos/x/
+videos/youtube/
 videos/classified/
 node_modules/
 dist/

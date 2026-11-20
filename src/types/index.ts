@@ -62,7 +62,7 @@ export interface FfprobeOutput {
 // ---------------------------------------------------------------------------
 
 /** Supported content-source providers, as a runtime list so tests can walk it. */
-export const SOURCE_KINDS = ["instagram", "youtube"] as const;
+export const SOURCE_KINDS = ["instagram", "youtube", "x"] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
 /** Supported content formats. (Reserved future: "image_post" | "article_link".) */
@@ -84,7 +84,7 @@ export interface AcquiredAssets {
 
 /**
  * Source-agnostic item record (the unified entry written to metadata.json).
- * id is the knowledge_base key — IG: "{username}_{pk}.mp4" (legacy); YT: "youtube_{videoId}".
+ * id is the knowledge_base key — IG: "{username}_{pk}.mp4" (legacy); YT: "youtube_{videoId}"; X: "x_{tweetId}".
  */
 export interface SourceItem {
   id: string;
@@ -101,4 +101,12 @@ export interface SourceItem {
   ig?: MetadataEntry;
   /** Present for YouTube items. */
   yt?: { videoId: string; channelId: string | null; caption_file: string | null };
+  /** Present for X items. */
+  x?: {
+    tweetId: string;
+    handle: string;
+    videoUrl: string | null;
+    links: string[];
+    quoted: { handle: string; text: string; links: string[] } | null;
+  };
 }

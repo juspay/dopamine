@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template launchd job for the X bookmark harvester. Copy to
+  ~/Library/LaunchAgents/com.dopamine.x-harvest.plist and replace the two
+  REPLACE_WITH_* placeholders before bootstrapping. See docs/x-harvest-setup.md.
+  Runs once a day at 06:00, before the 06:30 pipeline run picks up what it captured.
+  Once a day is deliberate: reading X through a logged-in browser is against its terms,
+  so the footprint is kept small. Do not shorten the interval.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.dopamine.x-harvest</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>REPLACE_WITH_PROJECT_DIR/scripts/run-x-harvest.sh</string>
+    </array>
+    <key>WorkingDirectory</key><string>REPLACE_WITH_PROJECT_DIR</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key><string>REPLACE_WITH_HOME/.pyenv/shims:REPLACE_WITH_HOME/Library/pnpm:REPLACE_WITH_HOME/Library/pnpm/nodejs/24.0.2/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key><string>REPLACE_WITH_HOME</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+    <key>StandardOutPath</key><string>REPLACE_WITH_PROJECT_DIR/logs/launchd-x-harvest.log</string>
+    <key>StandardErrorPath</key><string>REPLACE_WITH_PROJECT_DIR/logs/launchd-x-harvest.log</string>
+    <key>RunAtLoad</key><false/>
+</dict>
+</plist>
