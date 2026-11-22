@@ -71,15 +71,11 @@ describe("organizer symlink logic", () => {
     expect(stat.isDirectory()).toBe(true);
 
     // Verify symlink was created
-    const linkStat = await fs.lstat(
-      path.join(classifiedDir, "Tech & Coding", "user_1.mp4")
-    );
+    const linkStat = await fs.lstat(path.join(classifiedDir, "Tech & Coding", "user_1.mp4"));
     expect(linkStat.isSymbolicLink()).toBe(true);
 
     // Verify symlink target
-    const linkTarget = await fs.readlink(
-      path.join(classifiedDir, "Tech & Coding", "user_1.mp4")
-    );
+    const linkTarget = await fs.readlink(path.join(classifiedDir, "Tech & Coding", "user_1.mp4"));
     expect(linkTarget).toBe(path.join("..", "..", "creator_saved", "user_1.mp4"));
   });
 

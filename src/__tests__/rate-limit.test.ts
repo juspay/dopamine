@@ -34,10 +34,7 @@ describe("exponentialBackoff()", () => {
   });
 
   it("retries on failure and eventually succeeds", async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("transient"))
-      .mockResolvedValue("ok");
+    const fn = vi.fn().mockRejectedValueOnce(new Error("transient")).mockResolvedValue("ok");
     const result = await exponentialBackoff(fn, 3, 1);
     expect(result).toEqual({ success: true, value: "ok" });
     expect(fn).toHaveBeenCalledTimes(2);
@@ -54,28 +51,19 @@ describe("exponentialBackoff()", () => {
   });
 
   it("handles rate-limit errors (429)", async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("429 Too Many Requests"))
-      .mockResolvedValue("done");
+    const fn = vi.fn().mockRejectedValueOnce(new Error("429 Too Many Requests")).mockResolvedValue("done");
     const result = await exponentialBackoff(fn, 3, 1);
     expect(result).toEqual({ success: true, value: "done" });
   });
 
   it("handles RESOURCE_EXHAUSTED errors", async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("RESOURCE_EXHAUSTED"))
-      .mockResolvedValue("done");
+    const fn = vi.fn().mockRejectedValueOnce(new Error("RESOURCE_EXHAUSTED")).mockResolvedValue("done");
     const result = await exponentialBackoff(fn, 3, 1);
     expect(result).toEqual({ success: true, value: "done" });
   });
 
   it("handles quota errors", async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("Quota exceeded"))
-      .mockResolvedValue("done");
+    const fn = vi.fn().mockRejectedValueOnce(new Error("Quota exceeded")).mockResolvedValue("done");
     const result = await exponentialBackoff(fn, 3, 1);
     expect(result).toEqual({ success: true, value: "done" });
   });

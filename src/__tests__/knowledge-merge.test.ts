@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  isKnowledgeComplete,
-  mergeKnowledge,
-  pickLonger,
-  pickMore,
-} from "../agents/knowledge-merge.js";
+import { isKnowledgeComplete, mergeKnowledge, pickLonger, pickMore } from "../agents/knowledge-merge.js";
 import type { Knowledge } from "../schemas/knowledge.js";
 
 const MIN = 200;
@@ -26,44 +21,25 @@ const thin = "x".repeat(50);
 
 describe("isKnowledgeComplete", () => {
   it("treats an entry with rich visual + 3 takeaways as complete", () => {
-    expect(
-      isKnowledgeComplete(
-        { visual_description: rich, key_takeaways: [1, 2, 3] },
-        MIN,
-      ),
-    ).toBe(true);
+    expect(isKnowledgeComplete({ visual_description: rich, key_takeaways: [1, 2, 3] }, MIN)).toBe(true);
   });
 
   it("THE BUG: entry with good transcript but EMPTY visual is NOT complete", () => {
     // This is the exact case the old skip-check missed: transcript + takeaways
     // present, visual empty -> must be re-extracted, not skipped.
-    expect(
-      isKnowledgeComplete(
-        { visual_description: "", key_takeaways: [1, 2, 3, 4, 5] },
-        MIN,
-      ),
-    ).toBe(false);
+    expect(isKnowledgeComplete({ visual_description: "", key_takeaways: [1, 2, 3, 4, 5] }, MIN)).toBe(false);
   });
 
   it("entry with thin visual (< min) is NOT complete", () => {
-    expect(
-      isKnowledgeComplete({ visual_description: thin, key_takeaways: [1, 2, 3] }, MIN),
-    ).toBe(false);
+    expect(isKnowledgeComplete({ visual_description: thin, key_takeaways: [1, 2, 3] }, MIN)).toBe(false);
   });
 
   it("entry with rich visual but < 3 takeaways is NOT complete", () => {
-    expect(
-      isKnowledgeComplete({ visual_description: rich, key_takeaways: [1] }, MIN),
-    ).toBe(false);
+    expect(isKnowledgeComplete({ visual_description: rich, key_takeaways: [1] }, MIN)).toBe(false);
   });
 
   it("entry carrying an error is never complete (retryable)", () => {
-    expect(
-      isKnowledgeComplete(
-        { visual_description: rich, key_takeaways: [1, 2, 3], error: "boom" },
-        MIN,
-      ),
-    ).toBe(false);
+    expect(isKnowledgeComplete({ visual_description: rich, key_takeaways: [1, 2, 3], error: "boom" }, MIN)).toBe(false);
   });
 
   it("undefined entry is not complete", () => {
@@ -72,10 +48,7 @@ describe("isKnowledgeComplete", () => {
 
   it("ignores leading/trailing whitespace when measuring visual length", () => {
     expect(
-      isKnowledgeComplete(
-        { visual_description: "   " + "y".repeat(10) + "   ", key_takeaways: [1, 2, 3] },
-        MIN,
-      ),
+      isKnowledgeComplete({ visual_description: "   " + "y".repeat(10) + "   ", key_takeaways: [1, 2, 3] }, MIN),
     ).toBe(false);
   });
 });
@@ -90,12 +63,8 @@ describe("pickLonger", () => {
     expect(pickLonger("fresh", undefined)).toBe("fresh");
   });
   it("keeps whichever is longer", () => {
-    expect(pickLonger("short", "a much longer previous string")).toBe(
-      "a much longer previous string",
-    );
-    expect(pickLonger("a much longer fresh string", "short")).toBe(
-      "a much longer fresh string",
-    );
+    expect(pickLonger("short", "a much longer previous string")).toBe("a much longer previous string");
+    expect(pickLonger("a much longer fresh string", "short")).toBe("a much longer fresh string");
   });
 });
 
@@ -127,12 +96,7 @@ describe("legacy non-string fields (the mid-run crash)", () => {
   });
   it("isKnowledgeComplete coerces an array visual_description", () => {
     const longArr = Array.from({ length: 10 }, () => "x".repeat(30)); // joins to ~300+ chars
-    expect(
-      isKnowledgeComplete(
-        { visual_description: longArr, key_takeaways: [1, 2, 3] },
-        MIN,
-      ),
-    ).toBe(true);
+    expect(isKnowledgeComplete({ visual_description: longArr, key_takeaways: [1, 2, 3] }, MIN)).toBe(true);
   });
   it("mergeKnowledge survives array-typed existing fields", () => {
     const existing = {
