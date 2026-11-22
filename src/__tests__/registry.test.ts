@@ -16,7 +16,11 @@ describe("getEnabledCollectors", () => {
     expect(c.map((x) => x.source)).toEqual(["instagram"]);
   });
   it("returns both for 'instagram,youtube'", () => {
-    expect(getEnabledCollectors("instagram,youtube").map((x) => x.source).sort()).toEqual(["instagram", "youtube"]);
+    expect(
+      getEnabledCollectors("instagram,youtube")
+        .map((x) => x.source)
+        .sort(),
+    ).toEqual(["instagram", "youtube"]);
   });
   it("trims whitespace and dedupes repeats", () => {
     expect(getEnabledCollectors(" instagram , instagram ").map((x) => x.source)).toEqual(["instagram"]);

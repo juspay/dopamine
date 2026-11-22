@@ -7,10 +7,7 @@ import type { UrlCheckResult } from "../utils/url-check.js";
 // ---------------------------------------------------------------------------
 
 /** Build a minimal Response-like object accepted by the mocked global fetch. */
-function makeResponse(
-  status: number,
-  headers: Record<string, string> = {},
-): Response {
+function makeResponse(status: number, headers: Record<string, string> = {}): Response {
   return {
     status,
     ok: status >= 200 && status < 300,
@@ -71,7 +68,9 @@ describe("checkUrl() — 3xx → redirect", () => {
   it("returns 'redirect' if the final hop itself is a 3xx with no Location", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(makeResponse(302)), // no location header
+      vi
+        .fn()
+        .mockResolvedValue(makeResponse(302)), // no location header
     );
     const result = await checkUrl("https://example.com/bounce");
     expect(result.status).toBe("redirect");
@@ -240,10 +239,7 @@ describe("checkUrl() — empty/invalid input → 'no_url'", () => {
 describe("checkUrl() — retry on transient failures", () => {
   it("retries once on 'error' and returns the second attempt's result", async () => {
     const dnsError = new Error("ENOTFOUND transient");
-    const fetchMock = vi
-      .fn()
-      .mockRejectedValueOnce(dnsError)
-      .mockResolvedValueOnce(makeResponse(200));
+    const fetchMock = vi.fn().mockRejectedValueOnce(dnsError).mockResolvedValueOnce(makeResponse(200));
     vi.stubGlobal("fetch", fetchMock);
 
     // Disable backoff delay in tests via a very short retry base
@@ -278,16 +274,9 @@ describe("checkUrl() — retry on transient failures", () => {
 
 describe("checkUrls() — bulk URL checking", () => {
   it("returns a Map with results for every input URL", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(makeResponse(200)),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeResponse(200)));
 
-    const urls = [
-      "https://ollama.com/library/gemma",
-      "https://cloud.ouraring.com/docs/",
-      "https://ohmo.ai/",
-    ];
+    const urls = ["https://ollama.com/library/gemma", "https://cloud.ouraring.com/docs/", "https://ohmo.ai/"];
     const results = await checkUrls(urls, { retries: 0 });
 
     expect(results.size).toBe(3);
@@ -300,11 +289,7 @@ describe("checkUrls() — bulk URL checking", () => {
     const fetchMock = vi.fn().mockResolvedValue(makeResponse(200));
     vi.stubGlobal("fetch", fetchMock);
 
-    const urls = [
-      "https://example.com/",
-      "https://example.com/",
-      "https://example.com/",
-    ];
+    const urls = ["https://example.com/", "https://example.com/", "https://example.com/"];
     const results = await checkUrls(urls, { retries: 0 });
 
     expect(results.size).toBe(1);
@@ -319,11 +304,7 @@ describe("checkUrls() — bulk URL checking", () => {
       .mockResolvedValueOnce(makeResponse(403)); // protected
     vi.stubGlobal("fetch", fetchMock);
 
-    const urls = [
-      "https://live.example.com/",
-      "https://dead.example.com/",
-      "https://bot-blocked.example.com/",
-    ];
+    const urls = ["https://live.example.com/", "https://dead.example.com/", "https://bot-blocked.example.com/"];
     const results = await checkUrls(urls, { retries: 0 });
 
     expect(results.get(urls[0])?.status).toBe("live");

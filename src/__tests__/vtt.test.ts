@@ -5,13 +5,16 @@ import { vttToText } from "../utils/vtt.js";
 describe("vttToText", () => {
   it("strips header, cue indices, timing lines, and inline tags", () => {
     const vtt = [
-      "WEBVTT", "",
+      "WEBVTT",
+      "",
       "1",
       "00:00:01.000 --> 00:00:03.000",
-      "<c>Hello</c> world", "",
+      "<c>Hello</c> world",
+      "",
       "2",
       "00:00:03.000 --> 00:00:05.000",
-      "<00:00:03.500>Second line", "",
+      "<00:00:03.500>Second line",
+      "",
     ].join("\n");
     expect(vttToText(vtt)).toBe("Hello world\nSecond line");
   });
@@ -26,20 +29,26 @@ describe("vttToText", () => {
       "",
       "1",
       "00:00:01.000 --> 00:00:03.000",
-      "Hello world", "",
+      "Hello world",
+      "",
       "2",
       "00:00:03.000 --> 00:00:05.000",
-      "Second line", "",
+      "Second line",
+      "",
     ].join("\n");
     expect(vttToText(vtt)).toBe("Hello world\nSecond line");
   });
 
   it("collapses consecutive duplicate lines (rolling auto-captions)", () => {
     const vtt = [
-      "WEBVTT", "",
-      "00:00:01.000 --> 00:00:02.000", "the quick",
-      "00:00:02.000 --> 00:00:03.000", "the quick",
-      "00:00:03.000 --> 00:00:04.000", "the quick brown",
+      "WEBVTT",
+      "",
+      "00:00:01.000 --> 00:00:02.000",
+      "the quick",
+      "00:00:02.000 --> 00:00:03.000",
+      "the quick",
+      "00:00:03.000 --> 00:00:04.000",
+      "the quick brown",
     ].join("\n");
     expect(vttToText(vtt)).toBe("the quick\nthe quick brown");
   });
@@ -54,26 +63,34 @@ describe("vttToText", () => {
 
   it("strips yt-dlp NOTE comment blocks between cues", () => {
     const vtt = [
-      "WEBVTT", "",
+      "WEBVTT",
+      "",
       "1",
       "00:00:01.000 --> 00:00:03.000",
-      "Hello world", "",
-      "NOTE duration=\"00:00:10.000\"", "",
+      "Hello world",
+      "",
+      'NOTE duration="00:00:10.000"',
+      "",
       "2",
       "00:00:11.000 --> 00:00:13.000",
-      "Second line", "",
+      "Second line",
+      "",
     ].join("\n");
     expect(vttToText(vtt)).toBe("Hello world\nSecond line");
   });
 
   it("strips bare NOTE keyword between cues", () => {
     const vtt = [
-      "WEBVTT", "",
+      "WEBVTT",
+      "",
       "00:00:01.000 --> 00:00:02.000",
-      "First", "",
-      "NOTE", "",
+      "First",
+      "",
+      "NOTE",
+      "",
       "00:00:03.000 --> 00:00:04.000",
-      "Last", "",
+      "Last",
+      "",
     ].join("\n");
     expect(vttToText(vtt)).toBe("First\nLast");
   });
@@ -81,11 +98,14 @@ describe("vttToText", () => {
   it("preserves numeric cue text that follows a timing line (not a cue index)", () => {
     // "2024" after a timing line is cue text, not a cue sequence number.
     const vtt = [
-      "WEBVTT", "",
+      "WEBVTT",
+      "",
       "00:00:01.000 --> 00:00:02.000",
-      "2024", "",
+      "2024",
+      "",
       "00:00:02.000 --> 00:00:03.000",
-      "42", "",
+      "42",
+      "",
     ].join("\n");
     expect(vttToText(vtt)).toBe("2024\n42");
   });

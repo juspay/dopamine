@@ -75,7 +75,7 @@ function sanitizeName(name: string): string {
 /**
  * Kill a process tree (the process and all its children) to avoid zombies.
  */
-async function killProcessTree(pid: number): Promise<void> {
+function killProcessTree(pid: number): void {
   try {
     // Kill the entire process group
     process.kill(-pid, "SIGKILL");
@@ -93,14 +93,27 @@ async function killProcessTree(pid: number): Promise<void> {
  * Run a command in a sandbox directory with timeout.
  * On timeout, kills the process tree to prevent zombie processes.
  */
-async function runCommand(command: string, cwd: string): Promise<CommandResult> {
+export async function runCommand(command: string, cwd: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<CommandResult> {
   // Security: skip dangerous commands
   const dangerous = [
-    "rm -rf /", "rm -rf /*", "sudo", "mkfs", "dd if=", "> /dev/",
-    "chmod -R 777", "curl|sh", "curl|bash", "wget|sh", "wget|bash",
-    "eval(", "exec(", "/__", "../", "~/"
+    "rm -rf /",
+    "rm -rf /*",
+    "sudo",
+    "mkfs",
+    "dd if=",
+    "> /dev/",
+    "chmod -R 777",
+    "curl|sh",
+    "curl|bash",
+    "wget|sh",
+    "wget|bash",
+    "eval(",
+    "exec(",
+    "/__",
+    "../",
+    "~/",
   ];
-  if (dangerous.some(d => command.includes(d))) {
+  if (dangerous.some((d) => command.includes(d))) {
     return {
       command,
       exit_code: 1,
@@ -110,48 +123,49 @@ async function runCommand(command: string, cwd: string): Promise<CommandResult> 
     };
   }
 
+  // Commands come from videos and are often interactive (`... auth login`). They get no
+  // input, so a prompt ends at once. On timeout the whole process group is killed and the
+  // output pipes are closed: killing only `sh` once left a login holding the pipes, and the
+  // pipeline waited on it for 36 hours.
+  const proc = execa("sh", ["-c", command], {
+    cwd,
+    stdin: "ignore",
+    reject: false,
+    detached: true, // its own process group, so the whole tree can be killed
+    env: {
+      ...process.env,
+      HOME: cwd, // Isolate npm/pip to sandbox
+      NODE_ENV: "development",
+    },
+  });
+
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    if (proc.pid) killProcessTree(proc.pid);
+    proc.stdout?.destroy();
+    proc.stderr?.destroy();
+  }, timeoutMs);
+
   try {
-    const proc = execa("sh", ["-c", command], {
-      cwd,
-      timeout: COMMAND_TIMEOUT_MS,
-      reject: false,
-      detached: true, // Create a process group so we can kill the tree
-      env: {
-        ...process.env,
-        HOME: cwd, // Isolate npm/pip to sandbox
-        NODE_ENV: "development",
-      },
-    });
-
     const result = await proc;
-
     return {
       command,
-      exit_code: result.exitCode ?? 1,
-      stdout: (result.stdout ?? "").slice(0, 5000), // Cap output
-      stderr: (result.stderr ?? "").slice(0, 5000),
-      timed_out: false,
+      exit_code: timedOut ? 1 : (result.exitCode ?? 1),
+      stdout: String(result.stdout ?? "").slice(0, 5000), // Cap output
+      stderr: timedOut ? `Command timed out after ${timeoutMs}ms` : String(result.stderr ?? "").slice(0, 5000),
+      timed_out: timedOut,
     };
   } catch (err) {
-    const msg = String(err);
-    const timedOut = msg.includes("timed out") || msg.includes("ETIMEDOUT") || msg.includes("SIGTERM");
-
-    // Kill zombie processes after timeout
-    if (timedOut) {
-      // execa attaches the pid to the error object in some cases
-      const errObj = err as { pid?: number };
-      if (errObj.pid) {
-        await killProcessTree(errObj.pid);
-      }
-    }
-
     return {
       command,
       exit_code: 1,
       stdout: "",
-      stderr: timedOut ? `Command timed out after ${COMMAND_TIMEOUT_MS}ms` : msg.slice(0, 2000),
+      stderr: timedOut ? `Command timed out after ${timeoutMs}ms` : String(err).slice(0, 2000),
       timed_out: timedOut,
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -197,7 +211,8 @@ async function clearPackageCache(command: string, cwd: string): Promise<void> {
  */
 function getCodeExtension(installCmd: string, code: string): string {
   if (installCmd.includes("pip") || code.includes("import ") || code.includes("def ")) return ".py";
-  if (installCmd.includes("npm") || installCmd.includes("npx") || code.includes("require(") || code.includes("import ")) return ".js";
+  if (installCmd.includes("npm") || installCmd.includes("npx") || code.includes("require(") || code.includes("import "))
+    return ".js";
   if (installCmd.includes("cargo")) return ".rs";
   if (installCmd.includes("go ")) return ".go";
   if (code.includes("#!/bin/bash") || code.includes("#!/bin/sh")) return ".sh";
@@ -208,7 +223,14 @@ function getCodeExtension(installCmd: string, code: string): string {
  * Implement a single actionable item.
  */
 async function implementItem(
-  item: { name: string; type: string; install_command: string; code: string; url: string; verification_steps: string[] },
+  item: {
+    name: string;
+    type: string;
+    install_command: string;
+    code: string;
+    url: string;
+    verification_steps: string[];
+  },
   sandboxDir: string,
 ): Promise<ImplementationItemResult> {
   const t0 = Date.now();
@@ -228,11 +250,7 @@ async function implementItem(
   };
 
   // Skip items that are purely conceptual (workflows/techniques without commands)
-  if (
-    item.type === "technique" &&
-    !item.install_command &&
-    !item.code
-  ) {
+  if (item.type === "technique" && !item.install_command && !item.code) {
     result.overall_status = "skipped";
     result.time_ms = Date.now() - t0;
     return result;
@@ -289,7 +307,7 @@ async function implementItem(
 
   if (hasInstall && hasVerification) {
     const installOk = result.install_result!.exit_code === 0;
-    const verifyOk = result.verification_results.some(v => v.exit_code === 0);
+    const verifyOk = result.verification_results.some((v) => v.exit_code === 0);
     if (installOk && verifyOk) result.overall_status = "success";
     else if (installOk || verifyOk) result.overall_status = "partial_success";
     else result.overall_status = "failed";
@@ -312,13 +330,13 @@ async function implementItem(
 function isLikelyCommand(step: string): boolean {
   const cmdPatterns = [
     /^(npm|npx|node|python|pip|cargo|go |brew |curl |wget |which |ls |cat |echo |test )/,
-    /^[a-z_]+\s+(-|--)/,  // command with flags
-    /\.(js|py|sh|ts)\b/,  // file extensions
+    /^[a-z_]+\s+(-|--)/, // command with flags
+    /\.(js|py|sh|ts)\b/, // file extensions
     /--version/,
     /^(cd |mkdir |touch )/,
   ];
   const trimmed = step.trim().toLowerCase();
-  return cmdPatterns.some(p => p.test(trimmed)) && trimmed.length < 200;
+  return cmdPatterns.some((p) => p.test(trimmed)) && trimmed.length < 200;
 }
 
 /**
@@ -349,7 +367,9 @@ async function cleanupOldSandboxDirs(): Promise<void> {
     }
 
     if (removed > 0) {
-      console.log(`  Sandbox cleanup: removed ${removed} dirs older than ${SANDBOX_MAX_AGE_DAYS} days (~${(freedBytes / 1024 / 1024).toFixed(1)}MB freed)`);
+      console.log(
+        `  Sandbox cleanup: removed ${removed} dirs older than ${SANDBOX_MAX_AGE_DAYS} days (~${(freedBytes / 1024 / 1024).toFixed(1)}MB freed)`,
+      );
     } else {
       console.log(`  Sandbox cleanup: no dirs older than ${SANDBOX_MAX_AGE_DAYS} days`);
     }
@@ -374,9 +394,13 @@ async function estimateDirSize(dirPath: string): Promise<number> {
         } else if (entry.isDirectory()) {
           total += await estimateDirSize(p);
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
   return total;
 }
 
@@ -387,29 +411,25 @@ export async function runImplementerAgent(): Promise<void> {
   await cleanupOldSandboxDirs();
 
   // Load analysis and research states
-  const analysisState = await loadState<Record<string, AnalysisEntry>>(
-    CONFIG.STATE.ANALYSIS, {}
-  );
-  const researchState = await loadState<Record<string, ResearchEntry>>(
-    CONFIG.STATE.RESEARCH, {}
-  );
+  const analysisState = await loadState<Record<string, AnalysisEntry>>(CONFIG.STATE.ANALYSIS, {});
+  const researchState = await loadState<Record<string, ResearchEntry>>(CONFIG.STATE.RESEARCH, {});
 
   // Load existing implementation state (resume mode)
-  const implState = await loadState<Record<string, ImplementationEntry>>(
-    CONFIG.STATE.IMPLEMENTATIONS, {}
-  );
+  const implState = await loadState<Record<string, ImplementationEntry>>(CONFIG.STATE.IMPLEMENTATIONS, {});
 
   // Create sandbox root
   await fs.mkdir(SANDBOX_ROOT, { recursive: true });
 
   const entries = Object.entries(analysisState).filter(
-    ([, entry]) => !entry.error && entry.actionable_items.length > 0
+    ([, entry]) => !entry.error && entry.actionable_items.length > 0,
   );
 
   console.log(`Implementation: ${entries.length} videos with actionable items`);
   console.log(`Sandbox root: ${SANDBOX_ROOT}`);
 
-  let implemented = 0, skipped = 0, errors = 0;
+  let implemented = 0,
+    skipped = 0,
+    errors = 0;
 
   for (const [i, [filename, analysis]] of entries.entries()) {
     const logPrefix = `[${i + 1}/${entries.length}]`;
@@ -441,7 +461,7 @@ export async function runImplementerAgent(): Promise<void> {
         // legacy bad data still in state, we additionally check that the item has no URL
         // or that the URL actually resolves before trusting a stale "dead" verdict.
         const research = researchState[filename];
-        const researchItem = research?.items.find(r => r.item_name === item.name);
+        const researchItem = research?.items.find((r) => r.item_name === item.name);
         const shouldSkipDead =
           researchItem?.url_status === "dead" &&
           // Never trust a "dead" verdict when the item has no URL — the verdict was
@@ -476,9 +496,11 @@ export async function runImplementerAgent(): Promise<void> {
       };
       implemented++;
 
-      const successCount = itemResults.filter(r => r.overall_status === "success").length;
-      const failedCount = itemResults.filter(r => r.overall_status === "failed").length;
-      console.log(`  -> ${successCount} succeeded, ${failedCount} failed, ${itemResults.length - successCount - failedCount} skipped/partial`);
+      const successCount = itemResults.filter((r) => r.overall_status === "success").length;
+      const failedCount = itemResults.filter((r) => r.overall_status === "failed").length;
+      console.log(
+        `  -> ${successCount} succeeded, ${failedCount} failed, ${itemResults.length - successCount - failedCount} skipped/partial`,
+      );
     } catch (err) {
       implState[filename] = {
         filename,

@@ -5,15 +5,28 @@ import type { SourceCollector } from "../sources/types.js";
 import { acquireAll } from "../pipeline/lanes.js";
 
 const item = (id: string, source: SourceKind = "instagram"): SourceItem => ({
-  id, source, content_type: "short_video", title: null, author: null,
-  caption_text: null, url: null, thumbnail_url: null, published_at: null, duration_seconds: null,
+  id,
+  source,
+  content_type: "short_video",
+  title: null,
+  author: null,
+  caption_text: null,
+  url: null,
+  thumbnail_url: null,
+  published_at: null,
+  duration_seconds: null,
 });
-const assets = (id: string): AcquiredAssets => ({ videoPath: `/tmp/${id}.mp4`, thumbnailPath: null, transcriptText: null });
+const assets = (id: string): AcquiredAssets => ({
+  videoPath: `/tmp/${id}.mp4`,
+  thumbnailPath: null,
+  transcriptText: null,
+});
 
 describe("acquireAll", () => {
   it("keeps only non-null acquire results and pairs them correctly", async () => {
     const collector: SourceCollector = {
-      source: "instagram", collect: vi.fn(async () => []),
+      source: "instagram",
+      collect: vi.fn(async () => []),
       acquire: vi.fn(async (i: SourceItem) => (i.id === "a" ? assets("a") : null)),
     };
     const registry = new Map<SourceKind, SourceCollector>([["instagram", collector]]);
@@ -30,7 +43,8 @@ describe("acquireAll", () => {
 
   it("drops items whose acquire() throws, continuing with remaining items", async () => {
     const collector: SourceCollector = {
-      source: "instagram", collect: vi.fn(async () => []),
+      source: "instagram",
+      collect: vi.fn(async () => []),
       acquire: vi.fn(async (i: SourceItem) => {
         if (i.id === "bad") throw new Error("simulated acquire failure");
         return assets(i.id);
@@ -46,13 +60,17 @@ describe("acquireAll", () => {
   });
 
   it("processes all items under bounded concurrency without losing results", async () => {
-    let active = 0, peak = 0;
+    let active = 0,
+      peak = 0;
     const collector: SourceCollector = {
-      source: "instagram", collect: vi.fn(async () => []),
+      source: "instagram",
+      collect: vi.fn(async () => []),
       acquire: vi.fn(async (i: SourceItem) => {
-        active++; peak = Math.max(peak, active);
+        active++;
+        peak = Math.max(peak, active);
         await new Promise((r) => setTimeout(r, 3));
-        active--; return assets(i.id);
+        active--;
+        return assets(i.id);
       }),
     };
     const registry = new Map<SourceKind, SourceCollector>([["instagram", collector]]);
