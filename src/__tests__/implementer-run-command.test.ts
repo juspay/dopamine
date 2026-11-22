@@ -52,6 +52,6 @@ describe("runCommand", () => {
 
   it("still refuses a dangerous command without running it", async () => {
     const r = await runCommand("sudo true", dir, 5000);
-    expect(r.stderr).toBe("Command blocked for safety");
+    expect(r.stderr).toMatch(/^Command blocked for safety: /);
   });
 });
