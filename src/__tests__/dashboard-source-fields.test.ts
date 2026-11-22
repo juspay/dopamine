@@ -1,7 +1,7 @@
 // src/__tests__/dashboard-source-fields.test.ts
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { resolveThumb, resolveVideoFile, sourceUrlFor } from "../dashboard/source-fields.js";
+import { creatorFor, dateFor, resolveThumb, resolveVideoFile, sourceUrlFor } from "../dashboard/source-fields.js";
 import { CONFIG } from "../pipeline/config.js";
 import type { SourceItem } from "../types/index.js";
 
@@ -88,5 +88,32 @@ describe("resolveThumb", () => {
 
   it("returns an empty string for a non-instagram item with no thumbnail, so the page shows a placeholder", async () => {
     expect(await resolveThumb(youtube, "youtube_abc", async () => false)).toBe("");
+  });
+});
+
+// 2026-11-22: every YouTube card showed "unknown" as its creator, because the dashboard read
+// the creator from Instagram-only fields while the channel name was in the item's author.
+describe("creatorFor", () => {
+  it("uses the channel or handle of a non-Instagram item", () => {
+    expect(creatorFor({ ...youtube, author: "AICodeKing" }, "")).toBe("AICodeKing");
+    expect(creatorFor({ ...youtube, source: "x", author: "@someone" }, "")).toBe("someone");
+  });
+  it("keeps what the Instagram lookups found", () => {
+    expect(creatorFor({ ...base, author: "ignored" }, "ig_user")).toBe("ig_user");
+    expect(creatorFor(undefined, "ig_user")).toBe("ig_user");
+  });
+  it("falls back to what was found when a non-Instagram item has no author", () => {
+    expect(creatorFor({ ...youtube, author: null }, "")).toBe("");
+  });
+});
+
+describe("dateFor", () => {
+  it("uses a non-Instagram item's publish date when the catalog has none", () => {
+    expect(dateFor({ ...youtube, published_at: "2026-11-01T10:00:00Z" }, "")).toBe("2026-11-01T10:00:00Z");
+  });
+  it("prefers the catalog date, and is empty when there is none at all", () => {
+    expect(dateFor({ ...youtube, published_at: "2026-11-01T10:00:00Z" }, "2026-10-01")).toBe("2026-10-01");
+    expect(dateFor({ ...youtube, published_at: null }, "")).toBe("");
+    expect(dateFor(undefined, "2026-10-01")).toBe("2026-10-01");
   });
 });

@@ -35,7 +35,7 @@ import { catBg, catColor } from "./colors.js";
 import { type QualityInput, type Tier, qualityScore, tierOf } from "./quality.js";
 import { computeRelated } from "./related.js";
 import type { RelInput } from "./related.js";
-import { resolveThumb, resolveVideoFile, sourceUrlFor } from "./source-fields.js";
+import { creatorFor, dateFor, resolveThumb, resolveVideoFile, sourceUrlFor } from "./source-fields.js";
 import { deriveTitle } from "./title.js";
 
 /** Dashboard author: prefer catalog author, then instagram_user, then the username fallback. */
@@ -483,7 +483,8 @@ export async function buildDashboardData(): Promise<void> {
     const pk = pkFromClassification ?? pkFromFilename;
 
     const code = classEntry?.code ?? null;
-    const username = classEntry?.username ?? kbEntry?.username ?? catEntry?.instagram_user ?? "";
+    const item = itemIndex.get(filename);
+    const username = creatorFor(item, classEntry?.username ?? kbEntry?.username ?? catEntry?.instagram_user ?? "");
 
     // Enrich with metadata full_name
     const metaEntry = pk ? metadataByPk.get(pk) : undefined;
@@ -499,13 +500,12 @@ export async function buildDashboardData(): Promise<void> {
     const subcategory = classEntry?.subcategory ?? kbEntry?.subcategory ?? catEntry?.subcategory ?? "";
 
     const tags: string[] = classEntry?.tags ?? catEntry?.tags ?? [];
-    const date = catEntry?.taken_at ?? "";
+    const date = dateFor(item, catEntry?.taken_at ?? "");
     const likes = catEntry?.like_count ?? 0;
     const durationSec = catEntry?.duration_seconds ?? 0;
 
     // Thumbnail: use original filename stem (before any id sanitization)
     const stem = filename.endsWith(".mp4") ? filename.slice(0, -4) : filename;
-    const item = itemIndex.get(filename);
     const thumb = await resolveThumb(item, stem, fileExists);
     const sourceUrl = sourceUrlFor(item);
 

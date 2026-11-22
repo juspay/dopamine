@@ -256,9 +256,9 @@ function ce(e, t, n = JSON.stringify) {
     sessionStorage[e] = r;
   } catch {}
 }
-var w = globalThis.__sveltekit_1db0mpo?.base ?? ``,
-  le = globalThis.__sveltekit_1db0mpo?.assets ?? w ?? ``,
-  ue = `1795173876609`,
+var w = globalThis.__sveltekit_c8kqmo?.base ?? ``,
+  le = globalThis.__sveltekit_c8kqmo?.assets ?? w ?? ``,
+  ue = `1795367863473`,
   de = `sveltekit:snapshot`,
   fe = `sveltekit:scroll`,
   pe = `sveltekit:states`,
@@ -548,7 +548,7 @@ var Ue = new Map(),
   $e = new Map(),
   et = new Map();
 async function tt(e, t, n) {
-  globalThis.__sveltekit_1db0mpo && (globalThis.__sveltekit_1db0mpo.query, globalThis.__sveltekit_1db0mpo.prerender),
+  globalThis.__sveltekit_c8kqmo && (globalThis.__sveltekit_c8kqmo.query, globalThis.__sveltekit_c8kqmo.prerender),
     document.URL !== location.href && (location.href = location.href),
     (U = e),
     await e.hooks.init?.(),
