@@ -4,11 +4,18 @@ import type { MetadataEntry } from "../types/index.js";
 import { igMetadataToSourceItem } from "../sources/instagram/map.js";
 
 const FIXTURE: MetadataEntry = {
-  pk: "3895043733795754636", code: "ABC123", media_type: 2,
-  taken_at: "2024-01-15T10:00:00Z", caption_text: "Some caption #ai",
-  username: "testuser", full_name: "Test User", location: null,
-  like_count: 100, comment_count: 5,
-  video_url: "https://example.com/v.mp4", thumbnail_url: "https://example.com/t.jpg",
+  pk: "3895043733795754636",
+  code: "ABC123",
+  media_type: 2,
+  taken_at: "2024-01-15T10:00:00Z",
+  caption_text: "Some caption #ai",
+  username: "testuser",
+  full_name: "Test User",
+  location: null,
+  like_count: 100,
+  comment_count: 5,
+  video_url: "https://example.com/v.mp4",
+  thumbnail_url: "https://example.com/t.jpg",
   resources: [],
 };
 

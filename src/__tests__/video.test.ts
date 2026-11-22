@@ -56,11 +56,7 @@ describe("getVideoFiles()", () => {
     await fs.writeFile(path.join(tmpDir, "c_3.mp4"), "");
 
     const result = await getVideoFiles(tmpDir);
-    expect(result).toEqual([
-      path.join(tmpDir, "a_1.mp4"),
-      path.join(tmpDir, "b_2.mp4"),
-      path.join(tmpDir, "c_3.mp4"),
-    ]);
+    expect(result).toEqual([path.join(tmpDir, "a_1.mp4"), path.join(tmpDir, "b_2.mp4"), path.join(tmpDir, "c_3.mp4")]);
   });
 
   it("excludes non-mp4 files", async () => {

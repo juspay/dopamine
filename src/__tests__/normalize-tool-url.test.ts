@@ -13,20 +13,14 @@ describe("normalizeToolUrl", () => {
   });
 
   it("takes only the first URL when several are packed into one field", () => {
-    expect(
-      normalizeToolUrl("https://www.instagram.com/testuser/, https://www.instagram.com/achieve"),
-    ).toBe("https://www.instagram.com/testuser/");
-    expect(normalizeToolUrl("https://stripe.com | https://paypal.com")).toBe(
-      "https://stripe.com",
+    expect(normalizeToolUrl("https://www.instagram.com/testuser/, https://www.instagram.com/achieve")).toBe(
+      "https://www.instagram.com/testuser/",
     );
+    expect(normalizeToolUrl("https://stripe.com | https://paypal.com")).toBe("https://stripe.com");
   });
 
   it("drops ephemeral Google grounding-redirect links", () => {
-    expect(
-      normalizeToolUrl(
-        "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE4HVqZ",
-      ),
-    ).toBe("");
+    expect(normalizeToolUrl("https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE4HVqZ")).toBe("");
   });
 
   it("drops free-text / non-URL strings", () => {
@@ -37,25 +31,17 @@ describe("normalizeToolUrl", () => {
   });
 
   it("preserves a single URL that legitimately contains commas in its query", () => {
-    expect(normalizeToolUrl("https://maps.example.com/?q=12.9,77.5")).toBe(
-      "https://maps.example.com/?q=12.9,77.5",
-    );
+    expect(normalizeToolUrl("https://maps.example.com/?q=12.9,77.5")).toBe("https://maps.example.com/?q=12.9,77.5");
   });
 
   it("strips trailing markdown/prose punctuation (backtick, quote, comma, paren)", () => {
-    expect(normalizeToolUrl("https://github.com/bangaloregrubhub`,")).toBe(
-      "https://github.com/bangaloregrubhub",
-    );
-    expect(normalizeToolUrl("https://empiricaltraining.com,")).toBe(
-      "https://empiricaltraining.com",
-    );
+    expect(normalizeToolUrl("https://github.com/bangaloregrubhub`,")).toBe("https://github.com/bangaloregrubhub");
+    expect(normalizeToolUrl("https://empiricaltraining.com,")).toBe("https://empiricaltraining.com");
     expect(normalizeToolUrl('"https://example.com/x")')).toBe("https://example.com/x");
   });
 
   it("takes the first token when a space splits a single mangled URL", () => {
     // "github.com/pinoki Factory/flux-webui" -> first token (best-effort)
-    expect(normalizeToolUrl("https://github.com/pinoki Factory/flux-webui")).toBe(
-      "https://github.com/pinoki",
-    );
+    expect(normalizeToolUrl("https://github.com/pinoki Factory/flux-webui")).toBe("https://github.com/pinoki");
   });
 });

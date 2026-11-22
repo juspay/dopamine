@@ -4,9 +4,16 @@ import type { SourceCollector } from "../sources/types.js";
 import type { SourceItem, AcquiredAssets } from "../types/index.js";
 
 const item: SourceItem = {
-  id: "x_1.mp4", source: "instagram", content_type: "short_video",
-  title: null, author: "x", caption_text: null, url: null,
-  thumbnail_url: null, published_at: null, duration_seconds: null,
+  id: "x_1.mp4",
+  source: "instagram",
+  content_type: "short_video",
+  title: null,
+  author: "x",
+  caption_text: null,
+  url: null,
+  thumbnail_url: null,
+  published_at: null,
+  duration_seconds: null,
 };
 
 describe("SourceCollector contract", () => {

@@ -100,3 +100,13 @@ export async function waitForPort(port: number, timeoutMs = PORT_TIMEOUT_MS, chi
   const suffix = detail === "" ? "" : `; Chrome stderr: ${detail}`;
   throw new Error(`Chrome DevTools port ${port} did not open within ${timeoutMs}ms${suffix}`);
 }
+
+/**
+ * Stops Chrome and lets go of its stderr. Chrome's helpers (its updater, its crash reporter)
+ * inherit that pipe and outlive the browser by up to a minute; while one holds it, Node keeps
+ * the process alive, which made every hourly capture linger about 23 s after its work.
+ */
+export function stopChrome(child: ChildProcess): void {
+  child.kill();
+  child.stderr?.destroy();
+}

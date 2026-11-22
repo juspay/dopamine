@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  ItemVerificationSchema,
-  VerificationReportSchema,
-} from "../schemas/verification.js";
+import { ItemVerificationSchema, VerificationReportSchema } from "../schemas/verification.js";
 
 describe("ItemVerificationSchema", () => {
   const validItem = {

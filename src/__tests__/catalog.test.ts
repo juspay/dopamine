@@ -39,10 +39,7 @@ function csvEscape(value: string): string {
 
 describe("extractHashtags()", () => {
   it("extracts hashtags from caption text", () => {
-    expect(extractHashtags("Check out #React and #TypeScript")).toEqual([
-      "React",
-      "TypeScript",
-    ]);
+    expect(extractHashtags("Check out #React and #TypeScript")).toEqual(["React", "TypeScript"]);
   });
 
   it("returns empty array for empty string", () => {
@@ -174,9 +171,7 @@ describe("catalog record building logic", () => {
     const width = props?.width ?? 0;
     const height = props?.height ?? 0;
     const resolution = width && height ? `${width}x${height}` : "";
-    const fileSizeMb = props?.file_size
-      ? Math.round((props.file_size / (1024 * 1024)) * 100) / 100
-      : 0;
+    const fileSizeMb = props?.file_size ? Math.round((props.file_size / (1024 * 1024)) * 100) / 100 : 0;
 
     const record = {
       filename,
