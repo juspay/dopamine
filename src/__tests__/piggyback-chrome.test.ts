@@ -2,7 +2,8 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { waitForPort } from "../pipeline/piggyback/chrome.js";
+import { spawn } from "node:child_process";
+import { stopChrome, waitForPort } from "../pipeline/piggyback/chrome.js";
 
 const servers: http.Server[] = [];
 
@@ -60,4 +61,25 @@ describe("waitForPort", () => {
     const port = await freePort();
     await expect(waitForPort(port, 500, { exitCode: null, signalCode: null })).rejects.toThrow(/did not open/);
   });
+});
+
+describe("stopChrome", () => {
+  // Chrome starts helpers (its updater, its crash reporter) that inherit its stderr and
+  // outlive it. Until the job let go of that pipe, every hourly capture lingered about 23 s.
+  it("lets go of the error-output pipe, so a helper that outlives the browser cannot hold the job open", async () => {
+    // A unique duration is the marker: portable across sh flavours, unlike `exec -a`.
+    const marker = `sleep 29.${process.pid}${Date.now() % 100000}`;
+    const child = spawn("sh", ["-c", `${marker} & echo helper started >&2; sleep 30`], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    const helper = await new Promise<string>((resolve) => child.stderr?.once("data", (d) => resolve(String(d))));
+    expect(helper).toContain("helper started");
+    const started = Date.now();
+    const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
+    stopChrome(child);
+    await closed;
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(child.stderr?.destroyed).toBe(true);
+    spawn("pkill", ["-f", marker]);
+  }, 15_000);
 });

@@ -14,7 +14,7 @@ import { CONFIG } from "../config.js";
 import { ingestMetadata } from "../ingest.js";
 import { isSavedFeedUrl, webResponseToEntries } from "./map-web-media.js";
 import { egressGet, resolveEgressAddress, startEgressProxy } from "../../net/egress.js";
-import { launchChrome, waitForPort } from "./chrome.js";
+import { launchChrome, stopChrome, waitForPort } from "./chrome.js";
 import type { MetadataEntry } from "../../types/index.js";
 
 const PORT = parseInt(process.env.IG_PIGGYBACK_PORT ?? "9455", 10);
@@ -147,7 +147,7 @@ export async function harvest(): Promise<void> {
     console.log(`[piggyback] ingest +${added} new, ~${updated} refreshed, ${total} total; downloaded ${dl} mp4(s)`);
   } finally {
     if (client) await client.close().catch(() => {});
-    chrome.kill();
+    stopChrome(chrome);
     await proxy?.close();
   }
 }
