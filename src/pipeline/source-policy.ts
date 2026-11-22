@@ -64,6 +64,9 @@ export interface AcquireTally {
   ok: number;
   failed: string[];
   firstError: string | null;
+  /** Items whose source said it was unavailable (rate limit, unreachable). */
+  unavailable: number;
+  firstUnavailable: string | null;
 }
 
 /** This many failures with no success from the same source in one run read as the source being down. */
@@ -84,7 +87,7 @@ export function acquireHooksFor(
     if (!tallies) return undefined;
     const existing = tallies.get(source);
     if (existing) return existing;
-    const fresh: AcquireTally = { ok: 0, failed: [], firstError: null };
+    const fresh: AcquireTally = { ok: 0, failed: [], firstError: null, unavailable: 0, firstUnavailable: null };
     tallies.set(source, fresh);
     return fresh;
   };
@@ -92,7 +95,15 @@ export function acquireHooksFor(
     onFailure(item, err) {
       if (item.source === "instagram") return;
       if (err instanceof SourceUnavailableError) {
-        onOutage?.(item.source, err);
+        // With a tally the verdict waits for the end of the run (settleAcquire): one
+        // rate-limited item must not mark a source down while its other items succeed.
+        const tally = tallyOf(item.source);
+        if (tally) {
+          tally.unavailable += 1;
+          tally.firstUnavailable ??= err.message.split("\n")[0];
+        } else {
+          onOutage?.(item.source, err);
+        }
         return;
       }
       const tally = tallyOf(item.source);
@@ -128,14 +139,17 @@ export function settleAcquire(
 ): Array<{ source: SourceKind; error: string }> {
   const outages: Array<{ source: SourceKind; error: string }> = [];
   for (const [source, tally] of tallies) {
-    if (tally.ok > 0 || tally.failed.length < OUTAGE_MIN_FAILURES) continue;
+    // Anything delivered means the source is up; otherwise it is down if it said so itself
+    // (an unavailable item) or if several items failed.
+    if (tally.ok > 0) continue;
+    if (tally.unavailable === 0 && tally.failed.length < OUTAGE_MIN_FAILURES) continue;
     const next = { ...ledgerRef.current };
     for (const id of tally.failed) {
       if (id in before) next[id] = before[id];
       else delete next[id];
     }
     ledgerRef.current = next;
-    outages.push({ source, error: tally.firstError ?? "every acquisition failed" });
+    outages.push({ source, error: tally.firstUnavailable ?? tally.firstError ?? "every acquisition failed" });
   }
   return outages;
 }
