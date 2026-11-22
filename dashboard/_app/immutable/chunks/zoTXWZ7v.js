@@ -16,7 +16,7 @@ import {
   st as m,
 } from "./BZ84wCgC.js";
 import "./xihTtKlq.js";
-import { d as h, f as g } from "./DVE2vMl6.js";
+import { d as h, f as g } from "./CtcZUmSy.js";
 import { d as _, o as v } from "./Dt5KBvTb.js";
 var y = f(`<span class="verif-dot svelte-niia12" role="img"></span>`),
   b = f(`<span class="verif-pill-wrap svelte-niia12"><!></span>`);

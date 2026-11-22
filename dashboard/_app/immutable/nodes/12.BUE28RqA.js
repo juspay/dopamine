@@ -32,12 +32,12 @@ import {
 } from "../chunks/BZ84wCgC.js";
 import "../chunks/xihTtKlq.js";
 import { c as A, n as j } from "../chunks/CdnViQ5q.js";
-import { t as M } from "../chunks/Bx78KfBe.js";
-import { a as ee, c as te, l as N, o as P, s as ne, t as re, u as ie } from "../chunks/DVE2vMl6.js";
+import { t as M } from "../chunks/Rtih1jsT.js";
+import { a as ee, c as te, l as N, o as P, s as ne, t as re, u as ie } from "../chunks/CtcZUmSy.js";
 import { a as ae, d as F, f as I, i as L, p as oe, r as R, s as z, t as se } from "../chunks/Dt5KBvTb.js";
-import { n as ce, t as le } from "../chunks/CvFAdykd.js";
-import { t as ue } from "../chunks/CAp_BbWp.js";
-import { t as de } from "../chunks/mFje50wz.js";
+import { n as ce, t as le } from "../chunks/CI7rR3Vp.js";
+import { t as ue } from "../chunks/DdFFSzHw.js";
+import { t as de } from "../chunks/zoTXWZ7v.js";
 import { t as fe } from "../chunks/BbG86UsG.js";
 import { t as pe } from "../chunks/CyjB8bAN.js";
 var B = C({ ssr: () => !1 }),
@@ -93,13 +93,13 @@ var H = x(
     `<button class="toggle-btn svelte-17etibv"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg></button>`,
   ),
   he = x(`<p class="item-desc svelte-17etibv"> </p>`),
-  ge = x(`<div class="code-block svelte-17etibv"><span class="code-label svelte-17etibv">Install</span> <!></div>`),
-  _e = x(`<div class="code-block svelte-17etibv"><span class="code-label svelte-17etibv">Usage</span> <!></div>`),
-  W = x(`<div class="item-code svelte-17etibv"><!> <!></div>`),
-  ve = x(
+  W = x(`<div class="code-block svelte-17etibv"><span class="code-label svelte-17etibv">Install</span> <!></div>`),
+  ge = x(`<div class="code-block svelte-17etibv"><span class="code-label svelte-17etibv">Usage</span> <!></div>`),
+  G = x(`<div class="item-code svelte-17etibv"><!> <!></div>`),
+  _e = x(
     `<div class="actionable-item svelte-17etibv"><div class="item-header svelte-17etibv"><div class="item-left svelte-17etibv"><!> <span class="item-name svelte-17etibv"> </span></div> <div class="item-right svelte-17etibv"><span class="url-status svelte-17etibv"> </span> <!> <!></div></div> <!> <!></div>`,
   );
-function ye(t, n) {
+function ve(t, n) {
   h(n, !0);
   let s = _(!1),
     l = S(() => !!(n.item.installCommand || n.item.code)),
@@ -130,7 +130,7 @@ function ye(t, n) {
             ? `Dead`
             : n.item.urlStatus || `—`,
     );
-  var x = ve(),
+  var x = _e(),
     C = p(x),
     w = p(C),
     T = p(w);
@@ -195,10 +195,10 @@ function ye(t, n) {
           return o(s);
         },
         children: (e, t) => {
-          var i = W(),
+          var i = G(),
             a = p(i),
             o = (e) => {
-              var t = ge();
+              var t = W();
               L(m(p(t), 2), {
                 get text() {
                   return n.item.installCommand;
@@ -214,7 +214,7 @@ function ye(t, n) {
           });
           var s = m(a, 2),
             c = (e) => {
-              var t = _e();
+              var t = ge();
               L(m(p(t), 2), {
                 get text() {
                   return n.item.code;
@@ -249,12 +249,12 @@ function ye(t, n) {
     E();
 }
 s([`click`]);
-var be = x(`<span class="rail-dur svelte-1ap7pnz"> </span>`),
-  xe = x(
+var ye = x(`<span class="rail-dur svelte-1ap7pnz"> </span>`),
+  be = x(
     `<a class="rail-card svelte-1ap7pnz"><div class="rail-thumb svelte-1ap7pnz"><!> <!></div> <div class="rail-meta svelte-1ap7pnz"><p class="rail-title svelte-1ap7pnz"> </p> <span class="rail-creator svelte-1ap7pnz"> </span></div></a>`,
   ),
-  G = x(`<div class="rail svelte-1ap7pnz"></div>`);
-function Se(e, t) {
+  K = x(`<div class="rail svelte-1ap7pnz"></div>`);
+function xe(e, t) {
   h(t, !0);
   let s = S(() => t.ids.map((e) => j(e)).filter((e) => e !== void 0));
   var c = l(),
@@ -266,14 +266,14 @@ function Se(e, t) {
         dragToScroll: !0,
         hideScrollbar: !0,
         children: (e) => {
-          var t = G();
+          var t = K();
           n(
             t,
             21,
             () => o(s),
             O,
             (e, t) => {
-              var n = xe(),
+              var n = be(),
                 s = p(n),
                 c = p(s),
                 l = (e) => {
@@ -292,7 +292,7 @@ function Se(e, t) {
               });
               var d = m(c, 2),
                 f = (e) => {
-                  var n = be(),
+                  var n = ye(),
                     s = p(n, !0);
                   g(n), a((e) => i(s, e), [() => P(o(t).durationSec)]), r(e, n);
                 };
@@ -330,10 +330,14 @@ function Se(e, t) {
     r(e, c),
     E();
 }
-var Ce = x(
+var Se = x(
     `<a target="_blank" rel="noopener noreferrer" class="ig-link svelte-vkyiuk" aria-label="Open Instagram reel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"></circle></svg> Instagram</a>`,
   ),
-  we = x(`<a target="_blank" rel="noopener noreferrer" class="ig-link svelte-vkyiuk"> </a>`),
+  Ce = x(`<a target="_blank" rel="noopener noreferrer" class="ig-link svelte-vkyiuk"> </a>`),
+  we = x(
+    `<span class="meta-sep svelte-vkyiuk" aria-hidden="true">·</span> <span class="meta-item svelte-vkyiuk"> </span>`,
+    1,
+  ),
   Te = x(
     `<span class="meta-sep svelte-vkyiuk" aria-hidden="true">·</span> <span class="meta-item svelte-vkyiuk"> </span>`,
     1,
@@ -373,7 +377,7 @@ var Ce = x(
     `<div class="sidebar-card svelte-vkyiuk"><h3 class="sidebar-section-title svelte-vkyiuk">Related</h3> <!></div>`,
   ),
   Je = x(
-    `<div class="layout svelte-vkyiuk"><div class="main svelte-vkyiuk"><h1 class="title svelte-vkyiuk"> </h1> <div class="meta-row svelte-vkyiuk"><!> <!> <!> <!> <span class="meta-sep svelte-vkyiuk" aria-hidden="true">·</span> <span class="meta-item svelte-vkyiuk"> </span> <!> <!></div> <!> <!> <div class="media-wrap svelte-vkyiuk"><!></div> <!> <!>  <section class="content-section svelte-vkyiuk" id="takeaways" aria-labelledby="takeaways-heading"><h2 id="takeaways-heading" class="section-heading svelte-vkyiuk">Key Takeaways</h2> <!></section> <section class="content-section svelte-vkyiuk" id="transcript" aria-labelledby="transcript-heading"><h2 id="transcript-heading" class="section-heading svelte-vkyiuk">Transcript</h2> <!></section> <section class="content-section svelte-vkyiuk" id="onscreen" aria-labelledby="onscreen-heading"><h2 id="onscreen-heading" class="section-heading svelte-vkyiuk">On-screen</h2> <!></section> <section class="content-section svelte-vkyiuk" id="tools" aria-labelledby="tools-heading"><h2 id="tools-heading" class="section-heading svelte-vkyiuk">Tools &amp; Resources</h2> <!></section> <section class="content-section svelte-vkyiuk" id="links" aria-labelledby="links-heading"><h2 id="links-heading" class="section-heading svelte-vkyiuk">Links</h2> <!></section></div> <aside class="sidebar svelte-vkyiuk" aria-label="Video details and related"><div class="sidebar-card svelte-vkyiuk"><div class="verif-header svelte-vkyiuk"><!></div> <!> <dl class="stats-dl svelte-vkyiuk"><div class="stat-row svelte-vkyiuk"><dt class="svelte-vkyiuk">Implementability</dt> <dd class="svelte-vkyiuk"><div class="score-bar-wrap svelte-vkyiuk"><div class="progress-wrap svelte-vkyiuk"><!></div> <span class="score-val svelte-vkyiuk"> <span class="score-denom svelte-vkyiuk">/10</span></span></div></dd></div> <!></dl></div> <!></aside></div>`,
+    `<div class="layout svelte-vkyiuk"><div class="main svelte-vkyiuk"><h1 class="title svelte-vkyiuk"> </h1> <div class="meta-row svelte-vkyiuk"><!> <!> <!> <!> <!> <!> <!></div> <!> <!> <div class="media-wrap svelte-vkyiuk"><!></div> <!> <!>  <section class="content-section svelte-vkyiuk" id="takeaways" aria-labelledby="takeaways-heading"><h2 id="takeaways-heading" class="section-heading svelte-vkyiuk">Key Takeaways</h2> <!></section> <section class="content-section svelte-vkyiuk" id="transcript" aria-labelledby="transcript-heading"><h2 id="transcript-heading" class="section-heading svelte-vkyiuk">Transcript</h2> <!></section> <section class="content-section svelte-vkyiuk" id="onscreen" aria-labelledby="onscreen-heading"><h2 id="onscreen-heading" class="section-heading svelte-vkyiuk">On-screen</h2> <!></section> <section class="content-section svelte-vkyiuk" id="tools" aria-labelledby="tools-heading"><h2 id="tools-heading" class="section-heading svelte-vkyiuk">Tools &amp; Resources</h2> <!></section> <section class="content-section svelte-vkyiuk" id="links" aria-labelledby="links-heading"><h2 id="links-heading" class="section-heading svelte-vkyiuk">Links</h2> <!></section></div> <aside class="sidebar svelte-vkyiuk" aria-label="Video details and related"><div class="sidebar-card svelte-vkyiuk"><div class="verif-header svelte-vkyiuk"><!></div> <!> <dl class="stats-dl svelte-vkyiuk"><div class="stat-row svelte-vkyiuk"><dt class="svelte-vkyiuk">Implementability</dt> <dd class="svelte-vkyiuk"><div class="score-bar-wrap svelte-vkyiuk"><div class="progress-wrap svelte-vkyiuk"><!></div> <span class="score-val svelte-vkyiuk"> <span class="score-denom svelte-vkyiuk">/10</span></span></div></dd></div> <!></dl></div> <!></aside></div>`,
   ),
   Ye = x(`<div class="video-page svelte-vkyiuk"><!> <!></div>`);
 function Xe(s, c) {
@@ -452,7 +456,7 @@ function Xe(s, c) {
       });
       var y = m(_, 2),
         b = (e) => {
-          var t = Ce();
+          var t = Se();
           a((e) => v(t, `href`, e), [() => te(o(j).code)]), r(e, t);
         };
       u(y, (e) => {
@@ -460,7 +464,7 @@ function Xe(s, c) {
       });
       var x = m(y, 2),
         C = (e) => {
-          var t = we(),
+          var t = Ce(),
             n = p(t);
           g(t),
             a(
@@ -474,9 +478,16 @@ function Xe(s, c) {
       u(x, (e) => {
         o(j).sourceUrl && e(C);
       });
-      var w = m(x, 4),
-        T = p(w, !0);
-      g(w);
+      var w = m(x, 2),
+        T = (e) => {
+          var t = we(),
+            n = m(f(t), 2),
+            s = p(n, !0);
+          g(n), a((e) => i(s, e), [() => ee(o(j).date)]), r(e, t);
+        };
+      u(w, (e) => {
+        o(j).date && e(T);
+      });
       var E = m(w, 2),
         k = (e) => {
           var t = Te(),
@@ -579,7 +590,7 @@ function Xe(s, c) {
       });
       var U = m(H, 2),
         he = m(p(U), 2),
-        ge = (e) => {
+        W = (e) => {
           var t = Ne();
           n(
             t,
@@ -595,30 +606,30 @@ function Xe(s, c) {
             g(t),
             r(e, t);
         },
-        _e = (e) => {
+        ge = (e) => {
           r(e, Pe());
         };
       u(he, (e) => {
-        o(j).keyTakeaways.length > 0 ? e(ge) : e(_e, -1);
+        o(j).keyTakeaways.length > 0 ? e(W) : e(ge, -1);
       }),
         g(U);
-      var W = m(U, 2),
-        ve = m(p(W), 2),
-        be = (e) => {
+      var G = m(U, 2),
+        _e = m(p(G), 2),
+        ye = (e) => {
           var t = Fe(),
             n = p(t),
             s = p(n, !0);
           g(n), g(t), a(() => i(s, o(j).transcript)), r(e, t);
         },
-        xe = (e) => {
+        be = (e) => {
           r(e, Ie());
         };
-      u(ve, (e) => {
-        o(j).transcript ? e(be) : e(xe, -1);
+      u(_e, (e) => {
+        o(j).transcript ? e(ye) : e(be, -1);
       }),
-        g(W);
-      var G = m(W, 2),
-        Ye = m(p(G), 2),
+        g(G);
+      var K = m(G, 2),
+        Ye = m(p(K), 2),
         Xe = (e) => {
           var t = Le(),
             n = p(t, !0);
@@ -631,9 +642,9 @@ function Xe(s, c) {
       u(Ye, (e) => {
         o(Ze) ? e(Xe) : e(Qe, -1);
       }),
-        g(G);
-      var K = m(G, 2),
-        $e = m(p(K), 2),
+        g(K);
+      var q = m(K, 2),
+        $e = m(p(q), 2),
         et = (e) => {
           var t = ze();
           n(
@@ -642,7 +653,7 @@ function Xe(s, c) {
             () => o(j).actionableItems,
             O,
             (e, t) => {
-              ye(e, {
+              ve(e, {
                 get item() {
                   return o(t);
                 },
@@ -658,8 +669,8 @@ function Xe(s, c) {
       u($e, (e) => {
         o(j).actionableItems.length > 0 ? e(et) : e(tt, -1);
       }),
-        g(K);
-      var nt = m(K, 2),
+        g(q);
+      var nt = m(q, 2),
         rt = m(p(nt), 2),
         it = (e) => {
           var t = Ue();
@@ -701,9 +712,9 @@ function Xe(s, c) {
         g(nt),
         g(s);
       var ot = m(s, 2),
-        q = p(ot),
-        J = p(q);
-      de(p(J), {
+        J = p(ot),
+        Y = p(J);
+      de(p(Y), {
         get score() {
           return o(j).verification;
         },
@@ -711,8 +722,8 @@ function Xe(s, c) {
           return o(j).confidence;
         },
       }),
-        g(J);
-      var st = m(J, 2),
+        g(Y);
+      var st = m(Y, 2),
         ct = (e) => {
           var t = Ge(),
             n = p(t, !0);
@@ -721,10 +732,10 @@ function Xe(s, c) {
       u(st, (e) => {
         o(j).verificationSummary && e(ct);
       });
-      var Y = m(st, 2),
-        X = p(Y),
-        lt = m(p(X), 2),
-        Z = p(lt),
+      var lt = m(st, 2),
+        X = p(lt),
+        ut = m(p(X), 2),
+        Z = p(ut),
         Q = p(Z);
       ae(p(Q), {
         get value() {
@@ -734,24 +745,24 @@ function Xe(s, c) {
       }),
         g(Q);
       var $ = m(Q, 2),
-        ut = p($, !0);
-      D(), g($), g(Z), g(lt), g(X);
-      var dt = m(X, 2),
-        ft = (e) => {
+        dt = p($, !0);
+      D(), g($), g(Z), g(ut), g(X);
+      var ft = m(X, 2),
+        pt = (e) => {
           var t = Ke(),
             n = m(p(t), 2),
             s = p(n, !0);
           g(n), g(t), a(() => i(s, o(j).usefulness)), r(e, t);
         };
-      u(dt, (e) => {
-        o(j).usefulness && o(j).usefulness !== `unknown` && e(ft);
+      u(ft, (e) => {
+        o(j).usefulness && o(j).usefulness !== `unknown` && e(pt);
       }),
-        g(Y),
-        g(q);
-      var pt = m(q, 2),
-        mt = (e) => {
+        g(lt),
+        g(J);
+      var mt = m(J, 2),
+        ht = (e) => {
           var t = qe();
-          Se(m(p(t), 2), {
+          xe(m(p(t), 2), {
             get ids() {
               return o(j).relatedIds;
             },
@@ -759,20 +770,16 @@ function Xe(s, c) {
             g(t),
             r(e, t);
         };
-      u(pt, (e) => {
-        o(j).relatedIds.length > 0 && e(mt);
+      u(mt, (e) => {
+        o(j).relatedIds.length > 0 && e(ht);
       }),
         g(ot),
         g(t),
-        a(
-          (e) => {
-            i(l, o(j).title),
-              i(T, e),
-              v(Z, `aria-label`, `Implementability ${o(j).implementability ?? ``}/10`),
-              i(ut, o(j).implementability);
-          },
-          [() => ee(o(j).date)],
-        ),
+        a(() => {
+          i(l, o(j).title),
+            v(Z, `aria-label`, `Implementability ${o(j).implementability ?? ``}/10`),
+            i(dt, o(j).implementability);
+        }),
         r(e, t);
     };
   u(B, (e) => {

@@ -103,8 +103,10 @@
               Open original on {sourceLabel(detail.source)}
             </a>
           {/if}
-          <span class="meta-sep" aria-hidden="true">·</span>
-          <span class="meta-item">{fmtDate(detail.date)}</span>
+          {#if detail.date}
+            <span class="meta-sep" aria-hidden="true">·</span>
+            <span class="meta-item">{fmtDate(detail.date)}</span>
+          {/if}
           <!-- A text post, or a source that reports no likes, has nothing to show here. -->
           {#if detail.likes > 0}
             <span class="meta-sep" aria-hidden="true">·</span>

@@ -38,3 +38,20 @@ export async function resolveThumb(item: SourceItem | undefined, stem: string, e
   if (!item || item.source === "instagram") return webPath;
   return (await exists(path.join(CONFIG.THUMB_DIR, `${stem}.jpg`))) ? webPath : "";
 }
+
+/**
+ * The creator to show. Instagram's comes from the classification and catalog lookups; another
+ * source's is its channel or handle (without a leading @), which those lookups never have.
+ */
+export function creatorFor(item: SourceItem | undefined, found: string): string {
+  if (!item || item.source === "instagram") return found;
+  const author = (item.author ?? "").replace(/^@/, "").trim();
+  return author || found;
+}
+
+/** The date to show: the catalog's, else a non-Instagram item's publish date, else nothing. */
+export function dateFor(item: SourceItem | undefined, catalogDate: string): string {
+  if (catalogDate) return catalogDate;
+  if (!item || item.source === "instagram") return catalogDate;
+  return item.published_at ?? "";
+}
