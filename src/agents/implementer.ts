@@ -121,10 +121,49 @@ const DOWNLOAD_RUN_AS_CODE = [
  * a script downloaded and handed straight to a shell or interpreter is refused: the old check
  * only matched "curl|bash" without spaces, and 33 real installers ran before this was found.
  */
+// Installs that change the machine itself, outside any sandbox. Queries (brew --version, list, info) are fine.
+const SYSTEM_PACKAGE_MANAGER =
+  /(?:^|[;&|(]\s*|\s)(?:brew\s+(?:install|upgrade|reinstall|tap|link|uninstall|services)|port\s+install|apt(?:-get)?\s+install|snap\s+install|dnf\s+install|yum\s+install|pacman\s+-S)\b/i;
+
 export function blockedReason(command: string): string | null {
   if (DOWNLOAD_RUN_AS_CODE.some((re) => re.test(command))) return "it runs a downloaded script as code";
+  if (SYSTEM_PACKAGE_MANAGER.test(command)) return "it installs with a system package manager, outside the sandbox";
   const hit = DANGEROUS.find((d) => command.includes(d));
   return hit ? `it contains "${hit}"` : null;
+}
+
+/**
+ * The environment a setup command runs in. HOME alone does not contain installs: npm's global
+ * folder is Node's own prefix (/opt/homebrew), and PNPM_HOME, BUN_INSTALL and the like arrive
+ * as absolute paths into the real home. Every tool home is pointed inside the sandbox, so a
+ * global install lands there and goes when the sandbox is cleaned.
+ */
+export function sandboxEnv(cwd: string): NodeJS.ProcessEnv {
+  const at = (p: string) => path.join(cwd, p);
+  const globalNpm = at(".npm-global");
+  const pnpmHome = at(".pnpm-home");
+  const bun = at(".bun");
+  return {
+    ...process.env,
+    HOME: cwd,
+    NODE_ENV: "development",
+    NPM_CONFIG_PREFIX: globalNpm,
+    npm_config_prefix: globalNpm,
+    PNPM_HOME: pnpmHome,
+    BUN_INSTALL: bun,
+    CARGO_HOME: at(".cargo"),
+    GOPATH: at("go"),
+    XDG_CONFIG_HOME: at(".config"),
+    XDG_DATA_HOME: at(".local/share"),
+    XDG_CACHE_HOME: at(".cache"),
+    XDG_STATE_HOME: at(".local/state"),
+    PYTHONUSERBASE: at(".local"),
+    GEM_HOME: at(".gem"),
+    PIPX_HOME: at(".local/pipx"),
+    UV_TOOL_DIR: at(".local/share/uv/tools"),
+    // Tools installed into the sandbox are found first; the machine's own tools still resolve.
+    PATH: [path.join(globalNpm, "bin"), pnpmHome, path.join(bun, "bin"), process.env.PATH ?? ""].join(path.delimiter),
+  };
 }
 
 /**
@@ -152,11 +191,7 @@ export async function runCommand(command: string, cwd: string, timeoutMs = COMMA
     stdin: "ignore",
     reject: false,
     detached: true, // its own process group, so the whole tree can be killed
-    env: {
-      ...process.env,
-      HOME: cwd, // Isolate npm/pip to sandbox
-      NODE_ENV: "development",
-    },
+    env: sandboxEnv(cwd),
   });
 
   let timedOut = false;
