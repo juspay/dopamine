@@ -207,6 +207,38 @@ describe("acquire outage tally", () => {
     expect(ref.current.youtube_0.attempts).toBe(1);
   });
 
+  // 2026-11-22: 22 YouTube videos downloaded, 3 hit a rate limit on subtitles, and the run
+  // recorded YouTube as down. A source that delivered anything in this run is up.
+  it("does not call a source down when some items were unavailable but others worked", () => {
+    const { ref, tallies, hooks } = setup();
+    const before = ref.current;
+    for (let n = 0; n < 22; n++) hooks.onSuccess?.(item(`youtube_ok${n}`, "youtube"));
+    for (let n = 0; n < 3; n++)
+      hooks.onFailure?.(
+        item(`youtube_${n}`, "youtube"),
+        new SourceUnavailableError("HTTP Error 429: Too Many Requests"),
+      );
+    expect(settleAcquire(tallies, ref, before)).toEqual([]);
+    expect(ref.current).toEqual({});
+  });
+
+  it("calls a source down when an item was unavailable and nothing from it worked", () => {
+    const { ref, tallies, hooks } = setup();
+    const before = ref.current;
+    hooks.onFailure?.(item("youtube_0", "youtube"), new SourceUnavailableError("youtube.com is unreachable"));
+    hooks.onFailure?.(item("youtube_1", "youtube"), new Error("bad"));
+    expect(settleAcquire(tallies, ref, before)).toEqual([{ source: "youtube", error: "youtube.com is unreachable" }]);
+    expect(ref.current).toEqual({});
+  });
+
+  it("does not report an unavailable item as an outage the moment it happens", () => {
+    const ref = { current: {} as AttemptLedger };
+    const onOutage = vi.fn();
+    const hooks = acquireHooksFor(ref, () => NOW, onOutage, new Map());
+    hooks.onFailure?.(item("youtube_0", "youtube"), new SourceUnavailableError("rate limited"));
+    expect(onOutage).not.toHaveBeenCalled();
+  });
+
   it("restores a prior record for an id that failed again during an outage", () => {
     const { ref, tallies, hooks } = setup();
     ref.current = recordFailure({}, "youtube_0", new Error("old"), NOW);

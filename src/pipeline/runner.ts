@@ -208,14 +208,10 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     const ledgerRef = { current: await loadLedger() };
     const ledgerBefore = ledgerRef.current;
     const tallies = new Map<SourceKind, AcquireTally>();
-    const hooks = acquireHooksFor(
-      ledgerRef,
-      () => new Date(),
-      (source, err) => noteOutage(source, err.message.split("\n")[0]),
-      tallies,
-    );
+    const hooks = acquireHooksFor(ledgerRef, () => new Date(), undefined, tallies);
     laneItems = await acquireAll(items, registry, 4, hooks);
-    // Several failures and no success from one source means it is down: don't blame its items.
+    // A source that delivered nothing and either said it was unavailable or failed several
+    // times is down: don't blame its items. One that delivered anything is up.
     for (const outage of settleAcquire(tallies, ledgerRef, ledgerBefore)) {
       console.error(
         `  [sources] ${outage.source}: every acquisition failed (${outage.error}); treating the source as down.`,
