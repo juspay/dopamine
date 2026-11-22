@@ -89,36 +89,56 @@ function killProcessTree(pid: number): void {
   }
 }
 
+const DANGEROUS = [
+  "rm -rf /",
+  "rm -rf /*",
+  "sudo",
+  "mkfs",
+  "dd if=",
+  "> /dev/",
+  "chmod -R 777",
+  "eval(",
+  "exec(",
+  "/__",
+  "../",
+  "~/",
+];
+
+const DOWNLOADER = String.raw`(?:curl|wget|fetch|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b`;
+const RUNNER = String.raw`(?:sudo\s+)?(?:env(?:\s+\w+=\S*)*\s+)?(?:(?:ba|z|da|k|fi|c|tc)?sh|python[0-9.]*|node|perl|ruby|php|iex|Invoke-Expression)\b`;
+const DOWNLOAD_RUN_AS_CODE = [
+  // curl … | bash, wget … | sudo sh, iwr … | iex
+  new RegExp(String.raw`\b${DOWNLOADER}[^|;&\n]*\|\s*${RUNNER}`, "i"),
+  // sh -c "$(curl …)", bash <(curl …), source <(curl …), . <(wget …)
+  new RegExp(
+    String.raw`(?:\b(?:(?:ba|z|da|k)?sh|python[0-9.]*|node)\s+(?:-\w+\s+)*|\b(?:source|eval)\s+|(?:^|[;&|]\s*)\.\s+)["']?(?:\$\(|<\(|\`)\s*${DOWNLOADER}`,
+    "i",
+  ),
+];
+
+/**
+ * Why a setup command must not run, or null. Commands come from videos and run as the user, so
+ * a script downloaded and handed straight to a shell or interpreter is refused: the old check
+ * only matched "curl|bash" without spaces, and 33 real installers ran before this was found.
+ */
+export function blockedReason(command: string): string | null {
+  if (DOWNLOAD_RUN_AS_CODE.some((re) => re.test(command))) return "it runs a downloaded script as code";
+  const hit = DANGEROUS.find((d) => command.includes(d));
+  return hit ? `it contains "${hit}"` : null;
+}
+
 /**
  * Run a command in a sandbox directory with timeout.
  * On timeout, kills the process tree to prevent zombie processes.
  */
 export async function runCommand(command: string, cwd: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<CommandResult> {
-  // Security: skip dangerous commands
-  const dangerous = [
-    "rm -rf /",
-    "rm -rf /*",
-    "sudo",
-    "mkfs",
-    "dd if=",
-    "> /dev/",
-    "chmod -R 777",
-    "curl|sh",
-    "curl|bash",
-    "wget|sh",
-    "wget|bash",
-    "eval(",
-    "exec(",
-    "/__",
-    "../",
-    "~/",
-  ];
-  if (dangerous.some((d) => command.includes(d))) {
+  const blocked = blockedReason(command);
+  if (blocked) {
     return {
       command,
       exit_code: 1,
       stdout: "",
-      stderr: "Command blocked for safety",
+      stderr: `Command blocked for safety: ${blocked}`,
       timed_out: false,
     };
   }
