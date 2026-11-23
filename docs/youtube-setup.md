@@ -82,3 +82,8 @@ Then set `SOURCES=instagram,youtube`. Each run takes at most `SOURCE_MAX_NEW_PER
   it is ingested, 25 per run.
 - A premiere or live stream that has not aired, and a video that was deleted or made
   private, count as "nothing to analyse": rechecked weekly, then set aside.
+
+## Music
+
+Liked music is left out: a video in YouTube's Music category, or from an auto-generated
+"Artist - Topic" channel, is not collected. Set `YOUTUBE_INCLUDE_MUSIC=1` to keep it.

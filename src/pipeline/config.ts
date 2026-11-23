@@ -82,6 +82,8 @@ export const CONFIG = {
 
   // Download the mp4 only for YouTube videos at/under this duration (seconds).
   YT_DOWNLOAD_MAX_SECONDS: Number.parseInt(process.env.YT_DOWNLOAD_MAX_SECONDS ?? "300", 10),
+  /** Liked music is left out of YouTube collection unless this is set. */
+  YOUTUBE_INCLUDE_MUSIC: /^(1|true|yes)$/i.test(process.env.YOUTUBE_INCLUDE_MUSIC ?? ""),
 
   STATE: {
     METADATA: path.resolve("videos", "metadata.json"),
