@@ -9,7 +9,7 @@ import { buildOAuthClient } from "./auth.js";
 import { acquireYoutube } from "./download.js";
 import type { ExecRunner } from "./download.js";
 import { type FeedSource, type PlaylistDeps, collectFeeds, makePlaylistFeed, makeWatchLaterFeed } from "./feeds.js";
-import { type YtVideoRaw, mapYtVideo } from "./map.js";
+import { type YtVideoRaw, isMusic, mapYtVideo } from "./map.js";
 import { ytDlpFailureMessage } from "./ytdlp.js";
 
 export type YtListPage = { items: YtVideoRaw[]; nextPageToken: string | null };
@@ -54,6 +54,7 @@ function toRaw(v: ApiVideo): YtVideoRaw {
     publishedAt: v.snippet?.publishedAt ?? null,
     thumbnailUrl: v.snippet?.thumbnails?.maxres?.url ?? v.snippet?.thumbnails?.high?.url ?? null,
     description: v.snippet?.description ?? null,
+    categoryId: v.snippet?.categoryId ?? null,
   };
 }
 
@@ -175,12 +176,19 @@ function defaultFeeds(): FeedSource[] {
  * pipeline's decision (knowledge base, retry ledger, per-run cap), so a video whose download
  * failed is offered again, and previewing this collector cannot hide anything from a real run.
  */
-export function makeYoutubeCollector(deps: { feeds?: FeedSource[] } = {}): SourceCollector {
+export function makeYoutubeCollector(deps: { feeds?: FeedSource[]; includeMusic?: boolean } = {}): SourceCollector {
+  const includeMusic = deps.includeMusic ?? CONFIG.YOUTUBE_INCLUDE_MUSIC;
   return {
     source: "youtube",
 
     async collect(): Promise<SourceItem[]> {
-      const videos = await collectFeeds(deps.feeds ?? defaultFeeds());
+      const listed = await collectFeeds(deps.feeds ?? defaultFeeds());
+      // Liked music would go through the whole knowledge pipeline; it is left out unless asked for.
+      const videos = includeMusic ? listed : listed.filter((v) => !isMusic(v));
+      if (videos.length < listed.length)
+        console.log(
+          `[youtube] left out ${listed.length - videos.length} music video(s) (YOUTUBE_INCLUDE_MUSIC=1 keeps them)`,
+        );
       return videos.map((v) => mapYtVideo(v, CONFIG.YT_DOWNLOAD_MAX_SECONDS));
     },
 

@@ -7,6 +7,7 @@ import {
   collectYoutubeItems,
   makeYoutubeCollector,
 } from "../sources/youtube/collector.js";
+import { isMusic } from "../sources/youtube/map.js";
 
 const raw = (id: string, dur: number) => ({
   id,
@@ -55,5 +56,43 @@ describe("makeYoutubeCollector().collect", () => {
     await makeYoutubeCollector(listOf("a")).collect();
     expect(save).not.toHaveBeenCalled();
     expect(atomic).not.toHaveBeenCalled();
+  });
+});
+
+// 2026-11-22: the first YouTube run ingested liked music ("AFROJACK - Topic", "Coke Studio
+// Pakistan") into the knowledge pipeline. Music is now left out unless asked for.
+describe("isMusic", () => {
+  it("is true for YouTube's Music category and for auto-generated Topic channels", () => {
+    expect(isMusic({ ...raw("a", 200), categoryId: "10" })).toBe(true);
+    expect(isMusic({ ...raw("a", 200), channelTitle: "AFROJACK - Topic" })).toBe(true);
+  });
+  it("is false for anything else, including a video with no category", () => {
+    expect(isMusic({ ...raw("a", 200), categoryId: "28" })).toBe(false);
+    expect(isMusic({ ...raw("a", 200), channelTitle: "Music Theory Explained" })).toBe(false);
+    expect(isMusic(raw("a", 200))).toBe(false);
+  });
+});
+
+describe("makeYoutubeCollector().collect and music", () => {
+  const feeds = {
+    feeds: [
+      {
+        name: "liked",
+        list: async () => [
+          { ...raw("talk", 600), categoryId: "28" },
+          { ...raw("song", 200), categoryId: "10" },
+          { ...raw("topic", 200), channelTitle: "Someone - Topic" },
+        ],
+      },
+    ],
+  };
+
+  it("leaves music out by default", async () => {
+    expect((await makeYoutubeCollector(feeds).collect()).map((i) => i.id)).toEqual(["youtube_talk"]);
+  });
+
+  it("keeps music when asked to", async () => {
+    const items = await makeYoutubeCollector({ ...feeds, includeMusic: true }).collect();
+    expect(items.map((i) => i.id)).toEqual(["youtube_talk", "youtube_song", "youtube_topic"]);
   });
 });

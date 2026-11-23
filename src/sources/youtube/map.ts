@@ -10,6 +10,13 @@ export interface YtVideoRaw {
   publishedAt: string | null;
   thumbnailUrl: string | null;
   description: string | null;
+  /** YouTube's category ("10" is Music); null when the listing did not carry one. */
+  categoryId?: string | null;
+}
+
+/** Music: YouTube's Music category, or an auto-generated "Artist - Topic" channel. */
+export function isMusic(raw: YtVideoRaw): boolean {
+  return raw.categoryId === "10" || / - Topic$/.test(raw.channelTitle ?? "");
 }
 
 export function deriveContentType(durationSeconds: number, thresholdSeconds: number): ContentType {
