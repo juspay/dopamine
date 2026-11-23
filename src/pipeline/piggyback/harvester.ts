@@ -73,7 +73,9 @@ export async function harvest(): Promise<void> {
   // With DOPAMINE_EGRESS_INTERFACE set, the browser and the downloads leave through that
   // interface, so a VPN that blocks Instagram on the default route does not stop the harvest.
   const egressAddress = resolveEgressAddress(CONFIG.EGRESS_INTERFACE);
-  const proxy = egressAddress ? await startEgressProxy({ localAddress: egressAddress }) : undefined;
+  const proxy = egressAddress
+    ? await startEgressProxy({ localAddress: egressAddress, routeAllTraffic: true })
+    : undefined;
   if (proxy) console.log(`[piggyback] sending traffic out through ${CONFIG.EGRESS_INTERFACE}`);
   const chrome = launchChrome(PORT, PROFILE, { proxyUrl: proxy?.url });
   let client: CDP.Client | undefined;

@@ -3,7 +3,14 @@ import http from "node:http";
 import net from "node:net";
 import type os from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { type EgressProxy, egressGet, resolveEgressAddress, startEgressProxy } from "../net/egress.js";
+import {
+  type EgressProxy,
+  egressGet,
+  resolveEgressAddress,
+  routeAllTrafficThrough,
+  startEgressProxy,
+  startProxyForAllTraffic,
+} from "../net/egress.js";
 import { chromeArgs } from "../pipeline/piggyback/chrome.js";
 
 type Interfaces = ReturnType<typeof os.networkInterfaces>;
@@ -175,5 +182,31 @@ describe("egressGet", () => {
   it("works without an egress address", async () => {
     const base = await start();
     expect((await egressGet(`${base}/file`, null))?.toString()).toBe("bytes of /file");
+  });
+});
+
+describe("routeAllTrafficThrough", () => {
+  it("points HTTPS at the proxy for this process and its children, and keeps local hosts direct", () => {
+    const env: NodeJS.ProcessEnv = { NO_PROXY: "corp.example, localhost" };
+    const applied: NodeJS.ProcessEnv[] = [];
+    routeAllTrafficThrough("http://127.0.0.1:9999", env, (e) => applied.push(e));
+    expect(env.HTTPS_PROXY).toBe("http://127.0.0.1:9999");
+    expect(env.https_proxy).toBe("http://127.0.0.1:9999");
+    expect(env.NODE_USE_ENV_PROXY).toBe("1");
+    expect(env.NO_PROXY).toBe("corp.example,localhost,127.0.0.1,::1");
+    expect(env.no_proxy).toBe(env.NO_PROXY);
+    expect(env.HTTP_PROXY).toBeUndefined();
+    expect(applied).toEqual([env]);
+  });
+});
+
+describe("startProxyForAllTraffic", () => {
+  it("does nothing when no interface is set", async () => {
+    expect(await startProxyForAllTraffic(undefined)).toBeNull();
+  });
+  it("goes on over the default route when the interface has no address", async () => {
+    const before = process.env.HTTPS_PROXY;
+    expect(await startProxyForAllTraffic("no-such-interface0")).toBeNull();
+    expect(process.env.HTTPS_PROXY).toBe(before);
   });
 });

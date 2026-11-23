@@ -108,9 +108,10 @@ curl -s -m 10 --interface en0 -o /dev/null -w "%{http_code}\n" https://www.insta
 ```
 
 If the first fails and the second works, set `DOPAMINE_EGRESS_INTERFACE=en0` in `.env`
-(use the interface your own network is on). The harvester then starts a proxy on loopback
-for the length of the run and sends its Chrome and its video downloads out through that
-interface. It needs no admin rights. Whether going around the VPN is acceptable on your
+(use the interface your own network is on). The pipeline, the harvester and the X harvest
+then each start a proxy on loopback for the length of the run and send all their HTTPS
+traffic out through that interface: Chrome, video downloads, yt-dlp, the Instagram scripts
+and the AI provider calls. Local addresses (`localhost`, `127.0.0.1`) stay direct. It needs no admin rights. Whether going around the VPN is acceptable on your
 machine is your decision.
 
 For a login you do by hand while the VPN is on, keep the proxy running in one terminal

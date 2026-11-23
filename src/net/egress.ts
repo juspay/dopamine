@@ -2,8 +2,9 @@
 //
 // Sends Dopamine's own traffic out through a chosen network interface instead of the
 // default route. A VPN that takes over the default route can make Instagram, YouTube and X
-// unreachable; a socket bound to another interface's address goes out that interface on
-// macOS. Off unless DOPAMINE_EGRESS_INTERFACE is set.
+// unreachable; a socket Node binds to another interface's address goes out that interface on
+// macOS. yt-dlp's own --source-address does not reliably get past the VPN, so each run routes
+// all HTTPS through a loopback proxy built on such sockets. Off unless DOPAMINE_EGRESS_INTERFACE is set.
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
@@ -42,11 +43,16 @@ export async function startEgressProxy(o: {
   localAddress: string;
   port?: number;
   connect?: Connect;
+  /** Never keep the process alive: for a proxy that lives as long as the run that uses it. */
+  background?: boolean;
+  /** Also send this process's and its children's HTTPS traffic through it (routeAllTrafficThrough). */
+  routeAllTraffic?: boolean;
 }): Promise<EgressProxy> {
   const connect: Connect = o.connect ?? ((opts) => net.connect(opts));
   const sockets = new Set<net.Socket>();
   const track = (s: net.Socket): void => {
     sockets.add(s);
+    if (o.background) s.unref();
     s.on("close", () => sockets.delete(s));
   };
 
@@ -86,16 +92,64 @@ export async function startEgressProxy(o: {
     server.once("error", reject);
     server.listen(o.port ?? 0, "127.0.0.1", () => resolve());
   });
+  if (o.background) server.unref();
   const port = (server.address() as net.AddressInfo).port;
+  const url = `http://127.0.0.1:${port}`;
+  if (o.routeAllTraffic) routeAllTrafficThrough(url);
   return {
     port,
-    url: `http://127.0.0.1:${port}`,
+    url,
     close: () =>
       new Promise<void>((resolve) => {
         for (const s of sockets) s.destroy();
         server.close(() => resolve());
       }),
   };
+}
+
+/** This machine's own servers (the browser's control port, local tools) never go through the proxy. */
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1"];
+
+/**
+ * Sends every HTTPS request this process and its child processes make through `proxyUrl`:
+ * Node's own fetch and https (the AI SDKs included), child Node processes, and any child that
+ * reads HTTPS_PROXY (yt-dlp, the Instagram scripts). Plain HTTP is left on the default route,
+ * because the proxy only tunnels HTTPS.
+ */
+export function routeAllTrafficThrough(
+  proxyUrl: string,
+  env: NodeJS.ProcessEnv = process.env,
+  apply: (e: NodeJS.ProcessEnv) => void = (e) => void http.setGlobalProxyFromEnv(e),
+): void {
+  const existing = (env.NO_PROXY ?? env.no_proxy ?? "").split(",").map((h) => h.trim());
+  const noProxy = [...new Set([...existing, ...LOCAL_HOSTS].filter(Boolean))].join(",");
+  Object.assign(env, {
+    HTTPS_PROXY: proxyUrl,
+    https_proxy: proxyUrl,
+    NO_PROXY: noProxy,
+    no_proxy: noProxy,
+    NODE_USE_ENV_PROXY: "1",
+  });
+  apply(env);
+}
+
+/**
+ * When DOPAMINE_EGRESS_INTERFACE names an interface, starts a background proxy that leaves
+ * through it and routes all traffic through that proxy. Returns null when no interface is set.
+ * An interface that is down is reported and the run goes on over the default route.
+ */
+export async function startProxyForAllTraffic(iface: string | undefined): Promise<EgressProxy | null> {
+  let localAddress: string | null;
+  try {
+    localAddress = resolveEgressAddress(iface);
+  } catch (err) {
+    console.error(`[egress] ${String(err instanceof Error ? err.message : err)} Using the default route.`);
+    return null;
+  }
+  if (!localAddress) return null;
+  const proxy = await startEgressProxy({ localAddress, background: true, routeAllTraffic: true });
+  console.log(`[egress] all HTTPS traffic leaves through ${iface}`);
+  return proxy;
 }
 
 const MAX_REDIRECTS = 3;

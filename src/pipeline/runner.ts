@@ -38,6 +38,7 @@ import {
   settleAcquire,
 } from "../pipeline/source-policy.js";
 import { loadState } from "../pipeline/state.js";
+import { startProxyForAllTraffic } from "../net/egress.js";
 import { runSearchIndexer } from "../search/indexer.js";
 import { loadLedger, saveLedger } from "../sources/attempts.js";
 import { type SourceOutcome, alertFailing, loadHealth, saveHealth } from "../sources/health.js";
@@ -517,8 +518,12 @@ Environment variables:
     }
   }
 
-  runFullPipeline(opts).catch((err) => {
-    console.error("Pipeline failed:", err);
-    process.exit(1);
-  });
+  // With DOPAMINE_EGRESS_INTERFACE set, every HTTPS request of the run leaves through that
+  // interface, so a VPN on the default route cannot cut off Instagram, YouTube or X.
+  startProxyForAllTraffic(CONFIG.EGRESS_INTERFACE)
+    .then(() => runFullPipeline(opts))
+    .catch((err) => {
+      console.error("Pipeline failed:", err);
+      process.exit(1);
+    });
 }
