@@ -1,9 +1,16 @@
 // src/__tests__/dashboard-source-fields.test.ts
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { creatorFor, dateFor, resolveThumb, resolveVideoFile, sourceUrlFor } from "../dashboard/source-fields.js";
+import {
+  creatorFor,
+  dateFor,
+  metadataByVideoFile,
+  resolveThumb,
+  resolveVideoFile,
+  sourceUrlFor,
+} from "../dashboard/source-fields.js";
 import { CONFIG } from "../pipeline/config.js";
-import type { SourceItem } from "../types/index.js";
+import type { MetadataEntry, SourceItem } from "../types/index.js";
 
 const base: SourceItem = {
   id: "x",
@@ -115,5 +122,41 @@ describe("dateFor", () => {
     expect(dateFor({ ...youtube, published_at: "2026-11-01T10:00:00Z" }, "2026-10-01")).toBe("2026-10-01");
     expect(dateFor({ ...youtube, published_at: null }, "")).toBe("");
     expect(dateFor(undefined, "2026-10-01")).toBe("2026-10-01");
+  });
+});
+
+describe("metadataByVideoFile", () => {
+  const post = (username: string, pk: string, urls: string[]): MetadataEntry => ({
+    pk,
+    code: pk,
+    media_type: 8,
+    taken_at: null,
+    caption_text: null,
+    username,
+    full_name: `${username} name`,
+    location: null,
+    like_count: 0,
+    comment_count: 0,
+    video_url: null,
+    thumbnail_url: null,
+    resources: urls.map((u, i) => ({ pk: `${pk}${i}`, media_type: 2, video_url: u, thumbnail_url: null })),
+  });
+  const cdn = (name: string): string => `https://scontent.cdninstagram.com/o1/v/t2/f2/${name}?_nc_ht=x&oh=y`;
+
+  it("finds a multi-video post by the file name of any of its videos", () => {
+    const map = metadataByVideoFile([post("technologyhive", "1", [cdn("AQNa.mp4"), cdn("AQNb.mp4")])]);
+    expect(map.get("AQNa.mp4")?.username).toBe("technologyhive");
+    expect(map.get("AQNb.mp4")?.username).toBe("technologyhive");
+    expect(map.get("other.mp4")).toBeUndefined();
+  });
+  it("leaves out a file name two accounts share, and skips missing or bad links", () => {
+    const map = metadataByVideoFile([
+      post("a", "1", [cdn("same.mp4"), "not a url"]),
+      post("b", "2", [cdn("same.mp4")]),
+      post("c", "3", [cdn("same.mp4")]),
+      { ...post("d", "4", []), resources: undefined as unknown as MetadataEntry["resources"] },
+    ]);
+    expect(map.has("same.mp4")).toBe(false);
+    expect(map.size).toBe(0);
   });
 });
