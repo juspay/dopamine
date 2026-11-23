@@ -4,6 +4,7 @@
 // Watch Later through yt-dlp with a cookie file (the Data API does not list it).
 import type { ExecRunner } from "./download.js";
 import type { YtVideoRaw } from "./map.js";
+import { jsRuntimeArgs } from "./ytdlp.js";
 
 export interface FeedSource {
   name: string;
@@ -47,6 +48,7 @@ export async function collectFeeds(feeds: FeedSource[], log: Log = console.error
 
 export function buildWatchLaterArgs(cookiesFile: string, sourceAddress?: string): string[] {
   return [
+    ...jsRuntimeArgs(),
     "--cookies",
     cookiesFile,
     ...(sourceAddress ? ["--source-address", sourceAddress] : []),

@@ -5,8 +5,19 @@ export interface YtDlpOptions {
   cookiesFile?: string;
 }
 
+/**
+ * YouTube answers requests whose JavaScript challenge is unsolved with throttling and HTTP 429.
+ * yt-dlp solves it with a JavaScript runtime but looks only for Deno by default, so every call
+ * names Node: the binary this pipeline already runs on. Needs the yt-dlp-ejs add-on
+ * (pip install -U "yt-dlp[default]").
+ */
+export function jsRuntimeArgs(): string[] {
+  return ["--js-runtimes", `node:${process.execPath}`];
+}
+
 function optionArgs(o: YtDlpOptions): string[] {
   return [
+    ...jsRuntimeArgs(),
     ...(o.sourceAddress ? ["--source-address", o.sourceAddress] : []),
     ...(o.cookiesFile ? ["--cookies", o.cookiesFile] : []),
   ];

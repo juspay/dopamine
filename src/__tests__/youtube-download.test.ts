@@ -149,6 +149,46 @@ describe("acquireYoutube — resumable and forgiving", () => {
     expect(all[1][all[1].indexOf("--cookies") + 1]).toBe("/secret/c.txt");
   });
 
+  // 2026-11-23: three videos failed every run with this error. YouTube serves their subtitles
+  // only to a signed-in request; with the cookie file they download at once.
+  it("retries once with the cookie file when YouTube refuses the subtitles with HTTP 429", async () => {
+    let n = 0;
+    const run: ExecRunner = vi.fn(async () => {
+      n++;
+      if (n === 1)
+        throw new Error("ERROR: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests");
+      return { stdout: "", stderr: "" };
+    });
+    let listed = 0;
+    const r = await acquireYoutube(item(), {
+      run,
+      readVtt: async () => VTT,
+      listDir: async () => (listed++ === 0 ? [] : ["vid001.en.vtt"]),
+      outDir: "/tmp/yt",
+      cookiesFile: "/secret/c.txt",
+    });
+    expect(r?.transcriptText).toBe("Hi");
+    const all = calls(run);
+    expect(all).toHaveLength(2);
+    expect(all[1][all[1].indexOf("--cookies") + 1]).toBe("/secret/c.txt");
+  });
+
+  it("still reports YouTube as unreachable when the signed-in retry is refused too", async () => {
+    const run: ExecRunner = vi.fn(async () => {
+      throw new Error("ERROR: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests");
+    });
+    await expect(
+      acquireYoutube(item(), {
+        run,
+        readVtt: async () => VTT,
+        listDir: async () => [],
+        outDir: "/tmp/yt",
+        cookiesFile: "/secret/c.txt",
+      }),
+    ).rejects.toThrow(/unreachable/i);
+    expect(calls(run)).toHaveLength(2);
+  });
+
   it("saves the thumbnail under the item id once, and a failed fetch does not fail the item", async () => {
     const writeFile = vi.fn(async () => {});
     const base = {

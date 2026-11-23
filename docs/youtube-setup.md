@@ -74,6 +74,9 @@ Then set `SOURCES=instagram,youtube`. Each run takes at most `SOURCE_MAX_NEW_PER
 - **`youtube.com, default route: reset`** in the doctor: a VPN or firewall blocks YouTube.
   Set `DOPAMINE_EGRESS_INTERFACE=en0` (see `docs/piggyback-setup.md`).
 - **`HTTP Error 403` on a video download**: `yt-dlp` is out of date. `pip install -U yt-dlp`.
+- **`HTTP Error 429` on subtitles, or "n challenge solving failed"**: yt-dlp cannot solve YouTube's
+  JavaScript challenge, and YouTube throttles the request. Dopamine tells yt-dlp to use Node, but
+  yt-dlp also needs its solver add-on: `pip install -U "yt-dlp[default]"` (installs `yt-dlp-ejs`).
 - A video whose download fails because the network dropped is tried again on a later run.
   One whose download fails for another reason (no mp4 format) is analysed from its
   captions alone. A long video with no captions yet is rechecked after
