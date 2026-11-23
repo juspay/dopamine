@@ -35,7 +35,14 @@ import { catBg, catColor } from "./colors.js";
 import { type QualityInput, type Tier, qualityScore, tierOf } from "./quality.js";
 import { computeRelated } from "./related.js";
 import type { RelInput } from "./related.js";
-import { creatorFor, dateFor, resolveThumb, resolveVideoFile, sourceUrlFor } from "./source-fields.js";
+import {
+  creatorFor,
+  dateFor,
+  metadataByVideoFile,
+  resolveThumb,
+  resolveVideoFile,
+  sourceUrlFor,
+} from "./source-fields.js";
 import { deriveTitle } from "./title.js";
 
 /** Dashboard author: prefer catalog author, then instagram_user, then the username fallback. */
@@ -443,6 +450,7 @@ export async function buildDashboardData(): Promise<void> {
   // O(1) lookup maps
   const catalogByFilename = new Map(catalog.map((c) => [c.filename, c]));
   const metadataByPk = new Map(metadata.map((m) => [m.pk, m]));
+  const metadataByFile = metadataByVideoFile(metadata);
 
   // Union of all known filenames
   const allFilenames = new Set<string>([
@@ -484,10 +492,12 @@ export async function buildDashboardData(): Promise<void> {
 
     const code = classEntry?.code ?? null;
     const item = itemIndex.get(filename);
-    const username = creatorFor(item, classEntry?.username ?? kbEntry?.username ?? catEntry?.instagram_user ?? "");
-
-    // Enrich with metadata full_name
-    const metaEntry = pk ? metadataByPk.get(pk) : undefined;
+    // Enrich with metadata; older multi-video downloads are found by their video's file name
+    const metaEntry = pk ? metadataByPk.get(pk) : metadataByFile.get(filename);
+    const username = creatorFor(
+      item,
+      classEntry?.username || kbEntry?.username || catEntry?.instagram_user || metaEntry?.username || "",
+    );
     const fullName = metaEntry?.full_name ?? "";
 
     const title = deriveTitle(
