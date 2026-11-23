@@ -13,6 +13,7 @@ import type { AcquiredAssets, SourceItem } from "../../types/index.js";
 import { type SourceCollector, SourceUnavailableError } from "../types.js";
 import { xPostToSourceItem } from "./map.js";
 import type { XPost } from "./parse.js";
+import { jsRuntimeArgs } from "../youtube/ytdlp.js";
 
 function isPost(v: unknown): v is XPost {
   const p = v as Partial<XPost> | null;
@@ -134,7 +135,15 @@ export function makeXCollector(): SourceCollector {
         },
         writeFile: (p, bytes) => fs.writeFile(p, bytes),
         runYtDlp: async (postUrl, dest) => {
-          const args = ["-f", "mp4", ...(egress ? ["--source-address", egress] : []), "-o", dest, postUrl];
+          const args = [
+            "-f",
+            "mp4",
+            ...jsRuntimeArgs(),
+            ...(egress ? ["--source-address", egress] : []),
+            "-o",
+            dest,
+            postUrl,
+          ];
           const r = await execa("yt-dlp", args, { reject: false, timeout: YT_DLP_TIMEOUT_MS });
           if (r.failed) throw new Error(`yt-dlp exited with code ${r.exitCode ?? "unknown"}`);
         },

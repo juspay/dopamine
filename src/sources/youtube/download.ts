@@ -15,7 +15,7 @@ export interface AcquireDeps {
   listDir: (dir: string) => Promise<string[]>;
   outDir: string;
   sourceAddress?: string;
-  /** Used only to retry an age-restricted video once. */
+  /** Used only to retry once a video that needs a signed-in request (age-restricted, or refused subtitles). */
   cookiesFile?: string;
   /** Where the dashboard looks for thumbnails. Without it (or the three below) none is saved. */
   thumbDir?: string;
@@ -25,15 +25,21 @@ export interface AcquireDeps {
 }
 
 const AGE_RESTRICTED = /confirm your age|age-restricted/i;
+// YouTube serves some videos' subtitles only to a signed-in request and answers others with 429.
+const SUBTITLES_REFUSED = /Unable to download video subtitles.*HTTP Error 429/i;
+const NEEDS_SIGN_IN = (message: string): boolean => AGE_RESTRICTED.test(message) || SUBTITLES_REFUSED.test(message);
 const firstLine = (err: unknown): string => String(err instanceof Error ? err.message : err).split("\n")[0];
 
-/** One yt-dlp run; an age-restricted video is retried once with the cookie file when there is one. */
+/**
+ * One yt-dlp run. An age-restricted video, or one whose subtitles are refused, is retried once
+ * with the cookie file when there is one.
+ */
 async function runYtDlp(deps: AcquireDeps, build: (o: YtDlpOptions) => string[]): Promise<void> {
   const base: YtDlpOptions = { sourceAddress: deps.sourceAddress };
   try {
     await deps.run("yt-dlp", build(base));
   } catch (err) {
-    if (!deps.cookiesFile || !AGE_RESTRICTED.test(String(err))) throw err;
+    if (!deps.cookiesFile || !NEEDS_SIGN_IN(String(err))) throw err;
     await deps.run("yt-dlp", build({ ...base, cookiesFile: deps.cookiesFile }));
   }
 }
