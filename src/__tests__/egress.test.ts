@@ -2,9 +2,10 @@
 import http from "node:http";
 import net from "node:net";
 import type os from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type EgressProxy,
+  egressAddressOrDefault,
   egressGet,
   resolveEgressAddress,
   routeAllTrafficThrough,
@@ -208,5 +209,22 @@ describe("startProxyForAllTraffic", () => {
     const before = process.env.HTTPS_PROXY;
     expect(await startProxyForAllTraffic("no-such-interface0")).toBeNull();
     expect(process.env.HTTPS_PROXY).toBe(before);
+  });
+});
+
+describe("egressAddressOrDefault", () => {
+  it("returns the interface's address when it has one", () => {
+    expect(egressAddressOrDefault("en0", { en0: [v4("192.168.1.5")] } as Interfaces)).toBe("192.168.1.5");
+    expect(egressAddressOrDefault(undefined, {} as Interfaces)).toBeNull();
+  });
+  it("falls back to the default route, warning at most once, when the interface has no address", () => {
+    const warn = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect(egressAddressOrDefault("en0", { en0: [v6("fe80::1")] } as Interfaces)).toBeNull();
+      expect(egressAddressOrDefault("en0", {} as Interfaces)).toBeNull();
+      expect(warn.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

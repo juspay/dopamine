@@ -6,11 +6,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { egressGet, resolveEgressAddress } from "../../net/egress.js";
+import { egressAddressOrDefault, egressGet } from "../../net/egress.js";
 import { CONFIG } from "../../pipeline/config.js";
 import { loadState } from "../../pipeline/state.js";
 import type { AcquiredAssets, SourceItem } from "../../types/index.js";
-import { type SourceCollector, SourceUnavailableError } from "../types.js";
+import type { SourceCollector } from "../types.js";
 import { xPostToSourceItem } from "./map.js";
 import type { XPost } from "./parse.js";
 import { jsRuntimeArgs } from "../youtube/ytdlp.js";
@@ -112,12 +112,7 @@ export function makeXCollector(): SourceCollector {
     },
 
     async acquire(item: SourceItem): Promise<AcquiredAssets | null> {
-      let egress: string | null;
-      try {
-        egress = resolveEgressAddress(CONFIG.EGRESS_INTERFACE);
-      } catch (err) {
-        throw new SourceUnavailableError(firstLine(err));
-      }
+      const egress = egressAddressOrDefault(CONFIG.EGRESS_INTERFACE);
       await fs.mkdir(CONFIG.X_VIDEOS_DIR, { recursive: true });
       await fs.mkdir(CONFIG.THUMB_DIR, { recursive: true });
       return acquireX(item, {

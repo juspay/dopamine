@@ -25,6 +25,28 @@ export function resolveEgressAddress(
   return address;
 }
 
+let warnedNoAddress = false;
+
+/**
+ * The egress address, or null (the default route) when the interface is set but has no address
+ * right now, say while the Mac is off that network. Warns once per process instead of failing,
+ * so a run still reaches what the default route can reach.
+ */
+export function egressAddressOrDefault(
+  iface: string | undefined,
+  interfaces: ReturnType<typeof os.networkInterfaces> = os.networkInterfaces(),
+): string | null {
+  try {
+    return resolveEgressAddress(iface, interfaces);
+  } catch (err) {
+    if (!warnedNoAddress) {
+      console.error(`[egress] ${String(err instanceof Error ? err.message : err)} Using the default route.`);
+      warnedNoAddress = true;
+    }
+    return null;
+  }
+}
+
 export interface EgressProxy {
   port: number;
   url: string;
@@ -136,16 +158,10 @@ export function routeAllTrafficThrough(
 /**
  * When DOPAMINE_EGRESS_INTERFACE names an interface, starts a background proxy that leaves
  * through it and routes all traffic through that proxy. Returns null when no interface is set.
- * An interface that is down is reported and the run goes on over the default route.
+ * An interface without an address is reported and the run goes on over the default route.
  */
 export async function startProxyForAllTraffic(iface: string | undefined): Promise<EgressProxy | null> {
-  let localAddress: string | null;
-  try {
-    localAddress = resolveEgressAddress(iface);
-  } catch (err) {
-    console.error(`[egress] ${String(err instanceof Error ? err.message : err)} Using the default route.`);
-    return null;
-  }
+  const localAddress = egressAddressOrDefault(iface);
   if (!localAddress) return null;
   const proxy = await startEgressProxy({ localAddress, background: true, routeAllTraffic: true });
   console.log(`[egress] all HTTPS traffic leaves through ${iface}`);
