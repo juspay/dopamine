@@ -1,10 +1,10 @@
 // src/sources/youtube/collector.ts
 import fs from "node:fs/promises";
 import { execa } from "execa";
-import { egressGet, resolveEgressAddress } from "../../net/egress.js";
+import { egressAddressOrDefault, egressGet } from "../../net/egress.js";
 import { CONFIG } from "../../pipeline/config.js";
 import type { AcquiredAssets, SourceItem } from "../../types/index.js";
-import { type SourceCollector, SourceUnavailableError } from "../types.js";
+import type { SourceCollector } from "../types.js";
 import { buildOAuthClient } from "./auth.js";
 import { acquireYoutube } from "./download.js";
 import type { ExecRunner } from "./download.js";
@@ -148,15 +148,6 @@ async function usableCookiesFile(): Promise<string | undefined> {
   return mode !== null && (mode & 0o077) === 0 ? file : undefined;
 }
 
-/** The egress address; an interface that is down is the source being unreachable, not an item failing. */
-function egressOrOutage(): string | null {
-  try {
-    return resolveEgressAddress(CONFIG.EGRESS_INTERFACE);
-  } catch (err) {
-    throw new SourceUnavailableError(String(err instanceof Error ? err.message : err).split("\n")[0]);
-  }
-}
-
 /** Liked videos and Watch Later always; own playlists only when listed in YOUTUBE_PLAYLIST_IDS. */
 function defaultFeeds(): FeedSource[] {
   return [
@@ -164,7 +155,7 @@ function defaultFeeds(): FeedSource[] {
     makeWatchLaterFeed({
       run,
       cookiesFile: CONFIG.YT_COOKIES_FILE,
-      sourceAddress: resolveEgressAddress(CONFIG.EGRESS_INTERFACE) ?? undefined,
+      sourceAddress: egressAddressOrDefault(CONFIG.EGRESS_INTERFACE) ?? undefined,
       statMode: fileMode,
     }),
     ...CONFIG.YOUTUBE_PLAYLIST_IDS.map((id) => makePlaylistFeed(id, realPlaylistDeps())),
@@ -209,7 +200,7 @@ export function makeYoutubeCollector(deps: { feeds?: FeedSource[]; includeMusic?
       };
       await fs.mkdir(CONFIG.YOUTUBE_VIDEOS_DIR, { recursive: true });
       await fs.mkdir(CONFIG.THUMB_DIR, { recursive: true });
-      const egress = egressOrOutage();
+      const egress = egressAddressOrDefault(CONFIG.EGRESS_INTERFACE);
       return acquireYoutube(item, {
         run,
         readVtt,

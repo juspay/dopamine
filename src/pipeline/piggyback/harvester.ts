@@ -13,7 +13,7 @@ import CDP from "chrome-remote-interface";
 import { CONFIG } from "../config.js";
 import { ingestMetadata } from "../ingest.js";
 import { isSavedFeedUrl, webResponseToEntries } from "./map-web-media.js";
-import { egressGet, resolveEgressAddress, startEgressProxy } from "../../net/egress.js";
+import { egressAddressOrDefault, egressGet, startEgressProxy } from "../../net/egress.js";
 import { launchChrome, stopChrome, waitForPort } from "./chrome.js";
 import type { MetadataEntry } from "../../types/index.js";
 
@@ -72,7 +72,7 @@ export async function harvest(): Promise<void> {
   if (!USER) throw new Error("INSTAGRAM_USERNAME must be set to build the saved-page URL");
   // With DOPAMINE_EGRESS_INTERFACE set, the browser and the downloads leave through that
   // interface, so a VPN that blocks Instagram on the default route does not stop the harvest.
-  const egressAddress = resolveEgressAddress(CONFIG.EGRESS_INTERFACE);
+  const egressAddress = egressAddressOrDefault(CONFIG.EGRESS_INTERFACE);
   const proxy = egressAddress
     ? await startEgressProxy({ localAddress: egressAddress, routeAllTraffic: true })
     : undefined;

@@ -10,7 +10,7 @@
 import "dotenv/config";
 import { type ChildProcess, spawn } from "node:child_process";
 import CDP from "chrome-remote-interface";
-import { resolveEgressAddress, startEgressProxy } from "../../net/egress.js";
+import { egressAddressOrDefault, startEgressProxy } from "../../net/egress.js";
 import type { XPost } from "../../sources/x/parse.js";
 import { CONFIG } from "../config.js";
 import { chromeArgs, waitForPort } from "../piggyback/chrome.js";
@@ -106,7 +106,7 @@ export async function harvest(): Promise<number> {
   const stored = await loadState<XPost[]>(CONFIG.STATE.X_INCOMING, []);
   const known = new Set((Array.isArray(stored) ? stored : []).map((p) => p?.id).filter((id) => typeof id === "string"));
 
-  const egress = resolveEgressAddress(CONFIG.EGRESS_INTERFACE);
+  const egress = egressAddressOrDefault(CONFIG.EGRESS_INTERFACE);
   const proxy = egress ? await startEgressProxy({ localAddress: egress, routeAllTraffic: true }) : undefined;
   const args = browserArgs(
     chromeArgs(CONFIG.X_HARVEST_PORT, CONFIG.X_PROFILE_DIR, { proxyUrl: proxy?.url }),
