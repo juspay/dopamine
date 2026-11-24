@@ -16,9 +16,18 @@ describe("buildCaptionArgs", () => {
 });
 
 describe("buildVideoArgs", () => {
-  it("requests mp4, does NOT skip download, sets -o and the watch URL", () => {
+  it("requests an mp4 with sound, does NOT skip download, sets -o and the watch URL", () => {
     const a = buildVideoArgs("dQw4w9WgXcQ", "/tmp/out.mp4");
-    expect(a[a.indexOf("-f") + 1]).toBe("mp4");
+    const format = a[a.indexOf("-f") + 1];
+    // A ready-made mp4 first; else video joined with audio, never a video-only stream on its own.
+    expect(format.split("/")[0]).toBe("b[ext=mp4]");
+    expect(
+      format
+        .split("/")
+        .slice(1, -1)
+        .every((f) => f.includes("+ba")),
+    ).toBe(true);
+    expect(a[a.indexOf("--merge-output-format") + 1]).toBe("mp4");
     expect(a).not.toContain("--skip-download");
     expect(a[a.indexOf("-o") + 1]).toBe("/tmp/out.mp4");
     expect(a).toContain("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
