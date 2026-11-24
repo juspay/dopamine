@@ -37,8 +37,24 @@ export function buildCaptionArgs(videoId: string, outTemplate: string, o: YtDlpO
   ];
 }
 
+/**
+ * A ready-made mp4 with sound when YouTube offers one. Otherwise the best mp4 video up to 720p
+ * joined with its audio (yt-dlp runs ffmpeg), so a video served only as separate streams is
+ * not saved silent. "-f mp4" alone picks a video-only stream for those.
+ */
+export const VIDEO_FORMAT = "b[ext=mp4]/bv*[ext=mp4][height<=720]+ba[ext=m4a]/bv*[height<=720]+ba/b";
+
 export function buildVideoArgs(videoId: string, outTemplate: string, o: YtDlpOptions = {}): string[] {
-  return ["-f", "mp4", ...optionArgs(o), "-o", outTemplate, `https://www.youtube.com/watch?v=${videoId}`];
+  return [
+    "-f",
+    VIDEO_FORMAT,
+    "--merge-output-format",
+    "mp4",
+    ...optionArgs(o),
+    "-o",
+    outTemplate,
+    `https://www.youtube.com/watch?v=${videoId}`,
+  ];
 }
 
 /**
