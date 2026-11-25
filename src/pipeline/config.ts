@@ -283,8 +283,11 @@ export const CONFIG = {
   LINK_RETRY_MAX_PER_RUN: Number.parseInt(process.env.LINK_RETRY_MAX_PER_RUN ?? "20", 10),
 
   DELAY_BETWEEN_REQUESTS_MS: Number.parseInt(process.env.DELAY_MS ?? "500", 10),
-  MAX_RETRIES: 5,
-  RETRY_BASE_DELAY_MS: 10_000,
+  // Waits of 20, 40, 60, 80, then 90s (capped) give an AI call ~8 minutes of retries. The work
+  // VPN drops for 1.5 min typically and up to 7 (GlobalProtect log, 2026-11-25/26); while it is
+  // down Vertex AI refuses calls, and the old ~100s of retries lost items on longer drops.
+  MAX_RETRIES: 8,
+  RETRY_BASE_DELAY_MS: 20_000,
 
   // Wall-clock caps (ms) for the Python scrapers. On an Instagram soft-block the
   // private API stalls instead of erroring, so without a cap one run can hang for
