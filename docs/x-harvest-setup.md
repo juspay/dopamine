@@ -66,7 +66,7 @@ do that only once you have dealt with whatever X asked for.
 | `X_HARVEST_PORT` | `9456` | DevTools port for this job's Chrome |
 | `X_HARVEST_SCROLLS` | `40` | Most scrolls per run (0 to 100). It stops earlier at the end of the feed. Until one run has reached the end, every run scrolls to this limit, and the log says older bookmarks are still to come; after that, a run stops once it sees 20 posts in a row it already has |
 | `X_HARVEST_HEADLESS` | off | By default a Chrome window opens for about 20 seconds while the job runs. `1` runs with no window, but headless Chrome names itself `HeadlessChrome` to X, which a normal sign-in never does |
-| `DOPAMINE_EGRESS_INTERFACE` | unset | Send all HTTPS traffic, the browser included, out through this interface when a VPN blocks x.com |
+| `DOPAMINE_EGRESS_INTERFACE` | unset | Send all HTTPS traffic, the browser included, out through this interface when a VPN blocks x.com. Google Cloud APIs (`googleapis.com`) stay on the default route, because Vertex AI refuses calls from the Wi-Fi address |
 
 ## What ends up in Dopamine
 

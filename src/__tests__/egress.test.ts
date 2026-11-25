@@ -217,14 +217,14 @@ describe("egressGet", () => {
 });
 
 describe("routeAllTrafficThrough", () => {
-  it("points HTTPS at the proxy for this process and its children, and keeps local hosts direct", () => {
+  it("points HTTPS at the proxy for this process and its children, and keeps local and Google Cloud hosts direct", () => {
     const env: NodeJS.ProcessEnv = { NO_PROXY: "corp.example, localhost" };
     const applied: NodeJS.ProcessEnv[] = [];
     routeAllTrafficThrough("http://127.0.0.1:9999", env, (e) => applied.push(e));
     expect(env.HTTPS_PROXY).toBe("http://127.0.0.1:9999");
     expect(env.https_proxy).toBe("http://127.0.0.1:9999");
     expect(env.NODE_USE_ENV_PROXY).toBe("1");
-    expect(env.NO_PROXY).toBe("corp.example,localhost,127.0.0.1,::1");
+    expect(env.NO_PROXY).toBe("corp.example,localhost,127.0.0.1,::1,googleapis.com");
     expect(env.no_proxy).toBe(env.NO_PROXY);
     expect(env.HTTP_PROXY).toBeUndefined();
     expect(applied).toEqual([env]);
