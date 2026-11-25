@@ -141,10 +141,17 @@ export async function startEgressProxy(o: {
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1"];
 
 /**
+ * Google Cloud APIs (Vertex AI and its token endpoint) stay on the default route: the project
+ * refuses calls from the Wi-Fi address with "Permission Denied" and accepts them over the VPN.
+ * Measured 2026-11-25: the same Vertex call failed through the proxy and succeeded without it.
+ */
+const DEFAULT_ROUTE_HOSTS = ["googleapis.com"];
+
+/**
  * Sends every HTTPS request this process and its child processes make through `proxyUrl`:
  * Node's own fetch and https (the AI SDKs included), child Node processes, and any child that
  * reads HTTPS_PROXY (yt-dlp, the Instagram scripts). Plain HTTP is left on the default route,
- * because the proxy only tunnels HTTPS.
+ * because the proxy only tunnels HTTPS, and so are local and Google Cloud hosts (see above).
  */
 export function routeAllTrafficThrough(
   proxyUrl: string,
@@ -152,7 +159,7 @@ export function routeAllTrafficThrough(
   apply: (e: NodeJS.ProcessEnv) => void = (e) => void http.setGlobalProxyFromEnv(e),
 ): void {
   const existing = (env.NO_PROXY ?? env.no_proxy ?? "").split(",").map((h) => h.trim());
-  const noProxy = [...new Set([...existing, ...LOCAL_HOSTS].filter(Boolean))].join(",");
+  const noProxy = [...new Set([...existing, ...LOCAL_HOSTS, ...DEFAULT_ROUTE_HOSTS].filter(Boolean))].join(",");
   Object.assign(env, {
     HTTPS_PROXY: proxyUrl,
     https_proxy: proxyUrl,
