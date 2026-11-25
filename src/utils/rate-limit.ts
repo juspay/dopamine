@@ -1,15 +1,17 @@
 export function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type BackoffResult<T> =
-  | { success: true; value: T }
-  | { success: false; error: string };
+type BackoffResult<T> = { success: true; value: T } | { success: false; error: string };
+
+/** Longest single wait between attempts, so the exponential rate-limit backoff stays bounded. */
+export const MAX_RETRY_DELAY_MS = 90_000;
 
 export async function exponentialBackoff<T>(
   fn: () => Promise<T>,
   maxRetries: number,
-  baseDelayMs: number
+  baseDelayMs: number,
+  maxDelayMs: number = MAX_RETRY_DELAY_MS,
 ): Promise<BackoffResult<T>> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -17,15 +19,11 @@ export async function exponentialBackoff<T>(
     } catch (err) {
       const msg = String(err);
       const isRateLimit =
-        msg.includes("429") ||
-        msg.includes("RESOURCE_EXHAUSTED") ||
-        msg.toLowerCase().includes("quota");
+        msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.toLowerCase().includes("quota");
 
       if (attempt < maxRetries - 1) {
         // Exponential for rate limits, linear for transient errors
-        const delay = isRateLimit
-          ? baseDelayMs * 2 ** attempt
-          : baseDelayMs * (attempt + 1);
+        const delay = Math.min(maxDelayMs, isRateLimit ? baseDelayMs * 2 ** attempt : baseDelayMs * (attempt + 1));
         console.warn(`  Attempt ${attempt + 1}/${maxRetries}: ${msg.slice(0, 100)}`);
         console.warn(`  Retrying in ${delay / 1000}s...`);
         await sleep(delay);

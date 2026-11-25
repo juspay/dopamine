@@ -68,6 +68,22 @@ describe("exponentialBackoff()", () => {
     expect(result).toEqual({ success: true, value: "done" });
   });
 
+  it("caps each wait at maxDelayMs, for transient and rate-limit errors alike", async () => {
+    const waits: number[] = [];
+    const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((cb: () => void, ms?: number) => {
+      waits.push(ms ?? 0);
+      cb();
+      return 0 as unknown as NodeJS.Timeout;
+    }) as typeof setTimeout);
+    try {
+      await exponentialBackoff(vi.fn().mockRejectedValue(new Error("refused")), 6, 20, 50);
+      await exponentialBackoff(vi.fn().mockRejectedValue(new Error("429")), 6, 20, 50);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(waits).toEqual([20, 40, 50, 50, 50, 20, 40, 50, 50, 50]);
+  });
+
   it("returns failure when maxRetries is 1 and fn throws", async () => {
     const fn = vi.fn().mockRejectedValue(new Error("fail"));
     const result = await exponentialBackoff(fn, 1, 1);
