@@ -104,10 +104,12 @@ const DANGEROUS = [
   "~/",
 ];
 
-const DOWNLOADER = String.raw`(?:curl|wget|fetch|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b`;
-const RUNNER = String.raw`(?:sudo\s+)?(?:env(?:\s+\w+=\S*)*\s+)?(?:(?:ba|z|da|k|fi|c|tc)?sh|python[0-9.]*|node|perl|ruby|php|iex|Invoke-Expression)\b`;
+// PowerShell's download-and-run (irm … | iex) is allowed on purpose: the user chose to let it
+// through (2026-11-25). It cannot run on this Mac, which has no PowerShell.
+const DOWNLOADER = String.raw`(?:curl|wget|fetch)\b`;
+const RUNNER = String.raw`(?:sudo\s+)?(?:env(?:\s+\w+=\S*)*\s+)?(?:(?:ba|z|da|k|fi|c|tc)?sh|python[0-9.]*|node|perl|ruby|php)\b`;
 const DOWNLOAD_RUN_AS_CODE = [
-  // curl … | bash, wget … | sudo sh, iwr … | iex
+  // curl … | bash, wget … | sudo sh
   new RegExp(String.raw`\b${DOWNLOADER}[^|;&\n]*\|\s*${RUNNER}`, "i"),
   // sh -c "$(curl …)", bash <(curl …), source <(curl …), . <(wget …)
   new RegExp(
