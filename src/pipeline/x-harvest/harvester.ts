@@ -107,7 +107,12 @@ export async function harvest(): Promise<number> {
   const known = new Set((Array.isArray(stored) ? stored : []).map((p) => p?.id).filter((id) => typeof id === "string"));
 
   const egress = egressAddressOrDefault(CONFIG.EGRESS_INTERFACE);
-  const proxy = egress ? await startEgressProxy({ localAddress: egress, routeAllTraffic: true }) : undefined;
+  const proxy = egress
+    ? await startEgressProxy({
+        localAddress: () => egressAddressOrDefault(CONFIG.EGRESS_INTERFACE),
+        routeAllTraffic: true,
+      })
+    : undefined;
   const args = browserArgs(
     chromeArgs(CONFIG.X_HARVEST_PORT, CONFIG.X_PROFILE_DIR, { proxyUrl: proxy?.url }),
     CONFIG.X_HARVEST_HEADLESS,

@@ -8,7 +8,7 @@
  */
 import "dotenv/config";
 import { CONFIG } from "../pipeline/config.js";
-import { resolveEgressAddress, startEgressProxy } from "./egress.js";
+import { egressAddressOrDefault, resolveEgressAddress, startEgressProxy } from "./egress.js";
 
 async function main(): Promise<void> {
   const localAddress = resolveEgressAddress(CONFIG.EGRESS_INTERFACE);
@@ -17,7 +17,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const port = Number.parseInt(process.env.DOPAMINE_EGRESS_PORT ?? "9460", 10);
-  const proxy = await startEgressProxy({ localAddress, port });
+  // Looked up per connection, so the proxy survives the Mac joining another network.
+  const proxy = await startEgressProxy({ localAddress: () => egressAddressOrDefault(CONFIG.EGRESS_INTERFACE), port });
   console.log(`Egress proxy on ${proxy.url}, leaving through ${CONFIG.EGRESS_INTERFACE}. Ctrl+C to stop.`);
   process.on("SIGINT", () => void proxy.close().then(() => process.exit(0)));
   process.on("SIGTERM", () => void proxy.close().then(() => process.exit(0)));

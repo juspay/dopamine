@@ -60,9 +60,11 @@ const CONNECT_TIMEOUT_MS = 20_000;
 /**
  * A CONNECT-only HTTP proxy on loopback whose outbound sockets leave from `localAddress`.
  * A browser pointed at it (`--proxy-server`) reaches HTTPS sites through that interface.
+ * Given a function, it asks for the address on every connection, so a proxy that outlives a
+ * network change (a new Wi-Fi address) keeps working; null means the default route.
  */
 export async function startEgressProxy(o: {
-  localAddress: string;
+  localAddress: string | (() => string | null);
   port?: number;
   connect?: Connect;
   /** Never keep the process alive: for a proxy that lives as long as the run that uses it. */
@@ -90,7 +92,13 @@ export async function startEgressProxy(o: {
       client.end("HTTP/1.1 400 Bad Request\r\n\r\n");
       return;
     }
-    const upstream = connect({ host: host.replace(/^\[|\]$/g, ""), port, localAddress: o.localAddress, family: 4 });
+    const from = typeof o.localAddress === "function" ? o.localAddress() : o.localAddress;
+    const upstream = connect({
+      host: host.replace(/^\[|\]$/g, ""),
+      port,
+      family: 4,
+      ...(from ? { localAddress: from } : {}),
+    });
     track(upstream);
     upstream.setTimeout(CONNECT_TIMEOUT_MS, () => upstream.destroy(new Error("connect timeout")));
     let open = false;
@@ -161,9 +169,12 @@ export function routeAllTrafficThrough(
  * An interface without an address is reported and the run goes on over the default route.
  */
 export async function startProxyForAllTraffic(iface: string | undefined): Promise<EgressProxy | null> {
-  const localAddress = egressAddressOrDefault(iface);
-  if (!localAddress) return null;
-  const proxy = await startEgressProxy({ localAddress, background: true, routeAllTraffic: true });
+  if (!egressAddressOrDefault(iface)) return null;
+  const proxy = await startEgressProxy({
+    localAddress: () => egressAddressOrDefault(iface),
+    background: true,
+    routeAllTraffic: true,
+  });
   console.log(`[egress] all HTTPS traffic leaves through ${iface}`);
   return proxy;
 }
@@ -171,7 +182,11 @@ export async function startProxyForAllTraffic(iface: string | undefined): Promis
 const MAX_REDIRECTS = 3;
 const GET_TIMEOUT_MS = 120_000;
 
-/** GET a URL from the egress address (or the default route when it is null). Null unless it ends in a 200. */
+/**
+ * GET a URL from the egress address (or the default route when it is null). Null unless it ends
+ * in a 200. Once all HTTPS goes through the egress proxy, an https URL is not bound here: the
+ * proxy picks the current address, and an address bound now may be gone by the time it is used.
+ */
 export async function egressGet(
   url: string,
   localAddress: string | null,
@@ -179,10 +194,11 @@ export async function egressGet(
 ): Promise<Buffer | null> {
   const target = new URL(url);
   const lib = target.protocol === "http:" ? http : https;
+  const bind = localAddress && !(target.protocol === "https:" && process.env.HTTPS_PROXY) ? localAddress : null;
   return new Promise((resolve) => {
     const req = lib.get(
       target,
-      { ...(localAddress ? { localAddress, family: 4 } : {}), timeout: GET_TIMEOUT_MS },
+      { ...(bind ? { localAddress: bind, family: 4 } : {}), timeout: GET_TIMEOUT_MS },
       (res) => {
         const status = res.statusCode ?? 0;
         const location = res.headers.location;

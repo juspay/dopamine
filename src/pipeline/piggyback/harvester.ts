@@ -74,7 +74,10 @@ export async function harvest(): Promise<void> {
   // interface, so a VPN that blocks Instagram on the default route does not stop the harvest.
   const egressAddress = egressAddressOrDefault(CONFIG.EGRESS_INTERFACE);
   const proxy = egressAddress
-    ? await startEgressProxy({ localAddress: egressAddress, routeAllTraffic: true })
+    ? await startEgressProxy({
+        localAddress: () => egressAddressOrDefault(CONFIG.EGRESS_INTERFACE),
+        routeAllTraffic: true,
+      })
     : undefined;
   if (proxy) console.log(`[piggyback] sending traffic out through ${CONFIG.EGRESS_INTERFACE}`);
   const chrome = launchChrome(PORT, PROFILE, { proxyUrl: proxy?.url });

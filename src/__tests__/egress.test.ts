@@ -125,6 +125,36 @@ describe("egress proxy", () => {
     expect(seen).toEqual(["127.0.0.1"]);
   });
 
+  it("asks for the egress address on every connection, so a network change mid-run is followed", async () => {
+    const port = await startUpstream();
+    const addresses: Array<string | null> = ["127.0.0.1", null];
+    const seen: Array<string | undefined> = [];
+    proxy = await startEgressProxy({
+      localAddress: () => addresses.shift() ?? null,
+      connect: (opts) => {
+        seen.push(opts.localAddress);
+        return net.connect(opts);
+      },
+    });
+    const tunnel = () =>
+      new Promise<string>((resolve, reject) => {
+        const s = net.connect(proxy?.port ?? 0, "127.0.0.1", () =>
+          s.write(`CONNECT 127.0.0.1:${port} HTTP/1.1\r\n\r\n`),
+        );
+        let buf = "";
+        s.on("data", (d) => {
+          buf += d.toString();
+          if (buf.includes("\r\n\r\n")) s.end();
+        });
+        s.on("close", () => resolve(buf));
+        s.on("error", reject);
+      });
+    expect(await tunnel()).toMatch(/^HTTP\/1\.1 200/);
+    expect(await tunnel()).toMatch(/^HTTP\/1\.1 200/);
+    // The second connection found no address and went out over the default route.
+    expect(seen).toEqual(["127.0.0.1", undefined]);
+  });
+
   it("answers 502 when the target cannot be reached, instead of hanging", async () => {
     proxy = await startEgressProxy({ localAddress: "127.0.0.1" });
     const reply = await new Promise<string>((resolve, reject) => {
