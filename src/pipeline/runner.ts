@@ -38,6 +38,7 @@ import {
   settleAcquire,
 } from "../pipeline/source-policy.js";
 import { loadState } from "../pipeline/state.js";
+import { isAiUnavailable } from "../utils/rate-limit.js";
 import { startProxyForAllTraffic } from "../net/egress.js";
 import { runSearchIndexer } from "../search/indexer.js";
 import { loadLedger, saveLedger } from "../sources/attempts.js";
@@ -416,6 +417,14 @@ async function runSingleStep(
   } catch (err) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const errStr = String(err).split("\n")[0];
+    if (isAiUnavailable(err)) {
+      // Nothing is wrong with the items: the step saved what it finished and left the rest.
+      const msg = `Step ${index + 1} (${step.name}) deferred after ${elapsed}s: ${errStr} Items it did not reach are left for the next run.`;
+      metrics.endStep("error", String(err));
+      stepLog.warn(msg);
+      errors.push(msg);
+      return;
+    }
     const msg = `Step ${index + 1} (${step.name}) failed after ${elapsed}s: ${errStr}`;
     metrics.endStep("error", String(err));
     stepLog.error(msg);

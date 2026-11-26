@@ -1,5 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
-import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  AI_OUTAGE,
+  AiUnavailableError,
+  exponentialBackoff,
+  isAiUnavailable,
+  resetAiOutage,
+  sleep,
+} from "../utils/rate-limit.js";
 
 describe("sleep()", () => {
   it("resolves after the given delay", async () => {
@@ -82,6 +89,45 @@ describe("exponentialBackoff()", () => {
       spy.mockRestore();
     }
     expect(waits).toEqual([20, 40, 50, 50, 50, 20, 40, 50, 50, 50]);
+  });
+
+  describe("when Vertex AI refuses calls (VPN down)", () => {
+    const saved = { ...AI_OUTAGE };
+    const refusal = new Error("AuthenticationError: [vertex] Google Vertex AI Permission Denied.");
+    beforeEach(() => {
+      resetAiOutage();
+      Object.assign(AI_OUTAGE, { pollMs: 1, waitMs: 60_000 });
+    });
+    afterEach(() => {
+      resetAiOutage();
+      Object.assign(AI_OUTAGE, saved);
+    });
+
+    it("waits for AI to come back without using up attempts", async () => {
+      const fn = vi.fn();
+      for (let i = 0; i < 6; i++) fn.mockRejectedValueOnce(refusal);
+      fn.mockResolvedValue("ok");
+      const result = await exponentialBackoff(fn, 2, 1);
+      expect(result).toEqual({ success: true, value: "ok" });
+      expect(fn).toHaveBeenCalledTimes(7);
+    });
+
+    it("gives up the run's AI work once the outage outlasts the wait, without failing the item", async () => {
+      AI_OUTAGE.waitMs = 20;
+      const fn = vi.fn().mockRejectedValue(new Error("Request is prohibited by organization's policy."));
+      await expect(exponentialBackoff(fn, 8, 1)).rejects.toBeInstanceOf(AiUnavailableError);
+      const later = vi.fn().mockResolvedValue("never asked");
+      const err = await exponentialBackoff(later, 8, 1).catch((e: unknown) => e);
+      expect(isAiUnavailable(err)).toBe(true);
+      expect(later).not.toHaveBeenCalled();
+    });
+
+    it("still counts other errors as attempts", async () => {
+      const fn = vi.fn().mockRejectedValueOnce(refusal).mockRejectedValue(new Error("timeout"));
+      const result = await exponentialBackoff(fn, 2, 1);
+      expect(result.success).toBe(false);
+      expect(fn).toHaveBeenCalledTimes(3);
+    });
   });
 
   it("returns failure when maxRetries is 1 and fn throws", async () => {

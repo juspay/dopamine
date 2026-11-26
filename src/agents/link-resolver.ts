@@ -266,113 +266,115 @@ export async function runLinkResolverAgent(neurolink: NeuroLink): Promise<void> 
     saveEvery = 10,
     saveCounter = 0;
 
-  for (const [i, [nameKey, link]] of [...uniqueNames.entries()].entries()) {
-    // Taken before the URL is written back below: `link` is the same object stored in links_v2,
-    // so a resolved URL would otherwise turn into the "hint" and miss the record being cleared.
-    const attemptId = attemptKey(link.name, hintOf(link.url));
-    const context = [
-      link.description ? `Description: ${link.description}` : "",
-      link.url ? `Possible hint: ${link.url}` : "",
-    ]
-      .filter(Boolean)
-      .join(". ");
+  // The final save runs even when AI becomes unavailable mid-loop, so finished lookups are kept.
+  try {
+    for (const [i, [nameKey, link]] of [...uniqueNames.entries()].entries()) {
+      // Taken before the URL is written back below: `link` is the same object stored in links_v2,
+      // so a resolved URL would otherwise turn into the "hint" and miss the record being cleared.
+      const attemptId = attemptKey(link.name, hintOf(link.url));
+      const context = [
+        link.description ? `Description: ${link.description}` : "",
+        link.url ? `Possible hint: ${link.url}` : "",
+      ]
+        .filter(Boolean)
+        .join(". ");
 
-    const prompt =
-      `What is the official website URL for "${link.name}"? ${context}. ` +
-      `Return ONLY the full URL starting with https://, nothing else. ` +
-      `If it's a GitHub project return the GitHub URL. ` +
-      `If you do not know the exact URL, return the word NONE — do NOT guess or fabricate a URL. One URL only.`;
+      const prompt =
+        `What is the official website URL for "${link.name}"? ${context}. ` +
+        `Return ONLY the full URL starting with https://, nothing else. ` +
+        `If it's a GitHub project return the GitHub URL. ` +
+        `If you do not know the exact URL, return the word NONE — do NOT guess or fabricate a URL. One URL only.`;
 
-    console.log(`\n[${i + 1}/${uniqueNames.size}] Resolving: ${link.name}`);
+      console.log(`\n[${i + 1}/${uniqueNames.size}] Resolving: ${link.name}`);
 
-    // Selected by CONFIG.LINK_MODEL rather than CONFIG.MODEL. Historically this was
-    // load-bearing: CONFIG.MODEL was an image-preview model that routed these
-    // prompts through executeImageGeneration and returned empty parts whenever
-    // Vertex's safety filter tripped on a benign description (e.g. "Personal
-    // account inferred from filename" → "No content parts"). CONFIG.MODEL is a
-    // text-capable model again, so the split is now just insulation against it
-    // being pointed back at an image model.
-    let resolved: string | null = null;
-    // Why there is no URL, when the model answered; stays null if the lookup itself errored.
-    let outcome: LookupOutcome | null = null;
-    const r1 = await exponentialBackoff(
-      async () => {
-        const response = await neurolink.generate({
-          input: { text: prompt },
-          provider: "vertex",
-          model: CONFIG.LINK_MODEL,
-          disableTools: true,
-          // Thinking tokens share this cap: 256 truncated the URL mid-string on gemini-3.8-flash.
-          maxTokens: 2048,
-          timeout: "30s",
-        });
-        assertNotTruncated(response, "link-resolver");
-        const content = response.content.trim();
-        // Model may return "NONE" when it cannot find a URL — treat as failure
-        if (/^NONE$/i.test(content)) return null;
-        const match = content.match(/https?:\/\/[^\s<>"')]+/);
-        return match?.[0]?.replace(/\.$/, "") ?? null;
-      },
-      CONFIG.MAX_RETRIES,
-      CONFIG.RETRY_BASE_DELAY_MS,
-    );
+      // Selected by CONFIG.LINK_MODEL rather than CONFIG.MODEL. Historically this was
+      // load-bearing: CONFIG.MODEL was an image-preview model that routed these
+      // prompts through executeImageGeneration and returned empty parts whenever
+      // Vertex's safety filter tripped on a benign description (e.g. "Personal
+      // account inferred from filename" → "No content parts"). CONFIG.MODEL is a
+      // text-capable model again, so the split is now just insulation against it
+      // being pointed back at an image model.
+      let resolved: string | null = null;
+      // Why there is no URL, when the model answered; stays null if the lookup itself errored.
+      let outcome: LookupOutcome | null = null;
+      const r1 = await exponentialBackoff(
+        async () => {
+          const response = await neurolink.generate({
+            input: { text: prompt },
+            provider: "vertex",
+            model: CONFIG.LINK_MODEL,
+            disableTools: true,
+            // Thinking tokens share this cap: 256 truncated the URL mid-string on gemini-3.8-flash.
+            maxTokens: 2048,
+            timeout: "30s",
+          });
+          assertNotTruncated(response, "link-resolver");
+          const content = response.content.trim();
+          // Model may return "NONE" when it cannot find a URL — treat as failure
+          if (/^NONE$/i.test(content)) return null;
+          const match = content.match(/https?:\/\/[^\s<>"')]+/);
+          return match?.[0]?.replace(/\.$/, "") ?? null;
+        },
+        CONFIG.MAX_RETRIES,
+        CONFIG.RETRY_BASE_DELAY_MS,
+      );
 
-    if (r1.success && !r1.value) outcome = "none";
+      if (r1.success && !r1.value) outcome = "none";
 
-    if (r1.success && r1.value) {
-      // Validate the resolved URL — the model must not have invented paths
-      const validated = validateAndNormalizeUrl(r1.value);
-      if (validated === null) {
-        outcome = "invalid";
-        console.log(`  -> Resolved URL failed validation (hallucinated?): ${r1.value}`);
-      } else {
-        // Optionally check liveness: only drop definitively-dead (404/410) links.
-        // Protected (403/429), errors (DNS outage), and timeouts are kept — we must
-        // not permanently drop a live URL because of a bot-block or transient failure.
-        const checkResult = await checkUrl(validated, { timeoutMs: 8_000, retries: 0 });
-        if (checkResult.status === "dead") {
-          outcome = "dead";
-          console.log(`  -> Resolved URL is dead (${checkResult.httpCode}): ${validated}`);
-          // Leave url as null rather than storing a 404 link
+      if (r1.success && r1.value) {
+        // Validate the resolved URL — the model must not have invented paths
+        const validated = validateAndNormalizeUrl(r1.value);
+        if (validated === null) {
+          outcome = "invalid";
+          console.log(`  -> Resolved URL failed validation (hallucinated?): ${r1.value}`);
         } else {
-          resolved = validated;
-          console.log(`  Resolved [${checkResult.status}]: ${validated}`);
+          // Optionally check liveness: only drop definitively-dead (404/410) links.
+          // Protected (403/429), errors (DNS outage), and timeouts are kept — we must
+          // not permanently drop a live URL because of a bot-block or transient failure.
+          const checkResult = await checkUrl(validated, { timeoutMs: 8_000, retries: 0 });
+          if (checkResult.status === "dead") {
+            outcome = "dead";
+            console.log(`  -> Resolved URL is dead (${checkResult.httpCode}): ${validated}`);
+            // Leave url as null rather than storing a 404 link
+          } else {
+            resolved = validated;
+            console.log(`  Resolved [${checkResult.status}]: ${validated}`);
+          }
         }
       }
-    }
 
-    if (resolved) {
-      // Apply immediately to all entries sharing this name
-      const entries = nameToEntries.get(nameKey) ?? [];
-      for (const { fname, idx } of entries) {
-        links[fname].links[idx].url = resolved;
-      }
-      resolvedCount++;
-      delete attempts[attemptId];
-    } else {
-      failedCount++;
-      console.log(`  FAILED to resolve`);
-      // A lookup that errored (network, quota) says nothing about the name, so it is asked again next run.
-      if (outcome !== null) {
-        attempts[attemptId] = { attempted_at: new Date().toISOString(), outcome };
+      if (resolved) {
+        // Apply immediately to all entries sharing this name
+        const entries = nameToEntries.get(nameKey) ?? [];
+        for (const { fname, idx } of entries) {
+          links[fname].links[idx].url = resolved;
+        }
+        resolvedCount++;
+        delete attempts[attemptId];
       } else {
-        console.log(`  (lookup errored; not cached, will be asked again next run)`);
+        failedCount++;
+        console.log(`  FAILED to resolve`);
+        // A lookup that errored (network, quota) says nothing about the name, so it is asked again next run.
+        if (outcome !== null) {
+          attempts[attemptId] = { attempted_at: new Date().toISOString(), outcome };
+        } else {
+          console.log(`  (lookup errored; not cached, will be asked again next run)`);
+        }
       }
-    }
 
-    // Save incrementally so progress survives restarts (resume mode)
-    saveCounter++;
-    if (saveCounter >= saveEvery) {
-      await saveState(CONFIG.STATE.LINKS_V2, links);
-      await saveState(CONFIG.STATE.LINK_ATTEMPTS, attempts);
-      saveCounter = 0;
-    }
+      // Save incrementally so progress survives restarts (resume mode)
+      saveCounter++;
+      if (saveCounter >= saveEvery) {
+        await saveState(CONFIG.STATE.LINKS_V2, links);
+        await saveState(CONFIG.STATE.LINK_ATTEMPTS, attempts);
+        saveCounter = 0;
+      }
 
-    await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
+      await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
+    }
+  } finally {
+    await saveState(CONFIG.STATE.LINKS_V2, links);
+    await saveState(CONFIG.STATE.LINK_ATTEMPTS, attempts);
   }
-
-  // Final save
-  await saveState(CONFIG.STATE.LINKS_V2, links);
-  await saveState(CONFIG.STATE.LINK_ATTEMPTS, attempts);
   console.log(`\nLink resolution complete. Resolved: ${resolvedCount}, Failed: ${failedCount}`);
 }
