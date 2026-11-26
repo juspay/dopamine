@@ -16,7 +16,7 @@ import { type NeuroLink } from "@juspay/neurolink";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { assertNotTruncated } from "../utils/generation.js";
-import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
+import { sleep, exponentialBackoff, isAiUnavailable } from "../utils/rate-limit.js";
 import type { AnalysisEntry } from "./analyzer.js";
 import { checkUrls } from "../utils/url-check.js";
 import { makeRefreshGate } from "../pipeline/refresh.js";
@@ -570,6 +570,8 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
       const deadUrls = allResults.filter((r) => r.url_status === "dead").length;
       console.log(`  -> ${allResults.length} items researched, ${liveUrls} URLs live, ${deadUrls} dead`);
     } catch (err) {
+      // AI is down, not this video: leave it unresearched so the next run picks it up.
+      if (isAiUnavailable(err)) throw err;
       researchState[filename] = {
         filename,
         items: [],
