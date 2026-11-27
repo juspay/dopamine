@@ -14,6 +14,9 @@ export interface FeedSource {
 
 type Log = (line: string) => void;
 
+/** Google refusing the stored login: an expired or revoked refresh token, or a deleted client. */
+const LOGIN_FAILURE = /invalid_grant|invalid_client|unauthorized_client/i;
+
 const PLACEHOLDER_TITLES = new Set(["Deleted video", "Private video", "[Deleted video]", "[Private video]"]);
 
 /**
@@ -24,13 +27,16 @@ export async function collectFeeds(feeds: FeedSource[], log: Log = console.error
   const out = new Map<string, YtVideoRaw>();
   let failed = 0;
   let listed = 0;
+  let loginError: string | null = null;
   for (const feed of feeds) {
     let videos: YtVideoRaw[] | null;
     try {
       videos = await feed.list();
     } catch (err) {
       failed++;
-      log(`[youtube] feed "${feed.name}" failed: ${String(err instanceof Error ? err.message : err).split("\n")[0]}`);
+      const message = String(err instanceof Error ? err.message : err).split("\n")[0];
+      log(`[youtube] feed "${feed.name}" failed: ${message}`);
+      if (LOGIN_FAILURE.test(message)) loginError ??= message;
       continue;
     }
     if (videos === null) continue;
@@ -43,6 +49,12 @@ export async function collectFeeds(feeds: FeedSource[], log: Log = console.error
   // A skipped feed is not a success: liked videos failing while Watch Later is merely
   // unconfigured must still count as the source failing, or an expired token goes unnoticed.
   if (failed > 0 && listed === 0) throw new Error("Every YouTube feed failed; see the lines above.");
+  // A rejected login never fixes itself, so the source fails (and alerts) even when another
+  // feed still works: on 2026-11-27 the liked feed failed with invalid_grant for days while
+  // Watch Later kept the source looking healthy. The other feeds are listed again next run.
+  if (loginError) {
+    throw new Error(`YouTube login rejected (${loginError}); run: npm run youtube:auth`);
+  }
   return [...out.values()];
 }
 
