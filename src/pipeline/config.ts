@@ -288,6 +288,8 @@ export const CONFIG = {
    * made the step block the next scheduled runs.
    */
   RESEARCH_CONCURRENCY: Number.parseInt(process.env.RESEARCH_CONCURRENCY ?? "3", 10),
+  /** Videos verification works on at once: ~10s each, so this only matters on a catch-up run (142 took 26 min). */
+  VERIFY_CONCURRENCY: Number.parseInt(process.env.VERIFY_CONCURRENCY ?? "3", 10),
 
   DELAY_BETWEEN_REQUESTS_MS: Number.parseInt(process.env.DELAY_MS ?? "500", 10),
   // Waits of 20, 40, 60, 80, then 90s (capped) give an AI call ~8 minutes of retries. The work
