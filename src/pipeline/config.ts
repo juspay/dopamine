@@ -282,6 +282,13 @@ export const CONFIG = {
   /** Most expired failures one run asks about again, so the backlog drains a slice at a time. */
   LINK_RETRY_MAX_PER_RUN: Number.parseInt(process.env.LINK_RETRY_MAX_PER_RUN ?? "20", 10),
 
+  /**
+   * Videos the research step works on at once. A grounded research call takes ~110s
+   * (median, 2026-11-26 run: 216 calls, one at a time, 9.2 hours), so videos in a row
+   * made the step block the next scheduled runs.
+   */
+  RESEARCH_CONCURRENCY: Number.parseInt(process.env.RESEARCH_CONCURRENCY ?? "3", 10),
+
   DELAY_BETWEEN_REQUESTS_MS: Number.parseInt(process.env.DELAY_MS ?? "500", 10),
   // Waits of 20, 40, 60, 80, then 90s (capped) give an AI call ~8 minutes of retries. The work
   // VPN drops for 1.5 min typically and up to 7 (GlobalProtect log, 2026-11-25/26); while it is
