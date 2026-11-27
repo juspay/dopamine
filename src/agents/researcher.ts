@@ -7,15 +7,14 @@
  * - Searches web for reviews/alternatives
  * - Verifies claims made in the video
  *
- * Uses NeuroLink with websearchGrounding (no schema, free text).
+ * Uses one Gemini call with Google Search grounding per batch (free text).
  * Processes items in batches of 5, and RESEARCH_CONCURRENCY videos at a time.
  * State: videos/research.json
  */
 
-import { type NeuroLink } from "@juspay/neurolink";
 import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
-import { assertNotTruncated } from "../utils/generation.js";
+import { groundedGenerate } from "../utils/grounded-search.js";
 import { sleep, exponentialBackoff, isAiUnavailable } from "../utils/rate-limit.js";
 import type { AnalysisEntry } from "./analyzer.js";
 import { checkUrls } from "../utils/url-check.js";
@@ -279,7 +278,6 @@ Provide a detailed response for each item, clearly labeled by number. Include sp
  * Process a batch of items: check URLs + web research.
  */
 async function processBatch(
-  neurolink: NeuroLink,
   filename: string,
   items: Array<{
     name: string;
@@ -312,30 +310,19 @@ async function processBatch(
     items.map((item) => checkPackageRegistry(item.url, item.name, item.install_command ?? "").catch(() => "")),
   );
 
-  // 3. Do web research via NeuroLink with Google Search grounding.
-  // output:{format:"text"} is what this step wants regardless, and it also kept
-  // dual-mode image-preview models off executeImageGeneration back when
-  // CONFIG.MODEL was one. enabledToolNames lets the model actually call
-  // websearchGrounding to fetch live data.
+  // 3. Do web research in one Gemini call with Google Search grounding (see grounded-search.ts).
   let webResearchText = "";
   const researchResult = await exponentialBackoff(
-    async () => {
-      const response = await neurolink.generate({
-        input: {
-          text: buildResearchPrompt(items),
-        },
-        provider: "vertex",
+    () =>
+      groundedGenerate(buildResearchPrompt(items), {
+        project: groundingProject(),
+        location: CONFIG.VERTEX_LOCATION,
         model: CONFIG.MODEL,
-        output: { format: "text" },
-        enabledToolNames: ["websearchGrounding"],
-        // A grounded batch runs up to ~22 tool steps: measured 95% of 8192 and a
-        // 147s slowest batch against the old 180s limit on gemini-3.8-flash.
-        maxTokens: 16384,
-        timeout: "300s",
-      });
-      assertNotTruncated(response, "researcher");
-      return response.content;
-    },
+        // Answers measured ~10-11k characters for 5 items, well under this.
+        maxOutputTokens: 16384,
+        // Batches measured 43-56s; the cap only stops a call that hangs.
+        timeoutMs: 180_000,
+      }),
     CONFIG.MAX_RETRIES,
     CONFIG.RETRY_BASE_DELAY_MS,
   );
@@ -412,14 +399,11 @@ async function processBatch(
   return results;
 }
 
-/**
- * Neurolink's websearchGrounding tool reads GOOGLE_VERTEX_PROJECT, not the
- * GOOGLE_CLOUD_PROJECT_ID this pipeline is configured with. Left unset, every
- * search call fails and the model answers from memory (or apologises): 1545 of
- * 3755 stored research items read "No research data available." for this reason.
- */
-function ensureGroundingProject(): void {
-  process.env.GOOGLE_VERTEX_PROJECT ??= process.env.GOOGLE_CLOUD_PROJECT_ID;
+/** The Google Cloud project for research calls; the pipeline is configured with GOOGLE_CLOUD_PROJECT_ID. */
+function groundingProject(): string {
+  const project = process.env.GOOGLE_VERTEX_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT_ID;
+  if (!project) throw new Error("research: set GOOGLE_CLOUD_PROJECT_ID");
+  return project;
 }
 
 /**
@@ -495,9 +479,8 @@ function extractGitHubInfo(text: string): string {
   return parts.length > 0 ? parts.join(", ") : "github_repo_mentioned";
 }
 
-export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
+export async function runResearchAgent(): Promise<void> {
   console.log("\n=== ResearchAgent (Step 13) ===");
-  ensureGroundingProject();
 
   // Load analysis state
   const analysisState = await loadState<Record<string, AnalysisEntry>>(CONFIG.STATE.ANALYSIS, {});
@@ -568,7 +551,7 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
           `  Batch ${Math.floor(batchStart / BATCH_SIZE) + 1}: researching ${batch.length} items (${filename})...`,
         );
 
-        const batchResults = await processBatch(neurolink, filename, batch);
+        const batchResults = await processBatch(filename, batch);
         allResults.push(...batchResults);
 
         // Rate limit between batches
