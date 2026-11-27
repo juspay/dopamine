@@ -5,6 +5,7 @@ import {
   OUTAGE_MIN_FAILURES,
   acquireHooksFor,
   applySourcePolicy,
+  countNotDone,
   finishSourceRun,
   mergeWithStored,
   parseSince,
@@ -303,5 +304,19 @@ describe("finishSourceRun", () => {
   it("does nothing when no non-instagram source ran", () => {
     const result = finishSourceRun(new Map(), { health: {}, now: NOW });
     expect(result).toEqual({ health: {}, failing: [] });
+  });
+});
+
+describe("countNotDone", () => {
+  it("counts only items without a clean knowledge-base entry, once each", () => {
+    const items = [
+      item("a.mp4", "instagram"),
+      item("b.mp4", "instagram"),
+      item("b.mp4", "instagram"),
+      item("c", "youtube"),
+    ];
+    expect(countNotDone(items, new Set(["a.mp4"]))).toBe(2);
+    expect(countNotDone(items, new Set(["a.mp4", "b.mp4", "c"]))).toBe(0);
+    expect(countNotDone([], new Set())).toBe(0);
   });
 });

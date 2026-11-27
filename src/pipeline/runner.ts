@@ -32,6 +32,7 @@ import {
   type AcquireTally,
   acquireHooksFor,
   applySourcePolicy,
+  countNotDone,
   finishSourceRun,
   mergeWithStored,
   parseSince,
@@ -183,14 +184,23 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     const batch = collected.flat();
     const offered =
       enabled.size > 1 || !enabled.has("instagram") ? mergeWithStored(batch, await loadItemIndex(), enabled) : batch;
-    const { items, remaining } = await applySourcePolicy(offered, await policyDeps());
+    const deps = await policyDeps();
+    const { items, remaining } = await applySourcePolicy(offered, deps);
     collectedItems = items;
     collectionRan = true;
+    const instagram = items.filter((i) => i.source === "instagram");
+    if (instagram.length > 0) {
+      console.log(
+        `  [sources] instagram: ${instagram.length} saved item(s) seen, ${countNotDone(instagram, deps.done)} not processed yet`,
+      );
+    }
     for (const [source, left] of Object.entries(remaining)) {
       const picked = items.filter((i) => i.source === source).length;
       console.log(`  [sources] ${source}: selected ${picked}, ${left} remaining`);
     }
-    console.log(`  Collected ${collectedItems.length} new item(s); metadata.json updated via ingest.`);
+    console.log(
+      `  Handing ${collectedItems.length} item(s) to the pipeline, ${countNotDone(collectedItems, deps.done)} not processed yet; metadata.json updated via ingest.`,
+    );
     return { processed: collectedItems.length };
   };
 
