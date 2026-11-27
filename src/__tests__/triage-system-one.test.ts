@@ -28,7 +28,7 @@ describe("withSystemOne", () => {
       reason: "System 1 test: apply-now (0.91)",
     });
     expect(fallback).not.toHaveBeenCalled();
-    expect(counts()).toEqual({ decided: 1, fellBack: 0 });
+    expect(counts()).toEqual({ decided: 1, fellBack: 0, errors: 0, firstError: null });
   });
 
   it("reports medium confidence between the minimum and 0.8", async () => {
@@ -46,7 +46,7 @@ describe("withSystemOne", () => {
     const { generate, fallback, counts } = build(async () => ({ tier: "apply-now", confidence: 0.59 }));
     expect(await generate("the prompt", input)).toBe(geminiVerdict);
     expect(fallback).toHaveBeenCalledWith("the prompt", input);
-    expect(counts()).toEqual({ decided: 0, fellBack: 1 });
+    expect(counts()).toEqual({ decided: 0, fellBack: 1, errors: 0, firstError: null });
   });
 
   it("falls back on a tier the pipeline does not know", async () => {
@@ -68,6 +68,22 @@ describe("withSystemOne", () => {
     expect(await generate("p", input)).toBe(geminiVerdict);
     expect(fallback).toHaveBeenCalledOnce();
     expect(counts().fellBack).toBe(1);
+  });
+
+  it("counts thrown calls and keeps the first error, so a blocked key is visible in the log", async () => {
+    let n = 0;
+    const { generate, counts } = build(async () => {
+      n++;
+      throw new Error(n === 1 ? "[xor] Authentication Error, Key is blocked.\nstack" : "later error");
+    });
+    await generate("p", input);
+    await generate("p", input);
+    expect(counts()).toEqual({
+      decided: 0,
+      fellBack: 2,
+      errors: 2,
+      firstError: "[xor] Authentication Error, Key is blocked.",
+    });
   });
 
   it("lets a failing fallback propagate so runTriage can keep the prior verdict", async () => {

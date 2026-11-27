@@ -123,6 +123,9 @@ export function neurolinkDecideTier(neurolink: NeuroLink, provider: string, mode
 export interface SystemOneCounts {
   decided: number;
   fellBack: number;
+  /** Calls that threw, and the first such error: a blocked key or a dead endpoint shows here. */
+  errors: number;
+  firstError: string | null;
 }
 
 /**
@@ -139,9 +142,15 @@ export function withSystemOne(opts: {
 }): { generate: (prompt: string, input: TriageInput) => Promise<unknown>; counts: () => SystemOneCounts } {
   let decided = 0;
   let fellBack = 0;
+  let errors = 0;
+  let firstError: string | null = null;
   return {
     generate: async (prompt, input) => {
-      const verdict = await opts.decide(input).catch(() => null);
+      const verdict = await opts.decide(input).catch((err: unknown) => {
+        errors++;
+        firstError ??= String(err instanceof Error ? err.message : err).split("\n")[0];
+        return null;
+      });
       if (verdict && (TIERS as readonly string[]).includes(verdict.tier) && verdict.confidence >= opts.minConfidence) {
         decided++;
         return {
@@ -153,7 +162,7 @@ export function withSystemOne(opts: {
       fellBack++;
       return opts.fallback(prompt, input);
     },
-    counts: () => ({ decided, fellBack }),
+    counts: () => ({ decided, fellBack, errors, firstError }),
   };
 }
 
@@ -302,10 +311,11 @@ export async function runTriageAgent(neurolink: NeuroLink): Promise<void> {
     generate: systemOne ? systemOne.generate : (prompt) => generate(prompt),
   });
   if (systemOne) {
-    const { decided, fellBack } = systemOne.counts();
+    const { decided, fellBack, errors, firstError } = systemOne.counts();
     console.log(
       `  System 1 decided ${decided}; ${fellBack} went to ${CONFIG.TRIAGE_MODEL} (low confidence or no answer)`,
     );
+    if (errors > 0) console.warn(`  System 1 failed on ${errors} call(s); first error: ${firstError}`);
   }
   await writeAtomic(CONFIG.STATE.TRIAGE, JSON.stringify(triage, null, 2));
 

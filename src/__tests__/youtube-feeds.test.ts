@@ -190,6 +190,14 @@ describe("a skipped feed is not a success", () => {
     );
   });
 
+  it("fails the source on a rejected login even when another feed still lists, so an expired token alerts", async () => {
+    const log: string[] = [];
+    await expect(
+      collectFeeds([feed("liked", new Error("invalid_grant")), feed("later", [raw("c")])], (l) => log.push(l)),
+    ).rejects.toThrow(/YouTube login rejected \(invalid_grant\); run: npm run youtube:auth/);
+    expect(log).toEqual(['[youtube] feed "liked" failed: invalid_grant']);
+  });
+
   it("returns the listed videos when one feed lists and another is skipped", async () => {
     expect((await collectFeeds([feed("liked", [raw("a")]), skipped], quiet)).map((v) => v.id)).toEqual(["a"]);
   });
