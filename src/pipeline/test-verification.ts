@@ -88,9 +88,16 @@ async function main() {
     console.log(`  Step 12 completed in ${((Date.now() - t12) / 1000).toFixed(1)}s`);
 
     // Show analysis results
-    const analysisState = await loadState<Record<string, { actionable_items: Array<{ name: string; type: string }>; implementability_score: number; usefulness_prediction: string }>>(
-      CONFIG.STATE.ANALYSIS, {}
-    );
+    const analysisState = await loadState<
+      Record<
+        string,
+        {
+          actionable_items: Array<{ name: string; type: string }>;
+          implementability_score: number;
+          usefulness_prediction: string;
+        }
+      >
+    >(CONFIG.STATE.ANALYSIS, {});
     const analysis = analysisState[targetFilename];
     if (analysis) {
       console.log("\n  Analysis Results:");
@@ -107,13 +114,13 @@ async function main() {
     console.log("STEP 13: Research & Verification (ResearchAgent)");
     console.log("=".repeat(60));
     const t13 = Date.now();
-    await runResearchAgent(neurolink);
+    await runResearchAgent();
     console.log(`  Step 13 completed in ${((Date.now() - t13) / 1000).toFixed(1)}s`);
 
     // Show research results
-    const researchState = await loadState<Record<string, { items: Array<{ item_name: string; url_status: string; claim_verification: string }> }>>(
-      CONFIG.STATE.RESEARCH, {}
-    );
+    const researchState = await loadState<
+      Record<string, { items: Array<{ item_name: string; url_status: string; claim_verification: string }> }>
+    >(CONFIG.STATE.RESEARCH, {});
     const research = researchState[targetFilename];
     if (research) {
       console.log("\n  Research Results:");
@@ -131,9 +138,9 @@ async function main() {
     console.log(`  Step 14 completed in ${((Date.now() - t14) / 1000).toFixed(1)}s`);
 
     // Show implementation results
-    const implState = await loadState<Record<string, { items: Array<{ item_name: string; overall_status: string; time_ms: number }> }>>(
-      CONFIG.STATE.IMPLEMENTATIONS, {}
-    );
+    const implState = await loadState<
+      Record<string, { items: Array<{ item_name: string; overall_status: string; time_ms: number }> }>
+    >(CONFIG.STATE.IMPLEMENTATIONS, {});
     const impl = implState[targetFilename];
     if (impl) {
       console.log("\n  Implementation Results:");
@@ -151,9 +158,17 @@ async function main() {
     console.log(`  Step 15 completed in ${((Date.now() - t15) / 1000).toFixed(1)}s`);
 
     // Show verification results
-    const verState = await loadState<Record<string, { overall_score: string; confidence: number; summary: string; item_results: Array<{ item_name: string; implementation_result: string; is_url_live: string }> }>>(
-      CONFIG.STATE.VERIFICATIONS, {}
-    );
+    const verState = await loadState<
+      Record<
+        string,
+        {
+          overall_score: string;
+          confidence: number;
+          summary: string;
+          item_results: Array<{ item_name: string; implementation_result: string; is_url_live: string }>;
+        }
+      >
+    >(CONFIG.STATE.VERIFICATIONS, {});
     const verification = verState[targetFilename];
     if (verification) {
       console.log("\n  Verification Report:");
@@ -195,7 +210,6 @@ async function main() {
     // Print the full verification JSON
     console.log("\n--- Full Verification Report (JSON) ---");
     console.log(JSON.stringify(verState[targetFilename], null, 2));
-
   } finally {
     await neurolink.shutdown();
 
@@ -224,7 +238,7 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error("Test failed:", err);
   process.exit(1);
 });

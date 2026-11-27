@@ -245,7 +245,7 @@ export async function runFullPipeline(options: PipelineOptions = {}): Promise<vo
     { name: "Markdown generation", run: () => runMarkdownAgent(), parallelGroup: "post-classify" }, // 10
     // Verification pipeline (gated to apply-now/evaluate-later tiers)
     { name: "Content analysis", run: () => runAnalyzerAgent(neurolink) }, // 11
-    { name: "Research & verification", run: () => runResearchAgent(neurolink) }, // 12
+    { name: "Research & verification", run: () => runResearchAgent() }, // 12
     { name: "Implementation testing", run: () => runImplementerAgent() }, // 13
     { name: "Verification synthesis", run: () => runVerifierAgent(neurolink) }, // 14
     { name: "Knowledge base enrichment", run: () => runEnrichmentAgent() }, // 15
