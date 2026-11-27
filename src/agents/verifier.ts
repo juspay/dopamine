@@ -18,6 +18,7 @@ import { loadState, saveState } from "../pipeline/state.js";
 import { CONFIG } from "../pipeline/config.js";
 import { assertNotTruncated } from "../utils/generation.js";
 import { makeRefreshGate } from "../pipeline/refresh.js";
+import { runPool } from "../utils/pool.js";
 import { sleep, exponentialBackoff } from "../utils/rate-limit.js";
 import { safeJsonParse } from "../utils/json-repair.js";
 import type { AnalysisEntry } from "./analyzer.js";
@@ -232,6 +233,8 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
     skipped = 0,
     errors = 0;
 
+  // Decide what to verify first, in order, so the refresh cap applies as before.
+  const todo: Array<{ logPrefix: string; filename: string; analysis: AnalysisEntry }> = [];
   for (const [i, [filename, analysis]] of entries.entries()) {
     const logPrefix = `[${i + 1}/${entries.length}]`;
 
@@ -242,7 +245,20 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
       console.log(`${logPrefix} SKIP (${decision.reason}): ${filename}`);
       continue;
     }
+    todo.push({ logPrefix, filename, analysis });
+  }
 
+  // Each save writes the whole file, so saves run one after another, never overlapping.
+  let saving: Promise<void> = Promise.resolve();
+  const save = (): Promise<void> => {
+    saving = saving.catch(() => {}).then(() => saveState(CONFIG.STATE.VERIFICATIONS, verificationState));
+    return saving;
+  };
+
+  console.log(`Verifying ${todo.length} videos, ${CONFIG.VERIFY_CONCURRENCY} at a time`);
+  // An AiUnavailableError stops new videos from starting; the running ones finish or defer,
+  // and the error reaches the runner, which leaves the rest for the next run.
+  await runPool(todo, CONFIG.VERIFY_CONCURRENCY, async ({ logPrefix, filename, analysis }) => {
     console.log(`${logPrefix} Verifying: ${filename}`);
 
     const research = researchState[filename];
@@ -278,9 +294,9 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
         ...result.value,
       };
       verified++;
-      console.log(`  -> Score: ${result.value.overall_score}`);
-      console.log(`  -> Confidence: ${result.value.confidence}/10`);
-      console.log(`  -> Summary: ${result.value.summary.slice(0, 120)}`);
+      console.log(`  -> ${filename}: score ${result.value.overall_score}`);
+      console.log(`  -> ${filename}: confidence ${result.value.confidence}/10`);
+      console.log(`  -> ${filename}: ${result.value.summary.slice(0, 120)}`);
     } else {
       verificationState[filename] = {
         filename,
@@ -292,13 +308,13 @@ export async function runVerifierAgent(neurolink: NeuroLink): Promise<void> {
         error: result.error,
       };
       errors++;
-      console.error(`  -> ERROR: ${result.error}`);
+      console.error(`  -> ERROR (${filename}): ${result.error}`);
     }
 
     // Write after every video — resume mode guarantee
-    await saveState(CONFIG.STATE.VERIFICATIONS, verificationState);
+    await save();
     await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
-  }
+  });
 
   // Emit baseline entries for zero-item videos so verifications.json is
   // complete at source.  The data-builder previously inferred "not_verifiable"
