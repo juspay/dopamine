@@ -8,7 +8,7 @@
  * - Verifies claims made in the video
  *
  * Uses NeuroLink with websearchGrounding (no schema, free text).
- * Processes items in parallel batches of 5.
+ * Processes items in batches of 5, and RESEARCH_CONCURRENCY videos at a time.
  * State: videos/research.json
  */
 
@@ -20,6 +20,7 @@ import { sleep, exponentialBackoff, isAiUnavailable } from "../utils/rate-limit.
 import type { AnalysisEntry } from "./analyzer.js";
 import { checkUrls } from "../utils/url-check.js";
 import { makeRefreshGate } from "../pipeline/refresh.js";
+import { runPool } from "../utils/pool.js";
 
 /** Research result for a single actionable item. */
 export interface ResearchItemResult {
@@ -519,6 +520,8 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
     skipped = 0,
     errors = 0;
 
+  // Decide what to research first, in order, so the refresh cap applies as before.
+  const todo: Array<{ logPrefix: string; filename: string; analysis: AnalysisEntry }> = [];
   for (const [i, [filename, analysis]] of entries.entries()) {
     const logPrefix = `[${i + 1}/${entries.length}]`;
 
@@ -529,7 +532,20 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
       console.log(`${logPrefix} SKIP (${decision.reason}): ${filename}`);
       continue;
     }
+    todo.push({ logPrefix, filename, analysis });
+  }
 
+  // Each save writes the whole file, so saves run one after another, never overlapping.
+  let saving: Promise<void> = Promise.resolve();
+  const save = (): Promise<void> => {
+    saving = saving.catch(() => {}).then(() => saveState(CONFIG.STATE.RESEARCH, researchState));
+    return saving;
+  };
+
+  console.log(`Researching ${todo.length} videos, ${CONFIG.RESEARCH_CONCURRENCY} at a time`);
+  // An AiUnavailableError stops new videos from starting; the ones already running finish
+  // or defer, and the error reaches the runner, which leaves the rest for the next run.
+  await runPool(todo, CONFIG.RESEARCH_CONCURRENCY, async ({ logPrefix, filename, analysis }) => {
     console.log(`${logPrefix} Researching: ${filename}`);
     console.log(`  Items: ${analysis.actionable_items.length}`);
 
@@ -548,7 +564,9 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
       // Process in batches of BATCH_SIZE
       for (let batchStart = 0; batchStart < allItems.length; batchStart += BATCH_SIZE) {
         const batch = allItems.slice(batchStart, batchStart + BATCH_SIZE);
-        console.log(`  Batch ${Math.floor(batchStart / BATCH_SIZE) + 1}: researching ${batch.length} items...`);
+        console.log(
+          `  Batch ${Math.floor(batchStart / BATCH_SIZE) + 1}: researching ${batch.length} items (${filename})...`,
+        );
 
         const batchResults = await processBatch(neurolink, filename, batch);
         allResults.push(...batchResults);
@@ -568,7 +586,7 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
 
       const liveUrls = allResults.filter((r) => r.url_status === "live" || r.url_status === "redirect").length;
       const deadUrls = allResults.filter((r) => r.url_status === "dead").length;
-      console.log(`  -> ${allResults.length} items researched, ${liveUrls} URLs live, ${deadUrls} dead`);
+      console.log(`  -> ${filename}: ${allResults.length} items researched, ${liveUrls} URLs live, ${deadUrls} dead`);
     } catch (err) {
       // AI is down, not this video: leave it unresearched so the next run picks it up.
       if (isAiUnavailable(err)) throw err;
@@ -579,13 +597,13 @@ export async function runResearchAgent(neurolink: NeuroLink): Promise<void> {
         error: String(err),
       };
       errors++;
-      console.error(`  -> ERROR: ${String(err).slice(0, 200)}`);
+      console.error(`  -> ERROR (${filename}): ${String(err).slice(0, 200)}`);
     }
 
     // Write after every video — resume mode guarantee
-    await saveState(CONFIG.STATE.RESEARCH, researchState);
+    await save();
     await sleep(CONFIG.DELAY_BETWEEN_REQUESTS_MS);
-  }
+  });
 
   console.log(
     `\nResearch done. Researched: ${researched}, Skipped: ${skipped}, Errors: ${errors}, Refreshed: ${gate.refreshedCount()}`,
