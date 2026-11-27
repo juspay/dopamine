@@ -19,6 +19,15 @@ export interface PolicyDeps {
   ledger: AttemptLedger;
 }
 
+/**
+ * How many of `items` have not been through the pipeline yet (no clean knowledge-base entry).
+ * Instagram hands over every saved item its capture can see, so the plain item count is
+ * mostly items already done.
+ */
+export function countNotDone(items: readonly SourceItem[], done: ReadonlySet<string>): number {
+  return new Set(items.filter((i) => !done.has(i.id)).map((i) => i.id)).size;
+}
+
 /** Instagram items first, in their original order; then each other source's slice for this run. */
 export async function applySourcePolicy(
   collected: SourceItem[],
