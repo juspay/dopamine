@@ -104,14 +104,14 @@ describe("neurolinkDecideTier", () => {
     answers: { tier: { type: "choice", choice: tier, probabilities: { [tier]: confidence }, confidence } },
   });
   const fake = (result: unknown) => {
-    const tryDecide = vi.fn(async (_request: unknown) => result);
-    return { tryDecide, nl: { tryDecide } as unknown as NeuroLink };
+    const decide = vi.fn(async (_request: unknown) => result);
+    return { decide, nl: { decide } as unknown as NeuroLink };
   };
 
   it("asks one 4-way choice question about the video and returns the winning tier", async () => {
-    const { tryDecide, nl } = fake(choice(0.88));
+    const { decide, nl } = fake(choice(0.88));
     expect(await neurolinkDecideTier(nl, "typesafe")(input)).toEqual({ tier: "apply-now", confidence: 0.88 });
-    const req = tryDecide.mock.calls[0][0] as unknown as {
+    const req = decide.mock.calls[0][0] as unknown as {
       provider?: string;
       state: Record<string, unknown>;
       questions: { tier: { type: string; criteria: Record<string, string> } };
@@ -128,27 +128,27 @@ describe("neurolinkDecideTier", () => {
   });
 
   it("names the model when one is configured, so a proxy route can use a model it allows", async () => {
-    const { tryDecide, nl } = fake(choice(0.9));
+    const { decide, nl } = fake(choice(0.9));
     await neurolinkDecideTier(nl, "xor", "jev-latest")(input);
-    expect(tryDecide.mock.calls[0][0]).toMatchObject({ provider: "xor", model: "jev-latest" });
+    expect(decide.mock.calls[0][0]).toMatchObject({ provider: "xor", model: "jev-latest" });
   });
 
   it("sends no model when none is configured, leaving the provider's default", async () => {
-    const { tryDecide, nl } = fake(choice(0.9));
+    const { decide, nl } = fake(choice(0.9));
     await neurolinkDecideTier(nl, "xor")(input);
-    expect(tryDecide.mock.calls[0][0]).not.toHaveProperty("model");
+    expect(decide.mock.calls[0][0]).not.toHaveProperty("model");
   });
 
   it("leaves the provider unset so Neurolink picks the first configured one", async () => {
-    const { tryDecide, nl } = fake(choice(0.9));
+    const { decide, nl } = fake(choice(0.9));
     await neurolinkDecideTier(nl, "")(input);
-    expect(tryDecide.mock.calls[0][0]).not.toHaveProperty("provider");
+    expect(decide.mock.calls[0][0]).not.toHaveProperty("provider");
   });
 
   it("truncates the caption to 500 characters, like the generate prompt", async () => {
-    const { tryDecide, nl } = fake(choice(0.9));
+    const { decide, nl } = fake(choice(0.9));
     await neurolinkDecideTier(nl, "")({ ...input, caption: "x".repeat(900) });
-    const state = (tryDecide.mock.calls[0][0] as unknown as { state: { caption: string } }).state;
+    const state = (decide.mock.calls[0][0] as unknown as { state: { caption: string } }).state;
     expect(state.caption).toHaveLength(500);
   });
 
@@ -157,6 +157,24 @@ describe("neurolinkDecideTier", () => {
     expect(
       await neurolinkDecideTier(fake({ answers: { tier: { type: "boolean", probability: 0.9 } } }).nl, "")(input),
     ).toBeNull();
+  });
+
+  it("lets a gateway error reach withSystemOne, which counts it and falls back", async () => {
+    const decide = vi.fn(async () => {
+      throw new Error("Invalid model name passed in model=jev-latest");
+    });
+    const system = withSystemOne({
+      decide: neurolinkDecideTier({ decide } as unknown as NeuroLink, "xor", "jev-latest"),
+      fallback: async () => ({ tier: "skip", confidence: "high", reason: "gemini" }),
+      minConfidence: 0.6,
+      label: "x",
+    });
+    expect(await system.generate("p", input)).toMatchObject({ reason: "gemini" });
+    expect(system.counts()).toMatchObject({
+      errors: 1,
+      fellBack: 1,
+      firstError: "Invalid model name passed in model=jev-latest",
+    });
   });
 });
 

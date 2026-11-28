@@ -101,9 +101,14 @@ export interface TierDecision {
 /** One calibrated answer, or null when no decision provider answered. */
 export type DecideTier = (input: TriageInput) => Promise<TierDecision | null>;
 
+/**
+ * Calls `decide`, not `tryDecide`: tryDecide is fail-open and returns null on
+ * every error, which hid a blocked key and a removed model as "no answer".
+ * A throw here is caught, counted and logged by withSystemOne, then falls back.
+ */
 export function neurolinkDecideTier(neurolink: NeuroLink, provider: string, model = ""): DecideTier {
   return async (input) => {
-    const result = await neurolink.tryDecide({
+    const result = await neurolink.decide({
       ...(provider ? { provider } : {}),
       ...(model ? { model } : {}),
       state: {
